@@ -82,10 +82,12 @@ class ManagedOrder:
 
 
 class OrderManager:
-    def __init__(self, broker: BrokerBase, slippage_pct: float = 0.5):
+    def __init__(self, broker: BrokerBase, slippage_pct: float = 0.5,
+                 telegram=None):
         self.broker = broker
         self.slippage_pct = slippage_pct
         self._orders: dict[str, ManagedOrder] = {}
+        self._telegram = telegram
 
     def exists(self, tag: str) -> bool:
         return tag in self._orders
@@ -216,7 +218,7 @@ class OrderManager:
             log.warning("Status check failed for %s: %s", managed.order_id, exc)
         return managed
 
-    def _place_with_retry(self, order: Order, max_retries: int = 3) -> OrderResponse | None:
+    def _place_with_retry(self, order: Order, max_retries: int = 4) -> OrderResponse | None:
         for attempt in range(max_retries):
             try:
                 return self.broker.place_order(order)
@@ -226,9 +228,21 @@ class OrderManager:
                             wait, attempt + 1, max_retries)
                 time.sleep(wait)
             except BrokerError as exc:
-                log.error("Order failed: %s", exc)
-                return None
-        log.error("Max retries exhausted for tag=%s", order.tag)
+                wait = 2 ** attempt
+                log.error("Order failed (attempt %d/%d): %s", attempt + 1, max_retries, exc)
+                if attempt < max_retries - 1:
+                    time.sleep(wait)
+
+        log.critical("DEFCON 1: %d consecutive order failures for %s — "
+                     "broker may be down", max_retries, order.tag)
+        if self._telegram:
+            try:
+                self._telegram.error("DEFCON1_ORDER",
+                    Exception(f"BROKER DOWN: {max_retries} retries exhausted for "
+                              f"{order.tag}. If you have open positions, call Dhan "
+                              f"RMS desk immediately to manually square off."))
+            except Exception:
+                pass
         return None
 
     def _estimate_limit_price(self, signal: Signal) -> float:

@@ -124,7 +124,7 @@ def main() -> None:
         if "session_start" in cfg and "square_off" in cfg:
             re.register_instrument_session(name, cfg["session_start"], cfg["square_off"])
 
-    om = OrderManager(broker=broker, slippage_pct=0.5)
+    om = OrderManager(broker=broker, slippage_pct=0.5, telegram=tg)
     ins_sel = InstrumentSelector(instruments)
 
     tg_cfg = settings.get("telegram", {})
@@ -166,6 +166,38 @@ def main() -> None:
     )
 
     tg.bot_started(mode, "omega_complete")
+
+    try:
+        broker_positions = broker.get_positions()
+        orphans = [p for p in broker_positions if p.net_quantity != 0]
+        if orphans:
+            log.warning("STATE SYNC: Found %d orphan position(s) on broker:", len(orphans))
+            for op in orphans:
+                log.warning("  %s: net_qty=%d, buy_avg=%.2f",
+                            op.symbol, op.net_quantity, op.buy_avg)
+                from core.position_manager import Position
+                direction = "LONG" if op.net_quantity > 0 else "SHORT"
+                entry = op.buy_avg if direction == "LONG" else op.sell_avg
+                pos = Position(
+                    symbol=op.symbol,
+                    security_id=op.security_id,
+                    exchange_segment=op.exchange_segment,
+                    option_type="",
+                    direction=direction,
+                    quantity=abs(op.net_quantity),
+                    entry_price=entry,
+                    current_price=entry,
+                    sl_price=re.compute_sl_price(entry, direction),
+                    trail_sl=re.compute_sl_price(entry, direction),
+                    strategy="orphan_sync",
+                )
+                pm.add_position(pos)
+            log.info("STATE SYNC: Reconstructed %d position(s) from broker", len(orphans))
+            tg.error("state_sync", Exception(
+                f"Bot restarted with {len(orphans)} open position(s) — "
+                f"trailing stops re-armed"))
+    except Exception as exc:
+        log.warning("State sync skipped (broker unavailable): %s", exc)
 
     best = strategy.auto_select_instrument()
     if best:

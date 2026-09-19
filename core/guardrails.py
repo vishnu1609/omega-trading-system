@@ -425,6 +425,62 @@ class Guardrails:
                 return c
         return PASS
 
+    # ── Scenario 16: Broker Outage Defcon Alert ────────────────────────────
+
+    def check_broker_health(self, broker, telegram=None) -> bool:
+        try:
+            broker.get_available_margin()
+            return True
+        except Exception as exc:
+            log.critical("DEFCON 1: Broker API unreachable — %s", exc)
+            if telegram:
+                try:
+                    telegram.error("DEFCON1_BROKER", Exception(
+                        "Broker API is DOWN while positions may be open. "
+                        "Call Dhan RMS desk immediately to square off manually."))
+                except Exception:
+                    pass
+            return False
+
+    # ── Scenario 18: MCX Contract Rollover ───────────────────────────────
+
+    def check_contract_rollover(self, symbol: str,
+                                expiry_date: datetime | None = None,
+                                days_before: int = 3) -> GuardrailResult:
+        if not expiry_date:
+            return PASS
+
+        now = datetime.now(IST)
+        from datetime import timedelta
+        rollover_date = expiry_date - timedelta(days=days_before)
+
+        if now.date() >= rollover_date.date():
+            days_to_expiry = (expiry_date.date() - now.date()).days
+            return GuardrailResult(
+                False,
+                f"Contract rollover warning: {symbol} expires in {days_to_expiry} day(s). "
+                f"Liquidity drying up, spreads widening. Switch to next month contract.",
+                "contract_rollover",
+            )
+        return PASS
+
+    # ── Scenario 17: Freak Tick Sanity (price-level check) ───────────────
+
+    def check_price_sanity(self, symbol: str, current_price: float,
+                           prev_price: float,
+                           max_move_pct: float = 5.0) -> GuardrailResult:
+        if prev_price <= 0 or current_price <= 0:
+            return PASS
+        move_pct = abs(current_price - prev_price) / prev_price * 100
+        if move_pct > max_move_pct:
+            return GuardrailResult(
+                False,
+                f"Possible freak tick on {symbol}: {move_pct:.1f}% move "
+                f"(₹{prev_price:.2f}→₹{current_price:.2f}) exceeds {max_move_pct}% threshold",
+                "freak_tick",
+            )
+        return PASS
+
     def reset_daily(self) -> None:
         self._allocated_nse = 0.0
         self._allocated_mcx = 0.0

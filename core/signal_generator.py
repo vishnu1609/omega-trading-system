@@ -244,12 +244,50 @@ class SignalGenerator:
                       instrument_type: str = "INDEX") -> list[Candle]:
         candles = self._fetch_yahoo(inst_name)
         if candles:
-            return candles
+            candles = self._filter_ghost_candles(candles, inst_name)
+            return candles[-500:] if len(candles) > 500 else candles
 
         if security_id:
-            return self._fetch_dhan(security_id, exchange_segment, instrument_type)
+            raw = self._fetch_dhan(security_id, exchange_segment, instrument_type)
+            raw = self._filter_ghost_candles(raw, inst_name)
+            return raw[-500:] if len(raw) > 500 else raw
 
         return []
+
+    @staticmethod
+    def _filter_ghost_candles(candles: list[Candle], symbol: str) -> list[Candle]:
+        if not candles:
+            return candles
+        cleaned = []
+        for c in candles:
+            if c.volume == 0 and c.open == c.high == c.low == c.close:
+                continue
+            if c.high == c.low and c.volume == 0:
+                continue
+            cleaned.append(c)
+        dropped = len(candles) - len(cleaned)
+        if dropped:
+            log.warning("Dropped %d ghost candles for %s (vol=0 / flat OHLC)",
+                        dropped, symbol)
+        return cleaned
+
+    @staticmethod
+    def _is_freak_tick(candles: list[Candle], threshold_pct: float = 5.0) -> bool:
+        if len(candles) < 3:
+            return False
+        curr = candles[-1]
+        prev = candles[-2]
+        if prev.close <= 0:
+            return False
+        pct_change = abs(curr.close - prev.close) / prev.close * 100
+        if pct_change > threshold_pct:
+            intra_range = (curr.high - curr.low) / curr.close * 100 if curr.close > 0 else 0
+            if intra_range > threshold_pct * 1.5:
+                log.warning("FREAK TICK detected: %s moved %.1f%% in one candle "
+                            "(%.2f→%.2f, range=%.1f%%)",
+                            "?", pct_change, prev.close, curr.close, intra_range)
+                return True
+        return False
 
     def _fetch_yahoo(self, inst_name: str) -> list[Candle]:
         yahoo_sym = YAHOO_SYMBOLS.get(inst_name.upper())
@@ -324,6 +362,10 @@ class SignalGenerator:
     def generate_signals(self, inst_name: str, candles: list[Candle],
                          asset: str = "options") -> dict | None:
         if len(candles) < max(self.st_period, self.adx_len, self.chand_len) + 5:
+            return None
+
+        if self._is_freak_tick(candles):
+            log.warning("Freak tick on %s — skipping signal generation", inst_name)
             return None
 
         if self.guardrails:
