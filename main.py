@@ -26,6 +26,7 @@ from core.instrument_selector import InstrumentSelector
 from core.order_manager import OrderManager
 from core.position_manager import PositionManager
 from core.risk_engine import RiskEngine
+from core.daily_report import generate_daily_report, save_daily_report
 from core.signal_generator import SignalGenerator
 from strategies.omega_complete import OmegaStrategy
 from utils.logger import setup_logging
@@ -200,12 +201,14 @@ def main() -> None:
 
     log.info("Entering main loop — waiting for signals...")
     monitor_interval = 5
+    signals_log: list[dict] = []
 
     try:
         while not shutdown_event.is_set():
             while not signal_queue.empty():
                 try:
                     payload = signal_queue.get_nowait()
+                    signals_log.append(payload)
                     strategy.process_signal(payload)
                 except Exception as exc:
                     log.error("Signal processing error: %s", exc)
@@ -227,8 +230,10 @@ def main() -> None:
                                  wins, losses)
                 tg.bot_stopped("All sessions ended")
 
-                log.info("EOD P&L: ₹%.2f | Trades: %d | W/L: %d/%d",
-                         pm.realised_pnl, pm.trade_count_today, wins, losses)
+                report = generate_daily_report(
+                    pm.closed_trades, signals_log, pm.realised_pnl)
+                save_daily_report(report, pm.closed_trades, signals_log)
+                log.info("\n%s", report)
                 break
 
             if re.is_daily_loss_breached():
@@ -236,6 +241,10 @@ def main() -> None:
                 strategy.square_off_all()
                 om.cancel_all_open()
                 tg.bot_stopped(f"Daily loss breached: ₹{pm.daily_pnl:,.2f}")
+                report = generate_daily_report(
+                    pm.closed_trades, signals_log, pm.realised_pnl)
+                save_daily_report(report, pm.closed_trades, signals_log)
+                log.info("\n%s", report)
                 break
 
             shutdown_event.wait(timeout=monitor_interval)

@@ -33,7 +33,7 @@ telegram:
   chat_id: "${TELEGRAM_CHAT_ID}"
 
 signal_generator:
-  watch: ["NIFTY", "BANKNIFTY"]   # instruments to scan for signals
+  watch: ["NIFTY", "BANKNIFTY", "GOLD", "SILVER", "CRUDEOIL", "NATURALGAS"]
   poll_interval: 60               # seconds between candle fetches
   st_period: 10                   # SuperTrend period
   st_mult: 3.0                    # SuperTrend multiplier
