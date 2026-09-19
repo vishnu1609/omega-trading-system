@@ -20,6 +20,11 @@ from zoneinfo import ZoneInfo
 import requests
 import yfinance as yf
 
+from core.signal_scorer import (
+    ScoredSignal, score_signal, select_best_signals, format_score_report,
+    _get_correlation_group,
+)
+
 log = logging.getLogger(__name__)
 IST = ZoneInfo("Asia/Kolkata")
 
@@ -35,6 +40,8 @@ YAHOO_SYMBOLS = {
     "CRUDEOIL": "CL=F",
     "NATURALGAS": "NG=F",
 }
+
+_get_corr_group = _get_correlation_group
 
 
 @dataclass
@@ -357,20 +364,11 @@ class SignalGenerator:
         strategy = "omega_futures" if asset == "futures" else "omega_complete"
         last = self._last_signal.get(inst_name, "")
 
-        if buy_signal and last != "BUY":
-            self._last_signal[inst_name] = "BUY"
-            if asset == "futures":
-                side = "BUY"
-                sl = round(chand_long[i], 2)
-            else:
-                side = "BUY_CE"
-                sl = round(chand_long[i], 2)
-            log.info("SIGNAL: %s %s — ST=%s VWAP=%s ADX=%.1f",
-                     side, inst_name,
-                     "BULL" if st_bullish else "BEAR",
-                     "ABOVE" if close > vwap_vals[i] else "BELOW",
-                     adx_vals[i])
-            return {
+        atr_vals = calc_atr(candles, self.st_period)
+        avg_vol = sum(c.volume for c in candles[-20:]) / 20 if len(candles) >= 20 else 1
+
+        def _build_signal(side: str, sl: float, chand_stop: float) -> dict:
+            payload = {
                 "strategy": strategy,
                 "symbol": inst_name,
                 "side": side,
@@ -378,28 +376,39 @@ class SignalGenerator:
                 "asset": asset,
                 "strike": 0,
             }
+            scored = score_signal(
+                symbol=inst_name, side=side, strategy=strategy, asset=asset,
+                raw_signal=payload,
+                adx_value=adx_vals[i], adx_threshold=self.adx_threshold,
+                close_price=close, vwap_price=vwap_vals[i],
+                st_value=st_val[i], chandelier_stop=chand_stop,
+                avg_volume=avg_vol, current_volume=candles[i].volume,
+                atr_value=atr_vals[i],
+            )
+            payload["score"] = round(scored.total_score, 1)
+            payload["confidence"] = scored.confidence
+            payload["score_details"] = {
+                "adx": round(scored.adx_score, 1),
+                "vwap": round(scored.vwap_score, 1),
+                "rr": round(scored.rr_score, 1),
+                "st": round(scored.st_score, 1),
+                "vol": round(scored.volume_score, 1),
+            }
+            log.info("SIGNAL: %s %s — %s",
+                     side, inst_name, format_score_report(scored))
+            return payload
+
+        if buy_signal and last != "BUY":
+            self._last_signal[inst_name] = "BUY"
+            side = "BUY" if asset == "futures" else "BUY_CE"
+            sl = round(chand_long[i], 2)
+            return _build_signal(side, sl, chand_long[i])
 
         if sell_signal and last != "SELL":
             self._last_signal[inst_name] = "SELL"
-            if asset == "futures":
-                side = "SELL"
-                sl = round(chand_short[i], 2)
-            else:
-                side = "BUY_PE"
-                sl = round(chand_short[i], 2)
-            log.info("SIGNAL: %s %s — ST=%s VWAP=%s ADX=%.1f",
-                     side, inst_name,
-                     "BULL" if st_bullish else "BEAR",
-                     "ABOVE" if close > vwap_vals[i] else "BELOW",
-                     adx_vals[i])
-            return {
-                "strategy": strategy,
-                "symbol": inst_name,
-                "side": side,
-                "sl": sl,
-                "asset": asset,
-                "strike": 0,
-            }
+            side = "SELL" if asset == "futures" else "BUY_PE"
+            sl = round(chand_short[i], 2)
+            return _build_signal(side, sl, chand_short[i])
 
         if (trail_exit_long or trail_exit_short) and last != "EXIT":
             self._last_signal[inst_name] = "EXIT"
@@ -411,6 +420,8 @@ class SignalGenerator:
                 "sl": 0,
                 "asset": asset,
                 "strike": 0,
+                "score": 100,
+                "confidence": "HIGH",
             }
 
         return None
@@ -427,6 +438,8 @@ class SignalGenerator:
         while not shutdown_event.is_set():
             cycle += 1
             self._scan_count = cycle
+            cycle_signals: list[dict] = []
+
             for inst_name in watch_instruments:
                 cfg = self.instruments.get(inst_name, {})
                 asset_class = cfg.get("asset_class", "index_options")
@@ -440,9 +453,7 @@ class SignalGenerator:
 
                     signal = self.generate_signals(inst_name, candles, asset)
                     if signal:
-                        signal_queue.put(signal)
-                        log.info("Signal queued: %s %s %s",
-                                 signal["strategy"], signal["symbol"], signal["side"])
+                        cycle_signals.append(signal)
                     elif cycle == 1 or cycle % 10 == 0:
                         log.info("Scan #%d %s: %d candles, close=%.2f — no signal",
                                  cycle, inst_name, len(candles), candles[-1].close)
@@ -451,6 +462,34 @@ class SignalGenerator:
                     log.error("Signal gen error for %s: %s", inst_name, exc)
 
                 time.sleep(0.5)
+
+            if cycle_signals:
+                exits = [s for s in cycle_signals if s["side"] == "EXIT"]
+                entries = [s for s in cycle_signals if s["side"] != "EXIT"]
+
+                for ex in exits:
+                    signal_queue.put(ex)
+                    log.info("EXIT queued: %s", ex["symbol"])
+
+                if entries:
+                    scored = []
+                    for s in entries:
+                        sc = ScoredSignal(
+                            symbol=s["symbol"], side=s["side"],
+                            strategy=s["strategy"], asset=s["asset"],
+                            raw_signal=s, total_score=s.get("score", 50),
+                            confidence=s.get("confidence", "LOW"),
+                            correlation_group=_get_corr_group(s["symbol"]),
+                        )
+                        scored.append(sc)
+
+                    best = select_best_signals(scored, max_positions=3, min_score=35)
+
+                    for pick in best:
+                        signal_queue.put(pick.raw_signal)
+                        log.info("QUEUED [%s] %s %s score=%.0f (best of %d)",
+                                 pick.confidence, pick.side, pick.symbol,
+                                 pick.total_score, len(entries))
 
             shutdown_event.wait(timeout=self.poll_interval)
 

@@ -154,11 +154,19 @@ async def dashboard():
     for s in reversed(signals[-15:]):
         side = s.get("side", "")
         side_class = "sig-buy" if "BUY" in side else ("sig-sell" if "SELL" in side else "sig-exit")
+        score = s.get("score", 0)
+        conf = s.get("confidence", "")
+        conf_class = "conf-high" if conf == "HIGH" else ("conf-med" if conf == "MEDIUM" else "conf-low")
+        score_bar_w = min(score, 100)
+        score_color = "#10b981" if score >= 75 else ("#f59e0b" if score >= 55 else "#ef4444")
         signals_html += f'''<div class="sig-row">
             <span class="{side_class}">{side}</span>
-            <span>{s.get("symbol","")}</span>
-            <span class="sig-strategy">{s.get("strategy","")}</span>
-            <span>SL: {s.get("sl",0)}</span>
+            <span class="sig-symbol">{s.get("symbol","")}</span>
+            <span class="sig-score-wrap">
+                <span class="sig-score-bar" style="width:{score_bar_w}%;background:{score_color}"></span>
+                <span class="sig-score-num">{score:.0f}</span>
+            </span>
+            <span class="{conf_class}">{conf}</span>
         </div>'''
     if not signals_html:
         signals_html = '<div class="no-trades">Waiting for signals...</div>'
@@ -356,6 +364,34 @@ body {{
 .sig-sell {{ color: #ef4444; font-weight: 700; min-width: 70px; }}
 .sig-exit {{ color: #f59e0b; font-weight: 700; min-width: 70px; }}
 .sig-strategy {{ color: #64748b; font-size: 11px; }}
+.sig-symbol {{ font-weight: 600; min-width: 90px; }}
+.sig-score-wrap {{
+    position: relative;
+    width: 80px;
+    height: 18px;
+    background: #1e293b;
+    border-radius: 4px;
+    overflow: hidden;
+}}
+.sig-score-bar {{
+    position: absolute;
+    top: 0;
+    left: 0;
+    height: 100%;
+    border-radius: 4px;
+    opacity: 0.3;
+}}
+.sig-score-num {{
+    position: relative;
+    z-index: 1;
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 18px;
+    padding-left: 6px;
+}}
+.conf-high {{ color: #10b981; font-weight: 700; font-size: 11px; }}
+.conf-med {{ color: #f59e0b; font-weight: 700; font-size: 11px; }}
+.conf-low {{ color: #ef4444; font-weight: 700; font-size: 11px; }}
 .footer {{
     text-align: center;
     padding: 24px;
