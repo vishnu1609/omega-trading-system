@@ -1,0 +1,151 @@
+// ============================================================================
+// PROTOCOL OMEGA v6 — LEAN EDITION
+// 4-Factor Confluence: SuperTrend + VWAP + ADX + Chandelier Exit
+// Built for Indian Index Options (Nifty / Bank Nifty / Fin Nifty)
+// ============================================================================
+//@version=6
+indicator("Omega Complete", overlay=true, max_labels_count=50)
+
+// ─── CONTROL PANEL ──────────────────────────────────────────────────────────
+
+st_period   = input.int(10,    "SuperTrend Period",      minval=1,  group="1. Entry")
+st_mult     = input.float(3.0, "SuperTrend Multiplier",  step=0.1,  group="1. Entry")
+adx_len     = input.int(14,    "ADX Length",              minval=1,  group="1. Entry")
+adx_thresh  = input.int(25,    "ADX Threshold",           minval=5,  group="1. Entry",
+     tooltip="25 = only strong trends. Lower = more signals but more chop")
+
+chand_len   = input.int(22,    "Chandelier Length",       minval=1,  group="2. Exit")
+chand_mult  = input.float(3.0, "Chandelier Multiplier",  step=0.1,  group="2. Exit")
+
+strike_step = input.int(100,   "Strike Step",                       group="3. Options",
+     tooltip="Bank Nifty=100, Nifty=50, Sensex=100, Fin Nifty=50")
+
+sess_start  = input.int(916,   "Session Start (HHMM)",              group="4. Session")
+sess_end    = input.int(1515,  "Session End (HHMM)",                group="4. Session")
+
+use_webhook = input.bool(false, "Enable Webhook Alerts",            group="5. Webhook")
+strategy_id = input.string("omega_complete", "Strategy ID",         group="5. Webhook")
+
+// ─── CALCULATIONS ───────────────────────────────────────────────────────────
+
+// SuperTrend — direction < 0 = bullish, > 0 = bearish
+[st_value, st_dir] = ta.supertrend(st_mult, st_period)
+
+// VWAP — institutional anchor (resets daily)
+vwap_val = ta.vwap(hlc3)
+
+// ADX — trend strength
+[di_plus, di_minus, adx_val] = ta.dmi(adx_len, adx_len)
+
+// Chandelier Exit — trailing stop
+atr_val    = ta.atr(chand_len)
+highest_hi = ta.highest(high, chand_len)
+lowest_lo  = ta.lowest(low, chand_len)
+
+var float chand_long  = na
+var float chand_short = na
+chand_long  := highest_hi - chand_mult * atr_val
+chand_short := lowest_lo  + chand_mult * atr_val
+
+if not na(chand_long[1])
+    chand_long := math.max(chand_long, chand_long[1])
+if not na(chand_short[1])
+    chand_short := math.min(chand_short, chand_short[1])
+
+// Session + Strike
+current_hhmm = hour * 100 + minute
+in_session   = current_hhmm >= sess_start and current_hhmm <= sess_end
+atm_strike   = math.round(close / strike_step) * strike_step
+
+// ─── SIGNAL LOGIC ───────────────────────────────────────────────────────────
+
+st_bullish = st_dir < 0
+st_bearish = st_dir > 0
+
+bull_entry = st_bullish and close > vwap_val and adx_val > adx_thresh and in_session
+bear_entry = st_bearish and close < vwap_val and adx_val > adx_thresh and in_session
+
+buy_signal  = bull_entry and not bull_entry[1]
+sell_signal = bear_entry and not bear_entry[1]
+
+// Trade tracking + exit
+var int trade_dir = 0
+if buy_signal
+    trade_dir := 1
+    chand_long := lowest_lo - chand_mult * atr_val
+if sell_signal
+    trade_dir := -1
+    chand_short := highest_hi + chand_mult * atr_val
+
+trail_exit_long  = trade_dir == 1  and close < chand_long
+trail_exit_short = trade_dir == -1 and close > chand_short
+
+if trail_exit_long or trail_exit_short
+    trade_dir := 0
+
+trail_sl = trade_dir == 1 ? chand_long : trade_dir == -1 ? chand_short : na
+sl_pct   = not na(trail_sl) ? math.abs(close - trail_sl) / close * 100 : na
+
+// ─── VISUALS ────────────────────────────────────────────────────────────────
+
+// SuperTrend
+plot(st_value, "SuperTrend", color=st_dir < 0 ? color.lime : color.red, linewidth=2)
+
+// VWAP
+plot(vwap_val, "VWAP", color=color.new(color.yellow, 20), linewidth=1, style=plot.style_circles)
+
+// Trailing stop
+plot(trade_dir == 1  ? chand_long  : na, "Trail SL Long",  color=color.new(color.purple, 20), linewidth=2, style=plot.style_linebr)
+plot(trade_dir == -1 ? chand_short : na, "Trail SL Short", color=color.new(color.purple, 20), linewidth=2, style=plot.style_linebr)
+
+// Signals
+plotshape(buy_signal,  "BUY CE",  style=shape.triangleup,   location=location.belowbar, color=color.lime, size=size.small, text="CE")
+plotshape(sell_signal, "BUY PE",  style=shape.triangledown, location=location.abovebar, color=color.red,  size=size.small, text="PE")
+plotshape(trail_exit_long,  "Exit CE", style=shape.xcross, location=location.abovebar, color=color.purple, size=size.tiny, text="EXIT")
+plotshape(trail_exit_short, "Exit PE", style=shape.xcross, location=location.belowbar, color=color.purple, size=size.tiny, text="EXIT")
+
+// Bar color
+barcolor(bull_entry ? color.new(color.lime, 60) : bear_entry ? color.new(color.red, 60) : na)
+
+// ─── HUD DASHBOARD ─────────────────────────────────────────────────────────
+
+var table hud = table.new(position.top_right, 2, 7, border_width=1)
+
+if barstate.islast
+    table.cell(hud, 0, 0, "OMEGA",            bgcolor=color.black, text_color=color.white,  text_size=size.small)
+    table.cell(hud, 1, 0, syminfo.ticker,      bgcolor=color.black, text_color=color.yellow, text_size=size.small)
+
+    action_txt = trade_dir == 1 ? "BUY CE" : trade_dir == -1 ? "BUY PE" : "NO TRADE"
+    action_bg  = trade_dir == 1 ? color.green : trade_dir == -1 ? color.red : color.gray
+    table.cell(hud, 0, 1, "ACTION",           bgcolor=color.black, text_color=color.white, text_size=size.small)
+    table.cell(hud, 1, 1, action_txt,          bgcolor=action_bg,   text_color=color.white, text_size=size.small)
+
+    table.cell(hud, 0, 2, "STRIKE",           bgcolor=color.black, text_color=color.white,  text_size=size.small)
+    table.cell(hud, 1, 2, str.tostring(atm_strike), bgcolor=color.black, text_color=color.yellow, text_size=size.small)
+
+    sl_txt = not na(trail_sl) ? str.tostring(trail_sl, "#.##") : "—"
+    table.cell(hud, 0, 3, "TRAIL SL",         bgcolor=color.black, text_color=color.white,  text_size=size.small)
+    table.cell(hud, 1, 3, sl_txt,              bgcolor=color.black, text_color=color.purple, text_size=size.small)
+
+    st_bg = st_bullish ? color.green : color.red
+    table.cell(hud, 0, 4, "TREND",            bgcolor=color.black, text_color=color.white, text_size=size.small)
+    table.cell(hud, 1, 4, st_bullish ? "BULL" : "BEAR", bgcolor=st_bg, text_color=color.white, text_size=size.small)
+
+    adx_bg = adx_val > adx_thresh ? color.green : color.gray
+    table.cell(hud, 0, 5, "ADX",              bgcolor=color.black, text_color=color.white, text_size=size.small)
+    table.cell(hud, 1, 5, str.tostring(adx_val, "#.#"), bgcolor=adx_bg, text_color=color.white, text_size=size.small)
+
+    vwap_bg = close > vwap_val ? color.green : color.red
+    table.cell(hud, 0, 6, "VWAP",             bgcolor=color.black, text_color=color.white, text_size=size.small)
+    table.cell(hud, 1, 6, close > vwap_val ? "ABOVE" : "BELOW", bgcolor=vwap_bg, text_color=color.white, text_size=size.small)
+
+// ─── WEBHOOK ALERTS ─────────────────────────────────────────────────────────
+
+if use_webhook and buy_signal
+    alert('{"strategy":"' + strategy_id + '","symbol":"' + syminfo.ticker + '","side":"BUY_CE","strike":' + str.tostring(atm_strike) + ',"sl":' + str.tostring(chand_long, "#.##") + ',"ts":' + str.tostring(time) + '}', alert.freq_once_per_bar_close)
+
+if use_webhook and sell_signal
+    alert('{"strategy":"' + strategy_id + '","symbol":"' + syminfo.ticker + '","side":"BUY_PE","strike":' + str.tostring(atm_strike) + ',"sl":' + str.tostring(chand_short, "#.##") + ',"ts":' + str.tostring(time) + '}', alert.freq_once_per_bar_close)
+
+if use_webhook and (trail_exit_long or trail_exit_short)
+    alert('{"strategy":"' + strategy_id + '","symbol":"' + syminfo.ticker + '","side":"EXIT","strike":' + str.tostring(atm_strike) + ',"sl":0,"ts":' + str.tostring(time) + '}', alert.freq_once_per_bar_close)

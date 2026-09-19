@@ -1,0 +1,111 @@
+// ============================================================================
+// PROTOCOL OMEGA — RSI + MOMENTUM PANEL
+// Companion to Omega Complete — shows RSI with 55/45 zones and Momentum
+// ============================================================================
+//@version=6
+indicator("Omega RSI + Momentum", format=format.price, precision=2)
+
+// ─── CONTROL PANEL ──────────────────────────────────────────────────────────
+
+rsi_len     = input.int(14,    "RSI Length",              minval=2,   group="1. RSI")
+rsi_src     = input.source(close, "RSI Source",                       group="1. RSI")
+upper_line  = input.int(55,    "Upper Line",              minval=50,  group="1. RSI",
+     tooltip="Above this = bullish momentum. Default 55 for trend confirmation")
+lower_line  = input.int(45,    "Lower Line",              maxval=50,  group="1. RSI",
+     tooltip="Below this = bearish momentum. Default 45 for trend confirmation")
+show_ob_os  = input.bool(false, "Show 70/30 (Overbought/Oversold)",  group="1. RSI")
+
+mom_len     = input.int(7,     "Momentum Length",         minval=1,   group="2. Momentum",
+     tooltip="Last N candles to measure momentum. 7 = responsive to recent price action")
+mom_smooth  = input.int(3,     "Momentum Smoothing (EMA)", minval=1,  group="2. Momentum")
+show_mom    = input.bool(true, "Show Momentum Line",                  group="2. Momentum")
+
+show_hud    = input.bool(true, "Show Status Panel",                   group="3. Display")
+
+// ─── RSI CALCULATION ────────────────────────────────────────────────────────
+
+rsi_val = ta.rsi(rsi_src, rsi_len)
+
+// ─── MOMENTUM CALCULATION ───────────────────────────────────────────────────
+
+raw_mom   = close - close[mom_len]
+smooth_mom = ta.ema(raw_mom, mom_smooth)
+mom_pct   = (close - close[mom_len]) / close[mom_len] * 100
+
+// ─── ZONE DETECTION ────────────────────────────────────────────────────────
+
+rsi_bullish = rsi_val > upper_line
+rsi_bearish = rsi_val < lower_line
+rsi_neutral = not rsi_bullish and not rsi_bearish
+mom_bullish = smooth_mom > 0
+mom_bearish = smooth_mom < 0
+
+// Both agree
+full_bull = rsi_bullish and mom_bullish
+full_bear = rsi_bearish and mom_bearish
+
+// ─── RSI PLOTS ──────────────────────────────────────────────────────────────
+
+rsi_color = rsi_bullish ? color.lime : rsi_bearish ? color.red : color.gray
+plot(rsi_val, "RSI", color=rsi_color, linewidth=2)
+
+// 55/45 reference lines
+h_upper = plot(upper_line, "Upper (55)", color=color.new(color.lime, 60), linewidth=1)
+h_lower = plot(lower_line, "Lower (45)", color=color.new(color.red, 60), linewidth=1)
+h_mid   = plot(50, "Midline", color=color.new(color.gray, 70), linewidth=1, style=plot.style_linebr)
+
+// Fill between 55 and 45 — neutral zone
+fill(h_upper, h_lower, color=color.new(color.gray, 90), title="Neutral Zone")
+
+// Optional 70/30 overbought/oversold
+plot(show_ob_os ? 70 : na, "Overbought (70)", color=color.new(color.orange, 50), style=plot.style_circles)
+plot(show_ob_os ? 30 : na, "Oversold (30)", color=color.new(color.orange, 50), style=plot.style_circles)
+
+// Background color when RSI is in a zone
+bgcolor(rsi_bullish ? color.new(color.lime, 92) : rsi_bearish ? color.new(color.red, 92) : na, title="RSI Zone BG")
+
+// ─── MOMENTUM PLOTS ────────────────────────────────────────────────────────
+
+// Momentum as histogram at the bottom
+mom_color = smooth_mom > 0 ? (smooth_mom > smooth_mom[1] ? color.lime : color.green) : (smooth_mom < smooth_mom[1] ? color.red : color.maroon)
+plot(show_mom ? smooth_mom / ta.atr(14) * 10 + 20 : na, "Momentum", color=mom_color, style=plot.style_columns, linewidth=2, histbase=20)
+
+// ─── SIGNAL MARKERS ────────────────────────────────────────────────────────
+
+// RSI crossing above 55 (bullish confirmation)
+bull_cross = ta.crossover(rsi_val, upper_line)
+bear_cross = ta.crossunder(rsi_val, lower_line)
+
+plotshape(bull_cross, "RSI Bull Cross", style=shape.triangleup, location=location.bottom, color=color.lime, size=size.tiny, text="BULL")
+plotshape(bear_cross, "RSI Bear Cross", style=shape.triangledown, location=location.top, color=color.red, size=size.tiny, text="BEAR")
+
+// ─── HUD DASHBOARD ──────────────────────────────────────────────────────────
+
+var table hud = table.new(position.top_right, 2, 5, border_width=1)
+
+if barstate.islast and show_hud
+    // Header
+    table.cell(hud, 0, 0, "OMEGA RSI+MOM", bgcolor=color.black, text_color=color.white, text_size=size.small)
+    table.cell(hud, 1, 0, syminfo.ticker,   bgcolor=color.black, text_color=color.yellow, text_size=size.small)
+
+    // RSI value
+    rsi_bg = rsi_bullish ? color.green : rsi_bearish ? color.red : color.gray
+    table.cell(hud, 0, 1, "RSI",            bgcolor=color.black, text_color=color.white, text_size=size.small)
+    table.cell(hud, 1, 1, str.tostring(rsi_val, "#.#"), bgcolor=rsi_bg, text_color=color.white, text_size=size.small)
+
+    // RSI zone
+    zone_txt = rsi_bullish ? "ABOVE 55" : rsi_bearish ? "BELOW 45" : "NEUTRAL"
+    table.cell(hud, 0, 2, "ZONE",           bgcolor=color.black, text_color=color.white, text_size=size.small)
+    table.cell(hud, 1, 2, zone_txt,          bgcolor=rsi_bg, text_color=color.white, text_size=size.small)
+
+    // Momentum
+    mom_bg = mom_bullish ? color.green : color.red
+    mom_txt = mom_bullish ? "POSITIVE" : "NEGATIVE"
+    table.cell(hud, 0, 3, "MOMENTUM",       bgcolor=color.black, text_color=color.white, text_size=size.small)
+    table.cell(hud, 1, 3, mom_txt,           bgcolor=mom_bg, text_color=color.white, text_size=size.small)
+
+    // Combined signal
+    combo_txt = full_bull ? "BUY CE" : full_bear ? "BUY PE" : "WAIT"
+    combo_bg  = full_bull ? color.green : full_bear ? color.red : color.gray
+    table.cell(hud, 0, 4, "SIGNAL",         bgcolor=color.black, text_color=color.white, text_size=size.small)
+    table.cell(hud, 1, 4, combo_txt,          bgcolor=combo_bg, text_color=color.white, text_size=size.small)

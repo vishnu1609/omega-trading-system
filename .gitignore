@@ -1,0 +1,31 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+
+# Secrets — NEVER commit these
+.env
+*.key
+credentials.*
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# Data files (can be large)
+data/*.csv
+data/instruments/
+
+# Logs
+logs/
+
+# Backtest outputs
+backtest/trade_log.csv
+backtest/optimization_results.csv
+
+# OS
+.DS_Store
+Thumbs.db

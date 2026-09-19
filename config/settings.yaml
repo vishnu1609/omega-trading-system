@@ -1,0 +1,47 @@
+broker:
+  name: "dhan"
+  client_id: "${DHAN_CLIENT_ID}"
+  access_token: "${DHAN_ACCESS_TOKEN}"
+
+risk:
+  max_daily_loss: 2000          # ₹ hard stop — bot shuts down after this
+  max_concurrent_positions: 1   # one trade at a time for safety
+  max_trades_per_day: 5         # conservative: fewer trades, better quality
+  sl_buffer_pct: 2.0            # wider SL buffer for options volatility
+  cooldown_after_losses: 2      # consecutive losses before 30-min pause
+  cooldown_minutes: 30
+  margin_buffer_pct: 15         # require 15% extra margin headroom
+
+session:
+  start_time: "09:16"           # 1 min after open to skip auction noise
+  end_time: "15:15"             # square-off 15 min before close
+  square_off_time: "15:15"
+
+strategy:
+  name: "omega_complete"
+  mode: "paper"                 # "paper" or "live" — start paper always
+  default_qty_lots: 1           # always 1 lot until you're profitable for 2 weeks
+
+webhook:
+  host: "0.0.0.0"
+  port: 8000
+  secret: "${TV_WEBHOOK_SECRET}"
+
+telegram:
+  enabled: true
+  bot_token: "${TELEGRAM_BOT_TOKEN}"
+  chat_id: "${TELEGRAM_CHAT_ID}"
+
+signal_generator:
+  watch: ["NIFTY", "BANKNIFTY"]   # instruments to scan for signals
+  poll_interval: 60               # seconds between candle fetches
+  st_period: 10                   # SuperTrend period
+  st_mult: 3.0                    # SuperTrend multiplier
+  adx_len: 14                     # ADX length
+  adx_threshold: 25               # min ADX for entry
+  chand_len: 22                   # Chandelier Exit length
+  chand_mult: 3.0                 # Chandelier multiplier
+
+logging:
+  level: "INFO"
+  file: "logs/omega.log"
