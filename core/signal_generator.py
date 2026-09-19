@@ -225,6 +225,7 @@ class SignalGenerator:
 
         self._last_signal: dict[str, str] = {}
         self._trade_dir: dict[str, int] = {}
+        self._scan_count: int = 0
 
     def fetch_candles(self, inst_name: str, security_id: str = "",
                       exchange_segment: str = "",
@@ -425,6 +426,7 @@ class SignalGenerator:
         cycle = 0
         while not shutdown_event.is_set():
             cycle += 1
+            self._scan_count = cycle
             for inst_name in watch_instruments:
                 cfg = self.instruments.get(inst_name, {})
                 asset_class = cfg.get("asset_class", "index_options")

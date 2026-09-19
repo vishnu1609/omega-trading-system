@@ -29,11 +29,14 @@ from typing import Any
 
 from fastapi import FastAPI, HTTPException, Request
 
+from webhook.dashboard import router as dashboard_router
+
 log = logging.getLogger(__name__)
 
 signal_queue: queue.Queue[dict[str, Any]] = queue.Queue()
 
 app = FastAPI(title="Omega Webhook Receiver", docs_url=None, redoc_url=None)
+app.include_router(dashboard_router)
 
 def _get_webhook_secret() -> str:
     return os.environ.get("TV_WEBHOOK_SECRET", "")

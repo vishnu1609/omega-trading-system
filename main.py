@@ -12,6 +12,7 @@ import signal
 import sys
 import threading
 import time
+from datetime import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -28,6 +29,7 @@ from core.position_manager import PositionManager
 from core.risk_engine import RiskEngine
 from core.daily_report import generate_daily_report, save_daily_report
 from core.signal_generator import SignalGenerator
+from webhook.dashboard import update_state
 from strategies.omega_complete import OmegaStrategy
 from utils.logger import setup_logging
 from utils.telegram_alert import TelegramAlert
@@ -174,9 +176,11 @@ def main() -> None:
     log.info("Webhook server started on port %d", webhook_cfg.get("port", 8000))
 
     # Start built-in signal generator (replaces TradingView)
+    sig_cfg = settings.get("signal_generator", {})
+    watch = args.watch or sig_cfg.get("watch", ["NIFTY", "BANKNIFTY"])
+    sig_gen = None
+
     if not args.webhook_only:
-        sig_cfg = settings.get("signal_generator", {})
-        watch = args.watch or sig_cfg.get("watch", ["NIFTY", "BANKNIFTY"])
 
         sig_gen = SignalGenerator(
             instruments=instruments,
@@ -202,6 +206,13 @@ def main() -> None:
     log.info("Entering main loop — waiting for signals...")
     monitor_interval = 5
     signals_log: list[dict] = []
+    started_at = datetime.now(IST).strftime("%H:%M:%S")
+
+    update_state(
+        mode=mode,
+        started_at=started_at,
+        watching=watch if not args.webhook_only else [],
+    )
 
     try:
         while not shutdown_event.is_set():
@@ -219,6 +230,27 @@ def main() -> None:
             except Exception as exc:
                 log.error("Position monitoring error: %s", exc)
                 tg.error("monitor_positions", exc)
+
+            update_state(
+                positions=[{
+                    "symbol": p.symbol,
+                    "direction": p.direction,
+                    "entry": p.entry_price,
+                    "current": p.current_price,
+                    "pnl": p.unrealised_pnl,
+                    "sl": p.trail_sl or p.sl_price,
+                } for p in pm.open_positions],
+                closed_trades=[{
+                    "symbol": t.symbol,
+                    "direction": t.direction,
+                    "entry": t.entry_price,
+                    "exit": t.exit_price,
+                    "pnl": t.pnl,
+                    "reason": t.exit_reason,
+                } for t in pm.closed_trades],
+                signals=signals_log[-50:],
+                scan_count=sig_gen._scan_count if sig_gen else 0,
+            )
 
             if re.all_sessions_done():
                 log.info("All sessions done — closing all positions")
