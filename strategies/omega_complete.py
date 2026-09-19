@@ -56,6 +56,7 @@ class OmegaStrategy:
         instruments_config: dict,
         default_qty_lots: int = 1,
         mode: str = "paper",
+        guardrails=None,
     ):
         self.broker = broker
         self.om = order_manager
@@ -66,6 +67,7 @@ class OmegaStrategy:
         self.instruments = instruments_config
         self.default_qty_lots = default_qty_lots
         self.mode = mode
+        self.guardrails = guardrails
 
     def process_signal(self, payload: dict) -> None:
         """Main entry point — receives a parsed webhook payload."""
@@ -123,6 +125,14 @@ class OmegaStrategy:
             strike=strike,
         )
 
+        if self.guardrails and sl > 0:
+            est_entry = sl * 1.02 if direction == "LONG" else sl * 0.98
+            risk_check = self.guardrails.check_per_trade_risk(
+                est_entry, sl, quantity)
+            if not risk_check:
+                log.warning("Trade blocked by guardrail: %s", risk_check.reason)
+                return
+
         resp = self.om.place_entry(signal, self.re, instrument=inst_name)
         if not resp:
             return
@@ -146,6 +156,10 @@ class OmegaStrategy:
             strategy=strategy,
         )
         self.pm.add_position(position)
+
+        if self.guardrails:
+            est_margin = fill_price * quantity
+            self.guardrails.record_allocation(symbol, est_margin)
 
         self.tg.order_filled(
             side=side,
@@ -194,9 +208,12 @@ class OmegaStrategy:
                 log.warning("LTP fetch failed for %s: %s", pos.symbol, exc)
                 continue
 
-            new_trail = self.re.compute_trail_sl(
-                ltp, pos.entry_price, pos.trail_sl, pos.direction
-            )
+            if self.guardrails:
+                new_trail = self.guardrails.compute_step_trail_sl(
+                    pos.entry_price, ltp, pos.trail_sl, pos.direction)
+            else:
+                new_trail = self.re.compute_trail_sl(
+                    ltp, pos.entry_price, pos.trail_sl, pos.direction)
             self.pm.update_trail_sl(pos.security_id, new_trail)
 
             if pos.is_sl_hit:
@@ -232,6 +249,9 @@ class OmegaStrategy:
         self.om.place_exit(exit_signal, pos.direction)
         trade = self.pm.close_position(pos.security_id, price, reason)
         if trade:
+            if self.guardrails:
+                est_margin = pos.entry_price * pos.quantity
+                self.guardrails.release_allocation(pos.symbol, est_margin)
             self.tg.sl_hit(trade.symbol, trade.pnl)
 
     def auto_select_instrument(self) -> str | None:

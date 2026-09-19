@@ -28,6 +28,7 @@ from core.order_manager import OrderManager
 from core.position_manager import PositionManager
 from core.risk_engine import RiskEngine
 from core.daily_report import generate_daily_report, save_daily_report
+from core.guardrails import Guardrails
 from core.signal_generator import SignalGenerator
 from webhook.dashboard import update_state
 from strategies.omega_complete import OmegaStrategy
@@ -133,6 +134,24 @@ def main() -> None:
         enabled=tg_cfg.get("enabled", True),
     )
 
+    guardrails_cfg = settings.get("guardrails", {})
+    capital = guardrails_cfg.get("capital", 10_000)
+    guardrails = Guardrails(
+        capital=capital,
+        max_risk_per_trade_pct=guardrails_cfg.get("max_risk_per_trade_pct", 2.0),
+        nse_allocation_cap=guardrails_cfg.get("nse_allocation_cap", 0.60),
+        mcx_allocation_cap=guardrails_cfg.get("mcx_allocation_cap", 0.40),
+        adx_min_threshold=guardrails_cfg.get("adx_min_threshold", 22.0),
+        vwap_warmup_time=guardrails_cfg.get("vwap_warmup_time", "09:30"),
+        candle_max_staleness_sec=guardrails_cfg.get("candle_max_staleness_sec", 330),
+        expiry_day_cutoff=guardrails_cfg.get("expiry_day_cutoff", "12:30"),
+        natgas_thursday_close=guardrails_cfg.get("natgas_thursday_close", "19:50"),
+        natgas_thursday_reopen=guardrails_cfg.get("natgas_thursday_reopen", "20:15"),
+    )
+    log.info("Guardrails initialized: capital=₹%s, risk/trade=%s%%, ADX min=%s",
+             f"{capital:,}", guardrails_cfg.get("max_risk_per_trade_pct", 2.0),
+             guardrails_cfg.get("adx_min_threshold", 22.0))
+
     strategy = OmegaStrategy(
         broker=broker,
         order_manager=om,
@@ -143,6 +162,7 @@ def main() -> None:
         instruments_config=instruments,
         default_qty_lots=settings.get("strategy", {}).get("default_qty_lots", 1),
         mode=mode,
+        guardrails=guardrails,
     )
 
     tg.bot_started(mode, "omega_complete")
@@ -192,6 +212,7 @@ def main() -> None:
             chand_len=sig_cfg.get("chand_len", 22),
             chand_mult=sig_cfg.get("chand_mult", 3.0),
         )
+        sig_gen.set_guardrails(guardrails)
 
         sig_thread = threading.Thread(
             target=sig_gen.run,
@@ -202,6 +223,26 @@ def main() -> None:
         log.info("Signal generator started — watching: %s", ", ".join(watch))
     else:
         log.info("Webhook-only mode — waiting for TradingView signals")
+
+    def _broker_heartbeat():
+        fail_count = 0
+        while not shutdown_event.is_set():
+            try:
+                broker.get_available_margin()
+                if fail_count > 0:
+                    log.info("Broker heartbeat recovered after %d failures", fail_count)
+                fail_count = 0
+            except Exception:
+                fail_count += 1
+                if fail_count >= 3:
+                    log.critical("BROKER HEARTBEAT FAILED %d consecutive times", fail_count)
+                    tg.error("heartbeat", Exception(
+                        f"Broker API unreachable {fail_count}x — open positions at risk"))
+                    fail_count = 0
+            shutdown_event.wait(timeout=30)
+
+    heartbeat_thread = threading.Thread(target=_broker_heartbeat, daemon=True)
+    heartbeat_thread.start()
 
     log.info("Entering main loop — waiting for signals...")
     monitor_interval = 5
@@ -227,6 +268,13 @@ def main() -> None:
 
             try:
                 strategy.monitor_positions()
+
+                if guardrails.should_close_natgas():
+                    for pos in pm.open_positions:
+                        if "NATURALGAS" in pos.symbol.upper():
+                            log.warning("NatGas Thursday auto-close: %s", pos.symbol)
+                            ltp = pos.current_price or pos.entry_price
+                            strategy._exit_position(pos, ltp, "NATGAS_THURSDAY")
             except Exception as exc:
                 log.error("Position monitoring error: %s", exc)
                 tg.error("monitor_positions", exc)

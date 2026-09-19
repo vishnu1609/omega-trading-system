@@ -42,6 +42,18 @@ signal_generator:
   chand_len: 22                   # Chandelier Exit length
   chand_mult: 3.0                 # Chandelier multiplier
 
+guardrails:
+  capital: 10000                    # starting capital ₹ — scale risk to this
+  max_risk_per_trade_pct: 2.0       # max 2% of capital at risk per trade (₹200 on 10K)
+  nse_allocation_cap: 0.60          # max 60% capital in NSE indices
+  mcx_allocation_cap: 0.40          # max 40% capital in MCX commodities
+  adx_min_threshold: 22             # suppress signals if ADX < 22 (sideways noise)
+  vwap_warmup_time: "09:30"         # wait for 3 candles before trusting VWAP
+  candle_max_staleness_sec: 330     # reject signal if candle > 5.5 min old (Yahoo delay)
+  expiry_day_cutoff: "12:30"        # block new 0-DTE option entries after 12:30
+  natgas_thursday_close: "19:50"    # auto-close NatGas before EIA report
+  natgas_thursday_reopen: "20:15"   # resume NatGas entries after report settles
+
 logging:
   level: "INFO"
   file: "logs/omega.log"

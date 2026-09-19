@@ -233,6 +233,11 @@ class SignalGenerator:
         self._last_signal: dict[str, str] = {}
         self._trade_dir: dict[str, int] = {}
         self._scan_count: int = 0
+        self.guardrails = None  # set externally via set_guardrails()
+
+    def set_guardrails(self, guardrails) -> None:
+        from core.guardrails import Guardrails
+        self.guardrails: Guardrails = guardrails
 
     def fetch_candles(self, inst_name: str, security_id: str = "",
                       exchange_segment: str = "",
@@ -321,6 +326,12 @@ class SignalGenerator:
         if len(candles) < max(self.st_period, self.adx_len, self.chand_len) + 5:
             return None
 
+        if self.guardrails:
+            freshness = self.guardrails.check_candle_freshness(
+                candles[-1].timestamp, inst_name)
+            if not freshness:
+                return None
+
         st_val, st_dir = calc_supertrend(candles, self.st_period, self.st_mult)
         adx_vals = calc_adx(candles, self.adx_len)
         vwap_vals = calc_vwap(candles)
@@ -331,6 +342,14 @@ class SignalGenerator:
         prev = i - 1
 
         close = candles[i].close
+
+        if self.guardrails:
+            gr = self.guardrails.pre_signal_check(
+                inst_name, adx_value=adx_vals[i],
+                candle_time=candles[i].timestamp)
+            if not gr:
+                return None
+
         st_bullish = st_dir[i] < 0
         st_bearish = st_dir[i] > 0
         adx_ok = adx_vals[i] > self.adx_threshold
@@ -470,6 +489,15 @@ class SignalGenerator:
                 for ex in exits:
                     signal_queue.put(ex)
                     log.info("EXIT queued: %s", ex["symbol"])
+
+                if entries and self.guardrails:
+                    conflict = self.guardrails.check_index_conflict(entries)
+                    if not conflict:
+                        entries = [s for s in entries
+                                   if s["symbol"].upper() not in
+                                   {"NIFTY", "BANKNIFTY", "FINNIFTY", "SENSEX", "BANKEX"}]
+                        log.warning("Index entries removed due to conflict — "
+                                    "%d non-index entries remain", len(entries))
 
                 if entries:
                     scored = []
