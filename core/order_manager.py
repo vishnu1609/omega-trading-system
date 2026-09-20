@@ -195,12 +195,15 @@ class OrderManager:
     def place_sl_limit(self, security_id: str, exchange_segment: str,
                        direction: str, quantity: int,
                        trigger_price: float, buffer_pct: float = 2.0) -> OrderResponse | None:
+        min_tick = 0.05
         if direction == "LONG":
             txn_type = TransactionType.SELL
-            limit_price = round(trigger_price * (1 - buffer_pct / 100), 2)
+            pct_buffer = trigger_price * buffer_pct / 100
+            limit_price = round(max(trigger_price - max(pct_buffer, min_tick), 0), 2)
         else:
             txn_type = TransactionType.BUY
-            limit_price = round(trigger_price * (1 + buffer_pct / 100), 2)
+            pct_buffer = trigger_price * buffer_pct / 100
+            limit_price = round(trigger_price + max(pct_buffer, min_tick), 2)
 
         order = Order(
             security_id=security_id,
