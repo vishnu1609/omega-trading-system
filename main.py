@@ -30,6 +30,7 @@ from core.risk_engine import RiskEngine
 from core.daily_report import generate_daily_report, save_daily_report
 from core.guardrails import Guardrails
 from core.signal_generator import SignalGenerator
+from core.trade_memory import TradeMemory
 from webhook.dashboard import update_state
 from strategies.omega_complete import OmegaStrategy
 from utils.logger import setup_logging
@@ -152,6 +153,16 @@ def main() -> None:
              f"{capital:,}", guardrails_cfg.get("max_risk_per_trade_pct", 2.0),
              guardrails_cfg.get("adx_min_threshold", 22.0))
 
+    base_path = str(Path(__file__).parent)
+    memory = TradeMemory(base_path=base_path)
+    health = memory.get_health_report()
+    log.info("TradeMemory loaded: %d trades, %d lessons, %d rules, status=%s",
+             health["trades"], health.get("active_lessons", 0),
+             health.get("active_rules", 0), health["status"])
+    if health.get("alerts"):
+        for alert in health["alerts"]:
+            log.warning("TradeMemory alert: %s", alert)
+
     strategy = OmegaStrategy(
         broker=broker,
         order_manager=om,
@@ -163,6 +174,7 @@ def main() -> None:
         default_qty_lots=settings.get("strategy", {}).get("default_qty_lots", 1),
         mode=mode,
         guardrails=guardrails,
+        trade_memory=memory,
     )
 
     tg.bot_started(mode, "omega_complete")
@@ -351,6 +363,10 @@ def main() -> None:
                 } for t in pm.closed_trades],
                 signals=signals_log[-50:],
                 scan_count=sig_gen._scan_count if sig_gen else 0,
+                memory={
+                    "health": memory.get_health_report(),
+                    "insights": memory.get_insights(),
+                },
             )
 
             if re.all_sessions_done():

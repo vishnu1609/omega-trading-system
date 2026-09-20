@@ -35,6 +35,7 @@ from core.instrument_selector import InstrumentSelector
 from core.order_manager import OrderManager, Signal
 from core.position_manager import Position, PositionManager
 from core.risk_engine import RiskEngine
+from core.trade_memory import TradeMemory
 from utils.telegram_alert import TelegramAlert
 
 log = logging.getLogger(__name__)
@@ -57,6 +58,7 @@ class OmegaStrategy:
         default_qty_lots: int = 1,
         mode: str = "paper",
         guardrails=None,
+        trade_memory: TradeMemory | None = None,
     ):
         self.broker = broker
         self.om = order_manager
@@ -68,6 +70,8 @@ class OmegaStrategy:
         self.default_qty_lots = default_qty_lots
         self.mode = mode
         self.guardrails = guardrails
+        self.memory = trade_memory
+        self._signal_context: dict[str, dict] = {}
 
     def process_signal(self, payload: dict) -> None:
         """Main entry point — receives a parsed webhook payload."""
@@ -133,6 +137,29 @@ class OmegaStrategy:
                 log.warning("Trade blocked by guardrail: %s", risk_check.reason)
                 return
 
+        if self.memory:
+            now = datetime.now(IST)
+            blocked, block_reason = self.memory.should_block(
+                symbol=trade_symbol, side=side,
+                entry_hour=now.hour, entry_day=now.weekday())
+            if blocked:
+                log.warning("Trade blocked by memory: %s", block_reason)
+                self.tg.error("MEMORY_BLOCK", Exception(block_reason))
+                return
+
+            adj, adj_reasons = self.memory.get_score_adjustment(
+                symbol=trade_symbol, side=side,
+                entry_hour=now.hour, entry_day=now.weekday())
+            if adj_reasons:
+                log.info("Memory adjustments: %s", "; ".join(adj_reasons))
+
+            size_mod = self.memory.get_position_size_modifier(trade_symbol)
+            if size_mod < 1.0:
+                original_qty = quantity
+                quantity = max(int(quantity * size_mod), inst_cfg.get("lot_size", 75))
+                signal.quantity = quantity
+                log.info("Position size reduced by memory: %d → %d", original_qty, quantity)
+
         resp = self.om.place_entry(signal, self.re, instrument=inst_name)
         if not resp:
             return
@@ -156,6 +183,17 @@ class OmegaStrategy:
             strategy=strategy,
         )
         self.pm.add_position(position)
+
+        if self.memory:
+            self._signal_context[security_id] = {
+                "signal_score": payload.get("score", 0),
+                "signal_confidence": payload.get("confidence", "LOW"),
+                "adx_value": payload.get("adx", 0),
+                "vwap_position": payload.get("vwap_position", "UNKNOWN"),
+                "supertrend_dir": payload.get("supertrend_dir", "UNKNOWN"),
+                "volume_ratio": payload.get("volume_ratio", 1.0),
+                "atr_value": payload.get("atr", 0),
+            }
 
         self.om.place_sl_limit(
             security_id=security_id,
@@ -279,6 +317,40 @@ class OmegaStrategy:
                 est_margin = pos.entry_price * pos.quantity
                 self.guardrails.release_allocation(pos.symbol, est_margin)
             self.tg.sl_hit(trade.symbol, trade.pnl)
+            self._record_to_memory(pos, trade, reason)
+
+    def _record_to_memory(self, pos: Position, trade, reason: str) -> None:
+        if not self.memory:
+            return
+        try:
+            ctx = self._signal_context.pop(pos.security_id, {})
+            trade_ctx = self.memory.build_trade_context(
+                symbol=pos.symbol, direction=pos.direction,
+                option_type=pos.option_type,
+                entry_price=pos.entry_price, exit_price=trade.exit_price,
+                sl_price=pos.sl_price, pnl=trade.pnl,
+                entry_time=pos.entry_time, exit_time=trade.exit_time,
+                exit_reason=reason,
+                signal_score=ctx.get("signal_score", 0),
+                signal_confidence=ctx.get("signal_confidence", "LOW"),
+                adx_value=ctx.get("adx_value", 0),
+                vwap_position=ctx.get("vwap_position", "UNKNOWN"),
+                supertrend_dir=ctx.get("supertrend_dir", "UNKNOWN"),
+                volume_ratio=ctx.get("volume_ratio", 1.0),
+                atr_value=ctx.get("atr_value", 0),
+                strategy=pos.strategy,
+            )
+            self.memory.record_trade(trade_ctx)
+
+            if self.memory.trade_count % 10 == 0:
+                self.memory.analyze_patterns()
+                health = self.memory.get_health_report()
+                if health["status"] in ("CRITICAL", "DEGRADED"):
+                    self.tg.error("MEMORY_HEALTH",
+                                  Exception(f"System health: {health['status']} — "
+                                            f"{'; '.join(health['alerts'])}"))
+        except Exception as e:
+            log.error("Failed to record trade to memory: %s", e)
 
     def auto_select_instrument(self) -> str | None:
         scores = []
