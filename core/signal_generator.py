@@ -14,7 +14,7 @@ import os
 import time
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from threading import Event
+from threading import Event, Lock
 from zoneinfo import ZoneInfo
 
 import requests
@@ -233,6 +233,7 @@ class SignalGenerator:
         self._last_signal: dict[str, str] = {}
         self._trade_dir: dict[str, int] = {}
         self._scan_count: int = 0
+        self._cycle_lock = Lock()
         self.guardrails = None  # set externally via set_guardrails()
 
     def set_guardrails(self, guardrails) -> None:
@@ -245,11 +246,13 @@ class SignalGenerator:
         candles = self._fetch_yahoo(inst_name)
         if candles:
             candles = self._filter_ghost_candles(candles, inst_name)
+            candles = self._sanitize_outliers(candles, inst_name)
             return candles[-500:] if len(candles) > 500 else candles
 
         if security_id:
             raw = self._fetch_dhan(security_id, exchange_segment, instrument_type)
             raw = self._filter_ghost_candles(raw, inst_name)
+            raw = self._sanitize_outliers(raw, inst_name)
             return raw[-500:] if len(raw) > 500 else raw
 
         return []
@@ -258,17 +261,57 @@ class SignalGenerator:
     def _filter_ghost_candles(candles: list[Candle], symbol: str) -> list[Candle]:
         if not candles:
             return candles
-        cleaned = []
+        cleaned: list[Candle] = []
+        ffill_count = 0
         for c in candles:
-            if c.volume == 0 and c.open == c.high == c.low == c.close:
+            is_ghost = (c.volume == 0 and c.open == c.high == c.low == c.close)
+            is_flat_zero = (c.high == c.low and c.volume == 0)
+            if (is_ghost or is_flat_zero) and cleaned:
+                prev = cleaned[-1]
+                cleaned.append(Candle(
+                    timestamp=c.timestamp,
+                    open=prev.close, high=prev.close,
+                    low=prev.close, close=prev.close,
+                    volume=prev.volume * 0.1,
+                ))
+                ffill_count += 1
+            else:
+                cleaned.append(c)
+        if ffill_count:
+            log.warning("Forward-filled %d ghost candles for %s (vol=0 / flat OHLC)",
+                        ffill_count, symbol)
+        return cleaned
+
+    @staticmethod
+    def _sanitize_outliers(candles: list[Candle], symbol: str,
+                           max_deviation_pct: float = 5.0) -> list[Candle]:
+        if len(candles) < 3:
+            return candles
+        cleaned: list[Candle] = [candles[0]]
+        repairs = 0
+        for j in range(1, len(candles)):
+            c = candles[j]
+            prev = cleaned[-1]
+            if prev.close <= 0:
+                cleaned.append(c)
                 continue
-            if c.high == c.low and c.volume == 0:
-                continue
-            cleaned.append(c)
-        dropped = len(candles) - len(cleaned)
-        if dropped:
-            log.warning("Dropped %d ghost candles for %s (vol=0 / flat OHLC)",
-                        dropped, symbol)
+            high_dev = abs(c.high - prev.close) / prev.close * 100
+            low_dev = abs(c.low - prev.close) / prev.close * 100
+            close_dev = abs(c.close - prev.close) / prev.close * 100
+            if high_dev > max_deviation_pct or low_dev > max_deviation_pct or close_dev > max_deviation_pct:
+                cleaned.append(Candle(
+                    timestamp=c.timestamp,
+                    open=prev.close, high=prev.close,
+                    low=prev.close, close=prev.close,
+                    volume=c.volume,
+                ))
+                repairs += 1
+            else:
+                cleaned.append(c)
+        if repairs:
+            log.warning("DIRTY DATA: Repaired %d outlier candles for %s "
+                        "(>%.0f%% deviation → forward-filled)", repairs, symbol,
+                        max_deviation_pct)
         return cleaned
 
     @staticmethod
@@ -497,69 +540,78 @@ class SignalGenerator:
 
         cycle = 0
         while not shutdown_event.is_set():
-            cycle += 1
-            self._scan_count = cycle
-            cycle_signals: list[dict] = []
+            if not self._cycle_lock.acquire(blocking=False):
+                log.warning("Scan cycle overlap — previous cycle still running, skipping")
+                shutdown_event.wait(timeout=self.poll_interval)
+                continue
 
-            for inst_name in watch_instruments:
-                cfg = self.instruments.get(inst_name, {})
-                asset_class = cfg.get("asset_class", "index_options")
-                asset = "futures" if "futures" in asset_class else "options"
+            try:
+                cycle += 1
+                self._scan_count = cycle
+                cycle_signals: list[dict] = []
 
-                try:
-                    candles = self.fetch_candles(inst_name)
-                    if not candles:
-                        log.warning("No candle data for %s — skipping", inst_name)
-                        continue
+                for inst_name in watch_instruments:
+                    cfg = self.instruments.get(inst_name, {})
+                    asset_class = cfg.get("asset_class", "index_options")
+                    asset = "futures" if "futures" in asset_class else "options"
 
-                    signal = self.generate_signals(inst_name, candles, asset)
-                    if signal:
-                        cycle_signals.append(signal)
-                    elif cycle == 1 or cycle % 10 == 0:
-                        log.info("Scan #%d %s: %d candles, close=%.2f — no signal",
-                                 cycle, inst_name, len(candles), candles[-1].close)
+                    try:
+                        candles = self.fetch_candles(inst_name)
+                        if not candles:
+                            log.warning("No candle data for %s — skipping", inst_name)
+                            continue
 
-                except Exception as exc:
-                    log.error("Signal gen error for %s: %s", inst_name, exc)
+                        signal = self.generate_signals(inst_name, candles, asset)
+                        if signal:
+                            cycle_signals.append(signal)
+                        elif cycle == 1 or cycle % 10 == 0:
+                            log.info("Scan #%d %s: %d candles, close=%.2f — no signal",
+                                     cycle, inst_name, len(candles), candles[-1].close)
 
-                time.sleep(0.5)
+                    except Exception as exc:
+                        log.error("Signal gen error for %s: %s", inst_name, exc)
 
-            if cycle_signals:
-                exits = [s for s in cycle_signals if s["side"] == "EXIT"]
-                entries = [s for s in cycle_signals if s["side"] != "EXIT"]
+                    time.sleep(0.5)
 
-                for ex in exits:
-                    signal_queue.put(ex)
-                    log.info("EXIT queued: %s", ex["symbol"])
+                if cycle_signals:
+                    exits = [s for s in cycle_signals if s["side"] == "EXIT"]
+                    entries = [s for s in cycle_signals if s["side"] != "EXIT"]
 
-                if entries and self.guardrails:
-                    conflict = self.guardrails.check_index_conflict(entries)
-                    if not conflict:
-                        entries = [s for s in entries
-                                   if s["symbol"].upper() not in
-                                   {"NIFTY", "BANKNIFTY", "FINNIFTY", "SENSEX", "BANKEX"}]
-                        log.warning("Index entries removed due to conflict — "
-                                    "%d non-index entries remain", len(entries))
+                    for ex in exits:
+                        signal_queue.put(ex)
+                        log.info("EXIT queued: %s", ex["symbol"])
 
-                if entries:
-                    scored = []
-                    for s in entries:
-                        sc = ScoredSignal(
-                            symbol=s["symbol"], side=s["side"],
-                            strategy=s["strategy"], asset=s["asset"],
-                            raw_signal=s, total_score=s.get("score", 50),
-                            confidence=s.get("confidence", "LOW"),
-                            correlation_group=_get_corr_group(s["symbol"]),
-                        )
-                        scored.append(sc)
+                    if entries and self.guardrails:
+                        conflict = self.guardrails.check_index_conflict(entries)
+                        if not conflict:
+                            entries = [s for s in entries
+                                       if s["symbol"].upper() not in
+                                       {"NIFTY", "BANKNIFTY", "FINNIFTY", "SENSEX", "BANKEX"}]
+                            log.warning("Index entries removed due to conflict — "
+                                        "%d non-index entries remain", len(entries))
 
-                    best = select_best_signals(scored, max_positions=3, min_score=35)
+                    if entries:
+                        scored = []
+                        for s in entries:
+                            sc = ScoredSignal(
+                                symbol=s["symbol"], side=s["side"],
+                                strategy=s["strategy"], asset=s["asset"],
+                                raw_signal=s, total_score=s.get("score", 50),
+                                confidence=s.get("confidence", "LOW"),
+                                correlation_group=_get_corr_group(s["symbol"]),
+                            )
+                            scored.append(sc)
 
-                    for pick in best:
-                        signal_queue.put(pick.raw_signal)
-                        log.info("QUEUED [%s] %s %s score=%.0f (best of %d)",
-                                 pick.confidence, pick.side, pick.symbol,
-                                 pick.total_score, len(entries))
+                        best = select_best_signals(scored, max_positions=3, min_score=35)
+
+                        for pick in best:
+                            signal_queue.put(pick.raw_signal)
+                            log.info("QUEUED [%s] %s %s score=%.0f (best of %d)",
+                                     pick.confidence, pick.side, pick.symbol,
+                                     pick.total_score, len(entries))
+
+            finally:
+                self._cycle_lock.release()
 
             shutdown_event.wait(timeout=self.poll_interval)
 

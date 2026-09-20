@@ -192,6 +192,32 @@ class OrderManager:
                      txn_type, signal.symbol, resp.status, resp.order_id)
         return resp
 
+    def place_sl_limit(self, security_id: str, exchange_segment: str,
+                       direction: str, quantity: int,
+                       trigger_price: float, buffer_pct: float = 2.0) -> OrderResponse | None:
+        if direction == "LONG":
+            txn_type = TransactionType.SELL
+            limit_price = round(trigger_price * (1 - buffer_pct / 100), 2)
+        else:
+            txn_type = TransactionType.BUY
+            limit_price = round(trigger_price * (1 + buffer_pct / 100), 2)
+
+        order = Order(
+            security_id=security_id,
+            exchange_segment=exchange_segment,
+            transaction_type=txn_type,
+            quantity=quantity,
+            order_type=OrderType.SL,
+            product_type=ProductType.INTRADAY,
+            price=limit_price,
+            trigger_price=trigger_price,
+            tag=f"SL_{security_id}_{int(time.time())}"[:25],
+        )
+
+        log.info("SL-LIMIT order: %s %s trigger=%.2f limit=%.2f (buffer=%.1f%%)",
+                 txn_type, security_id, trigger_price, limit_price, buffer_pct)
+        return self._place_with_retry(order)
+
     def cancel_all_open(self) -> int:
         cancelled = 0
         for managed in self._orders.values():
@@ -219,6 +245,7 @@ class OrderManager:
         return managed
 
     def _place_with_retry(self, order: Order, max_retries: int = 4) -> OrderResponse | None:
+        last_exc = None
         for attempt in range(max_retries):
             try:
                 return self.broker.place_order(order)
@@ -228,10 +255,15 @@ class OrderManager:
                             wait, attempt + 1, max_retries)
                 time.sleep(wait)
             except BrokerError as exc:
+                last_exc = exc
                 wait = 2 ** attempt
                 log.error("Order failed (attempt %d/%d): %s", attempt + 1, max_retries, exc)
                 if attempt < max_retries - 1:
                     time.sleep(wait)
+
+        ghost = self._check_ghost_fill(order)
+        if ghost:
+            return ghost
 
         log.critical("DEFCON 1: %d consecutive order failures for %s — "
                      "broker may be down", max_retries, order.tag)
@@ -243,6 +275,25 @@ class OrderManager:
                               f"RMS desk immediately to manually square off."))
             except Exception:
                 pass
+        return None
+
+    def _check_ghost_fill(self, order: Order) -> OrderResponse | None:
+        try:
+            positions = self.broker.get_positions()
+            for p in positions:
+                if p.security_id == order.security_id and p.net_quantity != 0:
+                    log.warning("GHOST FILL detected: order for %s timed out but "
+                                "position exists on broker (qty=%d)",
+                                order.security_id, p.net_quantity)
+                    fill_price = p.buy_avg if order.transaction_type == "BUY" else p.sell_avg
+                    return OrderResponse(
+                        order_id=f"GHOST-{int(time.time())}",
+                        status="TRADED",
+                        fill_price=fill_price,
+                        fill_quantity=abs(p.net_quantity),
+                    )
+        except Exception as exc:
+            log.error("Ghost fill check failed: %s", exc)
         return None
 
     def _estimate_limit_price(self, signal: Signal) -> float:

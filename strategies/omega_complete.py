@@ -157,6 +157,15 @@ class OmegaStrategy:
         )
         self.pm.add_position(position)
 
+        self.om.place_sl_limit(
+            security_id=security_id,
+            exchange_segment=exchange_seg,
+            direction=direction,
+            quantity=quantity,
+            trigger_price=sl_price,
+            buffer_pct=2.0,
+        )
+
         if self.guardrails:
             est_margin = fill_price * quantity
             self.guardrails.record_allocation(symbol, est_margin)
@@ -225,6 +234,23 @@ class OmegaStrategy:
                 log.info("TP HIT: %s %s @ %.2f (TP=%.2f)",
                          pos.direction, pos.symbol, ltp, pos.tp_price)
                 self._exit_position(pos, ltp, "TP")
+
+            elif self._is_sl_skipped(pos, ltp):
+                log.critical("SL-SKIP FREEFALL: %s %s LTP=%.2f fell past SL=%.2f — "
+                             "emergency exit at LTP-1%%",
+                             pos.direction, pos.symbol, ltp, pos.trail_sl)
+                self._exit_position(pos, ltp, "SL_SKIP_EMERGENCY")
+
+    def _is_sl_skipped(self, pos, ltp: float) -> bool:
+        active_sl = pos.trail_sl if pos.trail_sl > 0 else pos.sl_price
+        if active_sl <= 0 or ltp <= 0:
+            return False
+        if pos.direction == "LONG":
+            gap_pct = (active_sl - ltp) / active_sl * 100 if active_sl > 0 else 0
+            return ltp < active_sl and gap_pct > 0.5
+        else:
+            gap_pct = (ltp - active_sl) / active_sl * 100 if active_sl > 0 else 0
+            return ltp > active_sl and gap_pct > 0.5
 
     def square_off_all(self) -> None:
         if not self.pm.open_positions:

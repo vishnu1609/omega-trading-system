@@ -124,15 +124,15 @@ def main() -> None:
         if "session_start" in cfg and "square_off" in cfg:
             re.register_instrument_session(name, cfg["session_start"], cfg["square_off"])
 
-    om = OrderManager(broker=broker, slippage_pct=0.5, telegram=tg)
-    ins_sel = InstrumentSelector(instruments)
-
     tg_cfg = settings.get("telegram", {})
     tg = TelegramAlert(
         bot_token=resolve_env(tg_cfg.get("bot_token", "")),
         chat_id=resolve_env(tg_cfg.get("chat_id", "")),
         enabled=tg_cfg.get("enabled", True),
     )
+
+    om = OrderManager(broker=broker, slippage_pct=0.5, telegram=tg)
+    ins_sel = InstrumentSelector(instruments)
 
     guardrails_cfg = settings.get("guardrails", {})
     capital = guardrails_cfg.get("capital", 10_000)
@@ -278,6 +278,8 @@ def main() -> None:
 
     log.info("Entering main loop — waiting for signals...")
     monitor_interval = 5
+    margin_sync_interval = 180  # sync broker margin every 3 minutes
+    _last_margin_sync = 0
     signals_log: list[dict] = []
     started_at = datetime.now(IST).strftime("%H:%M:%S")
 
@@ -310,6 +312,25 @@ def main() -> None:
             except Exception as exc:
                 log.error("Position monitoring error: %s", exc)
                 tg.error("monitor_positions", exc)
+
+            now_ts = time.time()
+            if now_ts - _last_margin_sync > margin_sync_interval:
+                _last_margin_sync = now_ts
+                try:
+                    real_margin = broker.get_available_margin()
+                    local_pnl = pm.daily_pnl
+                    if real_margin < re.max_daily_loss * 0.5:
+                        log.warning("MARGIN SYNC: Real margin ₹%.0f is critically low "
+                                    "(local P&L: ₹%.0f)", real_margin, local_pnl)
+                    if real_margin <= 0 and pm.open_count > 0:
+                        log.critical("MARGIN SYNC: Zero margin with open positions — "
+                                     "triggering emergency square-off")
+                        strategy.square_off_all()
+                        tg.error("margin_sync", Exception(
+                            f"Real margin depleted (₹{real_margin:.0f}). "
+                            f"All positions squared off."))
+                except Exception:
+                    pass
 
             update_state(
                 positions=[{
