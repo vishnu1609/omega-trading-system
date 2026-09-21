@@ -4,9 +4,8 @@ broker:
   access_token: "${DHAN_ACCESS_TOKEN}"
 
 risk:
-  max_daily_loss: 2000          # ₹ hard stop — bot shuts down after this
-  max_concurrent_positions: 1   # one trade at a time for safety
-  max_trades_per_day: 5         # conservative: fewer trades, better quality
+  max_daily_loss: 5000          # 5% of 1L capital — hard stop for the day
+  max_concurrent_positions: 2   # max 2 positions at a time
   sl_buffer_pct: 2.0            # wider SL buffer for options volatility
   cooldown_after_losses: 2      # consecutive losses before 30-min pause
   cooldown_minutes: 30
@@ -14,8 +13,12 @@ risk:
 
 session:
   start_time: "09:16"           # 1 min after open to skip auction noise
-  end_time: "15:15"             # square-off 15 min before close
-  square_off_time: "15:15"
+  end_time: "15:10"             # square-off 5 min before broker RMS kicks in
+  square_off_time: "15:10"      # beat Dhan's 15:15 auto-square-off (DH-906)
+
+category_toggle:
+  allow_mcx_live: false         # MCX disabled in live mode
+  allow_index_futures_live: false # Index Futures disabled in live mode
 
 strategy:
   name: "omega_complete"
@@ -27,29 +30,28 @@ webhook:
   port: 8000
   secret: "${TV_WEBHOOK_SECRET}"
 
-telegram:
+imessage:
   enabled: true
-  bot_token: "${TELEGRAM_BOT_TOKEN}"
-  chat_id: "${TELEGRAM_CHAT_ID}"
+  recipient: "tvishnuteja16@gmail.com"
 
 signal_generator:
-  watch: ["NIFTY", "BANKNIFTY", "GOLD", "SILVER", "CRUDEOIL", "NATURALGAS"]
+  watch: ["NIFTY", "BANKNIFTY", "SENSEX"]
   poll_interval: 60               # seconds between candle fetches
   st_period: 10                   # SuperTrend period
-  st_mult: 3.0                    # SuperTrend multiplier
-  adx_len: 14                     # ADX length
-  adx_threshold: 25               # min ADX for entry
-  chand_len: 22                   # Chandelier Exit length
-  chand_mult: 3.0                 # Chandelier multiplier
+  st_mult: 3.0                   # SuperTrend multiplier
+  adx_len: 14                    # ADX length
+  adx_threshold: 20              # min ADX for entry (lowered — Yahoo vol=0 skews ADX)
+  chand_len: 22                  # Chandelier Exit length
+  chand_mult: 3.0                # Chandelier multiplier
 
 guardrails:
-  capital: 10000                    # starting capital ₹ — scale risk to this
-  max_risk_per_trade_pct: 2.0       # max 2% of capital at risk per trade (₹200 on 10K)
-  nse_allocation_cap: 0.60          # max 60% capital in NSE indices
-  mcx_allocation_cap: 0.40          # max 40% capital in MCX commodities
-  adx_min_threshold: 22             # suppress signals if ADX < 22 (sideways noise)
+  capital: 100000                   # 1 lakh capital
+  max_risk_per_trade_pct: 3.0       # max 3% = ₹3,000 risk per trade (option premium SL distance × qty)
+  nse_allocation_cap: 0.60          # max 60% = ₹60K in NSE indices
+  mcx_allocation_cap: 0.40          # max 40% = ₹40K in MCX commodities
+  adx_min_threshold: 18             # suppress signals if ADX < 18 (truly flat/dead market)
   vwap_warmup_time: "09:30"         # wait for 3 candles before trusting VWAP
-  candle_max_staleness_sec: 330     # reject signal if candle > 5.5 min old (Yahoo delay)
+  candle_max_staleness_sec: 330     # reject signal if candle > 5.5 min old
   expiry_day_cutoff: "12:30"        # block new 0-DTE option entries after 12:30
   natgas_thursday_close: "19:50"    # auto-close NatGas before EIA report
   natgas_thursday_reopen: "20:15"   # resume NatGas entries after report settles

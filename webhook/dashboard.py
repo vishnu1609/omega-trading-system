@@ -280,6 +280,71 @@ def _build_memory_panel(memory_state: dict) -> str:
     </div>"""
 
 
+def _build_category_tab(cat_name, color, icon, closed, positions):
+    """Build filtered HTML for a single category tab."""
+    pnl = sum(t.get("pnl", 0) for t in closed)
+    wins = sum(1 for t in closed if t.get("pnl", 0) >= 0)
+    wr = (wins / len(closed) * 100) if closed else 0
+    pc = "#10b981" if pnl >= 0 else "#ef4444"
+
+    trades_html = ""
+    for t in reversed(closed):
+        tc = "#10b981" if t.get("pnl", 0) >= 0 else "#ef4444"
+        trades_html += f'''<div class="trade-row">
+            <span class="trade-symbol">{t.get("direction","")[:1]} {t.get("symbol","")}</span>
+            <span>₹{t.get("entry",0):.2f} → ₹{t.get("exit",0):.2f}</span>
+            <span style="color:{tc};font-weight:600">₹{t.get("pnl",0):+,.2f}</span>
+            <span class="trade-reason">{t.get("reason","")}</span>
+        </div>'''
+    if not trades_html:
+        trades_html = '<div class="no-trades">No trades yet</div>'
+
+    pos_html = ""
+    for p in positions:
+        ppc = "#10b981" if p.get("pnl", 0) >= 0 else "#ef4444"
+        dc = "pos-long" if p.get("direction") == "LONG" else "pos-short"
+        pos_html += f'''<div class="pos-row">
+            <span class="pos-dir {dc}">{p.get("direction","")}</span>
+            <span class="pos-symbol">{p.get("symbol","")}</span>
+            <span>₹{p.get("entry",0):.2f} → ₹{p.get("current",0):.2f}</span>
+            <span style="color:{ppc};font-weight:600">₹{p.get("pnl",0):+,.2f}</span>
+            <span class="pos-sl">SL ₹{p.get("sl",0):.2f}</span>
+        </div>'''
+    if not pos_html:
+        pos_html = '<div class="no-trades">No open positions</div>'
+
+    return f'''<div class="container">
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px;
+                border-left:4px solid {color};padding-left:16px">
+        <span style="font-size:28px">{icon}</span>
+        <h2 style="font-size:22px;font-weight:700">{cat_name}</h2>
+    </div>
+    <div class="top-stats" style="padding:0 0 16px">
+        <div class="top-stat" style="border-top:3px solid {color}">
+            <div class="top-stat-value" style="color:{pc}">₹{pnl:+,.2f}</div>
+            <div class="top-stat-label">P&L</div>
+        </div>
+        <div class="top-stat">
+            <div class="top-stat-value">{len(closed)}</div>
+            <div class="top-stat-label">Trades</div>
+            <div class="top-stat-sub">{wins}W / {len(closed) - wins}L</div>
+        </div>
+        <div class="top-stat">
+            <div class="top-stat-value">{wr:.0f}%</div>
+            <div class="top-stat-label">Win Rate</div>
+        </div>
+        <div class="top-stat">
+            <div class="top-stat-value">{len(positions)}</div>
+            <div class="top-stat-label">Open</div>
+        </div>
+    </div>
+    <div class="section-title">Open Positions</div>
+    <div class="panel-box">{pos_html}</div>
+    <div class="section-title">All Trades ({len(closed)})</div>
+    <div class="panel-box" style="max-height:500px;overflow-y:auto">{trades_html}</div>
+</div>'''
+
+
 @router.get("/dashboard", response_class=HTMLResponse)
 async def dashboard():
     now = datetime.now(IST).strftime("%Y-%m-%d %H:%M:%S IST")
@@ -474,6 +539,15 @@ async def dashboard():
     pf_color = "#10b981" if stats["profit_factor"] >= 1.5 else ("#f59e0b" if stats["profit_factor"] >= 1 else "#ef4444")
     unr_color = "#10b981" if unrealised >= 0 else "#ef4444"
 
+    # ── Category Tabs ──
+    cat_tabs_html = ""
+    for cname in ["INDICES", "MCX", "INDEX_FUTURES"]:
+        ct_closed = [t for t in closed if _cat(t.get("symbol", "")) == cname]
+        ct_pos = [p for p in positions if _cat(p.get("symbol", "")) == cname]
+        tab = _build_category_tab(
+            cname, cat_colors[cname], cat_icons[cname], ct_closed, ct_pos)
+        cat_tabs_html += f'<div id="tab-{cname}" class="tab-content">{tab}</div>\n'
+
     html = f'''<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -641,6 +715,22 @@ body {{
 .lb-symbol {{ font-weight:600; min-width:110px; }}
 .lb-reason {{ color:#64748b; font-size:11px; }}
 
+/* ── Tabs ── */
+.tab-bar {{
+    display:flex; background:#111827; border-bottom:1px solid #1e293b;
+    padding:0 32px; overflow-x:auto;
+}}
+.tab-btn {{
+    padding:12px 24px; font-size:14px; font-weight:600; color:#64748b;
+    background:none; border:none; cursor:pointer;
+    border-bottom:3px solid transparent; transition:all 0.2s;
+    white-space:nowrap;
+}}
+.tab-btn:hover {{ color:#94a3b8; }}
+.tab-btn.active {{ color:#a5b4fc; border-bottom-color:#6366f1; }}
+.tab-content {{ display:none; }}
+.tab-content.active {{ display:block; }}
+
 /* ── Layout ── */
 .two-col {{ display:grid; grid-template-columns:1fr 1fr; gap:16px; }}
 .three-col {{ display:grid; grid-template-columns:1fr 1fr 1fr; gap:16px; }}
@@ -653,6 +743,8 @@ body {{
     .container {{ padding:0 16px 16px; }}
     .cat-grid, .two-col, .lb-grid {{ grid-template-columns:1fr; }}
     .heatmap-grid {{ grid-template-columns:repeat(5,1fr); }}
+    .tab-bar {{ padding:0 16px; }}
+    .tab-btn {{ padding:10px 16px; font-size:13px; }}
 }}
 @media (max-width: 500px) {{
     .top-stats {{ grid-template-columns:repeat(2,1fr); }}
@@ -735,6 +827,14 @@ body {{
     </div>
 </div>
 
+<div class="tab-bar">
+    <button class="tab-btn active" onclick="switchTab('overview', this)">Overview</button>
+    <button class="tab-btn" onclick="switchTab('INDICES', this)">📊 INDICES</button>
+    <button class="tab-btn" onclick="switchTab('MCX', this)">🏭 MCX</button>
+    <button class="tab-btn" onclick="switchTab('INDEX_FUTURES', this)">📈 INDEX FUTURES</button>
+</div>
+
+<div id="tab-overview" class="tab-content active">
 <div class="container">
 
     <!-- ── P&L HEATMAP ── -->
@@ -774,11 +874,23 @@ body {{
     {memory_panel}
 
 </div>
+</div>
+
+{cat_tabs_html}
 
 <div class="footer">
     Omega Trading System &mdash; Auto-refreshes every 30s &mdash; {mode} mode
 </div>
 
+<script>
+function switchTab(id, btn) {{
+    document.querySelectorAll('.tab-content').forEach(function(t) {{ t.classList.remove('active'); }});
+    document.querySelectorAll('.tab-btn').forEach(function(b) {{ b.classList.remove('active'); }});
+    document.getElementById('tab-' + id).classList.add('active');
+    btn.classList.add('active');
+    window.scrollTo({{top: 0}});
+}}
+</script>
 </body>
 </html>'''
     return HTMLResponse(content=html)

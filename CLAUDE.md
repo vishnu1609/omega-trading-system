@@ -30,7 +30,8 @@ omega-trading-system/
 │   └── feed.py              # CSV loader + Dhan historical API
 ├── utils/
 │   ├── logger.py            # File + console logging
-│   └── telegram_alert.py    # Telegram notifications
+│   ├── imessage_alert.py    # iMessage notifications (Apple Messages)
+│   └── telegram_alert.py    # Telegram (deprecated — replaced by iMessage)
 ├── config/
 │   ├── settings.yaml        # Runtime config (mode, risk, webhook)
 │   └── instruments.yaml     # Index definitions + cost model

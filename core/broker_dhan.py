@@ -2,18 +2,21 @@
 Dhan Broker Adapter
 
 Implements BrokerBase for the Dhan API (https://api.dhan.co/v2).
-Rate-limited to 5 req/sec with exponential backoff.
+Handles DH-901 (auth expired), DH-904 (rate limit), and DH-906 (market closed).
+Thread-safe with API mutex and 100ms throttle.
 """
 from __future__ import annotations
 
 import logging
 import os
+import threading
 import time
 from typing import Any
 
 import requests
 
 from core.broker_base import (
+    BrokerAuthError,
     BrokerBase,
     BrokerError,
     BrokerRateLimit,
@@ -25,6 +28,12 @@ from core.broker_base import (
 log = logging.getLogger(__name__)
 
 BASE_URL = "https://api.dhan.co/v2"
+
+DHAN_ERROR_CODES = {
+    "DH-901": "Invalid or expired authentication token",
+    "DH-904": "API rate limit exceeded",
+    "DH-906": "Market closed or order rejected by RMS",
+}
 
 
 class DhanBroker(BrokerBase):
@@ -39,7 +48,23 @@ class DhanBroker(BrokerBase):
             "access-token": self.access_token,
         })
         self._last_request_ts: float = 0
-        self._min_interval: float = 0.2
+        self._min_interval: float = 0.1
+        self._api_lock = threading.Lock()
+        self._auth_valid = True
+
+    def validate_token(self) -> bool:
+        try:
+            self.get_funds()
+            self._auth_valid = True
+            log.info("Dhan token validated successfully")
+            return True
+        except BrokerAuthError:
+            self._auth_valid = False
+            log.critical("DH-901: Invalid or expired token — bot cannot trade")
+            return False
+        except BrokerError as exc:
+            log.warning("Token validation inconclusive: %s", exc)
+            return True
 
     def _throttle(self) -> None:
         elapsed = time.monotonic() - self._last_request_ts
@@ -48,21 +73,42 @@ class DhanBroker(BrokerBase):
         self._last_request_ts = time.monotonic()
 
     def _request(self, method: str, path: str, payload: dict | None = None) -> dict:
-        self._throttle()
-        url = f"{BASE_URL}{path}"
-        try:
-            resp = self.session.request(method, url, json=payload, timeout=10)
-        except requests.RequestException as exc:
-            raise BrokerError(f"Network error: {exc}") from exc
+        with self._api_lock:
+            self._throttle()
+            url = f"{BASE_URL}{path}"
+            try:
+                resp = self.session.request(method, url, json=payload, timeout=10)
+            except requests.RequestException as exc:
+                raise BrokerError(f"Network error: {exc}") from exc
 
-        if resp.status_code == 429:
-            raise BrokerRateLimit("Dhan rate limit hit")
-        if resp.status_code >= 400:
-            raise BrokerError(f"HTTP {resp.status_code}: {resp.text}")
+            if resp.status_code == 401:
+                self._auth_valid = False
+                raise BrokerAuthError("DH-901: Token expired or invalid")
 
-        return resp.json() if resp.text else {}
+            if resp.status_code == 429:
+                raise BrokerRateLimit("DH-904: API rate limit exceeded")
+
+            if resp.status_code >= 400:
+                body = resp.text
+                for code, desc in DHAN_ERROR_CODES.items():
+                    if code in body:
+                        if code == "DH-901":
+                            self._auth_valid = False
+                            raise BrokerAuthError(f"{code}: {desc}")
+                        if code == "DH-904":
+                            raise BrokerRateLimit(f"{code}: {desc}")
+                raise BrokerError(f"HTTP {resp.status_code}: {body}")
+
+            return resp.json() if resp.text else {}
+
+    @property
+    def is_auth_valid(self) -> bool:
+        return self._auth_valid
 
     def place_order(self, order: Order) -> OrderResponse:
+        if not self._auth_valid:
+            raise BrokerAuthError("DH-901: Token invalid — cannot place orders")
+
         payload = {
             "dhanClientId": self.client_id,
             "transactionType": order.transaction_type,

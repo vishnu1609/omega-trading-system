@@ -17,6 +17,7 @@ from datetime import datetime
 from typing import Any
 
 from core.broker_base import (
+    BrokerAuthError,
     BrokerBase,
     BrokerError,
     BrokerRateLimit,
@@ -252,9 +253,19 @@ class OrderManager:
         for attempt in range(max_retries):
             try:
                 return self.broker.place_order(order)
+            except BrokerAuthError as exc:
+                log.critical("DH-901: Auth failed — cannot place order %s", order.tag)
+                if self._telegram:
+                    try:
+                        self._telegram.error("DH-901_AUTH_EXPIRED",
+                            Exception("CRITICAL: Token expired — manual exit required. "
+                                      "Renew token at api.dhan.co and restart bot."))
+                    except Exception:
+                        pass
+                return None
             except BrokerRateLimit:
-                wait = 2 ** attempt
-                log.warning("Rate limited, retry in %ds (attempt %d/%d)",
+                wait = max(1, 2 ** attempt)
+                log.warning("DH-904: Rate limited, backing off %ds (attempt %d/%d)",
                             wait, attempt + 1, max_retries)
                 time.sleep(wait)
             except BrokerError as exc:

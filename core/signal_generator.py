@@ -30,6 +30,14 @@ IST = ZoneInfo("Asia/Kolkata")
 
 DHAN_CHART_URL = "https://api.dhan.co/v2/charts/intraday"
 
+DHAN_INDEX_MAP = {
+    "NIFTY": ("13", "IDX_I", "INDEX"),
+    "BANKNIFTY": ("25", "IDX_I", "INDEX"),
+    "FINNIFTY": ("27", "IDX_I", "INDEX"),
+    "SENSEX": ("1", "IDX_I", "INDEX"),
+    "BANKEX": ("12", "IDX_I", "INDEX"),
+}
+
 YAHOO_SYMBOLS = {
     "NIFTY": "^NSEI",
     "BANKNIFTY": "^NSEBANK",
@@ -235,25 +243,36 @@ class SignalGenerator:
         self._scan_count: int = 0
         self._cycle_lock = Lock()
         self.guardrails = None  # set externally via set_guardrails()
+        self.calendar = None    # set externally via set_calendar()
 
     def set_guardrails(self, guardrails) -> None:
         from core.guardrails import Guardrails
         self.guardrails: Guardrails = guardrails
 
+    def set_calendar(self, calendar) -> None:
+        from utils.market_calendar import MarketCalendar
+        self.calendar: MarketCalendar = calendar
+
     def fetch_candles(self, inst_name: str, security_id: str = "",
                       exchange_segment: str = "",
                       instrument_type: str = "INDEX") -> list[Candle]:
+        dhan_info = DHAN_INDEX_MAP.get(inst_name.upper())
+        if not security_id and dhan_info:
+            security_id, exchange_segment, instrument_type = dhan_info
+
+        if security_id and self.access_token:
+            raw = self._fetch_dhan(security_id, exchange_segment, instrument_type)
+            if raw:
+                raw = self._filter_ghost_candles(raw, inst_name)
+                raw = self._sanitize_outliers(raw, inst_name)
+                return raw[-500:] if len(raw) > 500 else raw
+            log.warning("Dhan fetch empty for %s — falling back to Yahoo", inst_name)
+
         candles = self._fetch_yahoo(inst_name)
         if candles:
             candles = self._filter_ghost_candles(candles, inst_name)
             candles = self._sanitize_outliers(candles, inst_name)
             return candles[-500:] if len(candles) > 500 else candles
-
-        if security_id:
-            raw = self._fetch_dhan(security_id, exchange_segment, instrument_type)
-            raw = self._filter_ghost_candles(raw, inst_name)
-            raw = self._sanitize_outliers(raw, inst_name)
-            return raw[-500:] if len(raw) > 500 else raw
 
         return []
 
@@ -264,9 +283,8 @@ class SignalGenerator:
         cleaned: list[Candle] = []
         ffill_count = 0
         for c in candles:
-            is_ghost = (c.volume == 0 and c.open == c.high == c.low == c.close)
-            is_flat_zero = (c.high == c.low and c.volume == 0)
-            if (is_ghost or is_flat_zero) and cleaned:
+            is_ghost = (c.open == c.high == c.low == c.close and c.open > 0)
+            if is_ghost and cleaned:
                 prev = cleaned[-1]
                 cleaned.append(Candle(
                     timestamp=c.timestamp,
@@ -278,7 +296,7 @@ class SignalGenerator:
             else:
                 cleaned.append(c)
         if ffill_count:
-            log.warning("Forward-filled %d ghost candles for %s (vol=0 / flat OHLC)",
+            log.warning("Forward-filled %d ghost candles for %s (flat OHLC)",
                         ffill_count, symbol)
         return cleaned
 
@@ -364,13 +382,14 @@ class SignalGenerator:
 
     def _fetch_dhan(self, security_id: str, exchange_segment: str,
                     instrument_type: str) -> list[Candle]:
-        today = datetime.now(IST).strftime("%Y-%m-%d")
+        today = datetime.now(IST)
+        from_date = (today - timedelta(days=7)).strftime("%Y-%m-%d")
         payload = {
             "securityId": security_id,
             "exchangeSegment": exchange_segment,
             "instrument": instrument_type,
-            "fromDate": today,
-            "toDate": today,
+            "fromDate": from_date,
+            "toDate": today.strftime("%Y-%m-%d"),
         }
 
         try:
@@ -539,7 +558,24 @@ class SignalGenerator:
             watch_instruments = list(self.instruments.keys())[:3]
 
         cycle = 0
+        _holiday_logged = None
         while not shutdown_event.is_set():
+            if self.calendar:
+                now = datetime.now(IST)
+                if not self.calendar.is_trading_day(now.date()):
+                    if _holiday_logged != now.date():
+                        status = self.calendar.market_status(now)
+                        log.info("Market closed: %s — next trading day: %s",
+                                 status["status"], status["next_trading_day"])
+                        _holiday_logged = now.date()
+                    shutdown_event.wait(timeout=300)
+                    continue
+                if not self.calendar.is_nse_open(now) and not self.calendar.is_mcx_open(now):
+                    if cycle == 0:
+                        log.info("Pre/post market — waiting for session open")
+                    shutdown_event.wait(timeout=60)
+                    continue
+
             if not self._cycle_lock.acquire(blocking=False):
                 log.warning("Scan cycle overlap — previous cycle still running, skipping")
                 shutdown_event.wait(timeout=self.poll_interval)

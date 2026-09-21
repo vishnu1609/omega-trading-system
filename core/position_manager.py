@@ -15,6 +15,7 @@ premium prices, not the underlying index price.
 from __future__ import annotations
 
 import logging
+import threading
 from dataclasses import dataclass, field
 from datetime import datetime
 
@@ -92,6 +93,7 @@ class PositionManager:
     def __init__(self) -> None:
         self._open: dict[str, Position] = {}
         self._closed: list[ClosedTrade] = []
+        self._lock = threading.Lock()
 
     @property
     def open_positions(self) -> list[Position]:
@@ -130,10 +132,11 @@ class PositionManager:
         return count
 
     def add_position(self, pos: Position) -> None:
-        key = pos.security_id
-        if key in self._open:
-            log.warning("Position already open for %s — overwriting", key)
-        self._open[key] = pos
+        with self._lock:
+            key = pos.security_id
+            if key in self._open:
+                log.warning("Position already open for %s — overwriting", key)
+            self._open[key] = pos
         log.info("POSITION OPEN: %s %s %s qty=%d entry=%.2f SL=%.2f TP=%.2f",
                  pos.direction, pos.option_type, pos.symbol,
                  pos.quantity, pos.entry_price, pos.sl_price, pos.tp_price)
@@ -161,7 +164,8 @@ class PositionManager:
 
     def close_position(self, security_id: str, exit_price: float,
                        reason: str = "SIGNAL_EXIT") -> ClosedTrade | None:
-        pos = self._open.pop(security_id, None)
+        with self._lock:
+            pos = self._open.pop(security_id, None)
         if not pos:
             log.warning("No open position for %s to close", security_id)
             return None

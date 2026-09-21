@@ -101,26 +101,34 @@ class Guardrails:
         self._allocated_mcx: float = 0.0
         self._recent_index_signals: dict[str, str] = {}
 
-    # ── Scenario 1: Capital Allocation Caps ──────────────────────────────
+    # ── Scenario 1: Capital Allocation Caps (time-aware) ────────────────
+
+    def _get_allocation_caps(self) -> tuple[float, float]:
+        now = datetime.now(IST).timetz()
+        nse_close = dt_time(15, 30, tzinfo=IST)
+        if now < nse_close:
+            return 0.80, 0.20
+        return 0.50, 0.50
 
     def check_sector_allocation(self, symbol: str,
                                 estimated_margin: float) -> GuardrailResult:
         upper = symbol.upper()
+        nse_pct, mcx_pct = self._get_allocation_caps()
         if upper in SECTOR_NSE or any(s in upper for s in SECTOR_NSE):
-            cap = self.capital * self.nse_cap
+            cap = self.capital * nse_pct
             if self._allocated_nse + estimated_margin > cap:
                 return GuardrailResult(
                     False,
-                    f"NSE allocation cap ₹{cap:,.0f} would be exceeded "
+                    f"NSE allocation cap ₹{cap:,.0f} ({nse_pct:.0%}) would be exceeded "
                     f"(current: ₹{self._allocated_nse:,.0f} + ₹{estimated_margin:,.0f})",
                     "sector_allocation",
                 )
         elif upper in SECTOR_MCX or any(s in upper for s in SECTOR_MCX):
-            cap = self.capital * self.mcx_cap
+            cap = self.capital * mcx_pct
             if self._allocated_mcx + estimated_margin > cap:
                 return GuardrailResult(
                     False,
-                    f"MCX allocation cap ₹{cap:,.0f} would be exceeded "
+                    f"MCX allocation cap ₹{cap:,.0f} ({mcx_pct:.0%}) would be exceeded "
                     f"(current: ₹{self._allocated_mcx:,.0f} + ₹{estimated_margin:,.0f})",
                     "sector_allocation",
                 )

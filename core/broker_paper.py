@@ -29,6 +29,7 @@ class PaperBroker(BrokerBase):
         self._orders: list[dict] = []
         self._positions: dict[str, dict] = {}
         self._counter = 0
+        self.live_feed = None
 
     def place_order(self, order: Order) -> OrderResponse:
         self._counter += 1
@@ -119,6 +120,10 @@ class PaperBroker(BrokerBase):
         return {"availabelBalance": self._capital}
 
     def get_ltp(self, security_id: str, exchange_segment: str) -> float:
+        if self.live_feed:
+            ltp = self.live_feed.get_ltp(security_id, exchange_segment)
+            if ltp > 0:
+                return ltp
         return 0.0
 
     def get_option_chain(self, underlying_id: str, expiry: str,
