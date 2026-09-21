@@ -29,20 +29,6 @@ instruments:
     session_end: "15:30"
     square_off: "15:15"
 
-  FINNIFTY:
-    exchange: "NSE"
-    segment: "IDX_OPT"
-    asset_class: "index_options"
-    lot_size: 40
-    strike_step: 50
-    tick_size: 0.05
-    dhan_security_id: "27"
-    expiry_day: "tuesday"
-    symbol_prefix: "FINNIFTY"
-    session_start: "09:15"
-    session_end: "15:30"
-    square_off: "15:15"
-
   SENSEX:
     exchange: "BSE"
     segment: "IDX_OPT"
@@ -50,154 +36,12 @@ instruments:
     lot_size: 10
     strike_step: 100
     tick_size: 0.05
-    dhan_security_id: "1"
+    dhan_security_id: "51"
     expiry_day: "friday"
     symbol_prefix: "SENSEX"
     session_start: "09:15"
     session_end: "15:30"
     square_off: "15:15"
-
-  BANKEX:
-    exchange: "BSE"
-    segment: "IDX_OPT"
-    asset_class: "index_options"
-    lot_size: 15
-    strike_step: 100
-    tick_size: 0.05
-    dhan_security_id: "12"
-    expiry_day: "monday"
-    symbol_prefix: "BANKEX"
-    session_start: "09:15"
-    session_end: "15:30"
-    square_off: "15:15"
-
-## ── INDEX FUTURES ────────────────────────────────────────────────────────
-
-  NIFTY_FUT:
-    exchange: "NSE"
-    segment: "IDX_FUT"
-    asset_class: "index_futures"
-    lot_size: 75
-    tick_size: 0.05
-    dhan_security_id: "13"
-    symbol_prefix: "NIFTY"
-    session_start: "09:15"
-    session_end: "15:30"
-    square_off: "15:15"
-    margin_pct: 12              # ~12% SPAN margin
-
-  BANKNIFTY_FUT:
-    exchange: "NSE"
-    segment: "IDX_FUT"
-    asset_class: "index_futures"
-    lot_size: 15
-    tick_size: 0.05
-    dhan_security_id: "25"
-    symbol_prefix: "BANKNIFTY"
-    session_start: "09:15"
-    session_end: "15:30"
-    square_off: "15:15"
-    margin_pct: 12
-
-## ── MCX COMMODITIES (FUTURES) ────────────────────────────────────────────
-
-  GOLD:
-    exchange: "MCX"
-    segment: "COMM_FUT"
-    asset_class: "commodity_futures"
-    lot_size: 100               # 100 grams
-    tick_size: 1.0              # ₹1 per gram
-    dhan_security_id: ""        # resolve from instrument master
-    symbol_prefix: "GOLD"
-    session_start: "09:00"
-    session_end: "23:30"
-    square_off: "23:15"
-    margin_pct: 6               # ~6% SPAN margin
-    point_value: 100            # ₹100 per 1-point move (100g × ₹1)
-
-  GOLDM:
-    exchange: "MCX"
-    segment: "COMM_FUT"
-    asset_class: "commodity_futures"
-    lot_size: 10                # 10 grams (mini)
-    tick_size: 1.0
-    dhan_security_id: ""
-    symbol_prefix: "GOLDM"
-    session_start: "09:00"
-    session_end: "23:30"
-    square_off: "23:15"
-    margin_pct: 6
-    point_value: 10
-
-  SILVER:
-    exchange: "MCX"
-    segment: "COMM_FUT"
-    asset_class: "commodity_futures"
-    lot_size: 30                # 30 kg
-    tick_size: 1.0              # ₹1 per kg
-    dhan_security_id: ""
-    symbol_prefix: "SILVER"
-    session_start: "09:00"
-    session_end: "23:30"
-    square_off: "23:15"
-    margin_pct: 7
-    point_value: 30
-
-  SILVERM:
-    exchange: "MCX"
-    segment: "COMM_FUT"
-    asset_class: "commodity_futures"
-    lot_size: 5                 # 5 kg (mini)
-    tick_size: 1.0
-    dhan_security_id: ""
-    symbol_prefix: "SILVERM"
-    session_start: "09:00"
-    session_end: "23:30"
-    square_off: "23:15"
-    margin_pct: 7
-    point_value: 5
-
-  CRUDEOIL:
-    exchange: "MCX"
-    segment: "COMM_FUT"
-    asset_class: "commodity_futures"
-    lot_size: 100               # 100 barrels
-    tick_size: 1.0
-    dhan_security_id: ""
-    symbol_prefix: "CRUDEOIL"
-    session_start: "09:00"
-    session_end: "23:30"
-    square_off: "23:15"
-    margin_pct: 9
-    point_value: 100
-
-  CRUDEOILM:
-    exchange: "MCX"
-    segment: "COMM_FUT"
-    asset_class: "commodity_futures"
-    lot_size: 10                # 10 barrels (mini)
-    tick_size: 1.0
-    dhan_security_id: ""
-    symbol_prefix: "CRUDEOILM"
-    session_start: "09:00"
-    session_end: "23:30"
-    square_off: "23:15"
-    margin_pct: 9
-    point_value: 10
-
-  NATURALGAS:
-    exchange: "MCX"
-    segment: "COMM_FUT"
-    asset_class: "commodity_futures"
-    lot_size: 1250              # 1250 MMBtu
-    tick_size: 0.10
-    dhan_security_id: ""
-    symbol_prefix: "NATURALGAS"
-    session_start: "09:00"
-    session_end: "23:30"
-    square_off: "23:15"
-    margin_pct: 10
-    point_value: 1250
 
 ## ── COST MODELS ──────────────────────────────────────────────────────────
 
@@ -210,21 +54,3 @@ costs:
     gst_pct: 18
     stamp_duty_pct: 0.003
     slippage_ticks: 2
-
-  equity_futures:
-    brokerage_per_order: 20
-    stt_pct: 0.0125             # STT on both sides (futures)
-    exchange_txn_pct: 0.002
-    sebi_per_crore: 10
-    gst_pct: 18
-    stamp_duty_pct: 0.002
-    slippage_ticks: 1
-
-  commodity_futures:
-    brokerage_per_order: 20
-    ctt_sell_pct: 0.01          # CTT on sell side (commodity)
-    exchange_txn_pct: 0.003
-    sebi_per_crore: 10
-    gst_pct: 18
-    stamp_duty_pct: 0.002
-    slippage_ticks: 1

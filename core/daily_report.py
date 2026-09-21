@@ -3,7 +3,6 @@ Daily Results Report — Separate P&L by category.
 
 Categories:
   - INDICES: NIFTY, BANKNIFTY, FINNIFTY, SENSEX, BANKEX
-  - MCX: GOLD, SILVER, CRUDEOIL, NATURALGAS
   - FUTURES: NIFTY_FUT, BANKNIFTY_FUT
 """
 from __future__ import annotations
@@ -25,13 +24,6 @@ CATEGORY_MAP = {
     "BANKEX": "INDICES",
     "NIFTY_FUT": "INDEX_FUTURES",
     "BANKNIFTY_FUT": "INDEX_FUTURES",
-    "GOLD": "MCX",
-    "GOLDM": "MCX",
-    "SILVER": "MCX",
-    "SILVERM": "MCX",
-    "CRUDEOIL": "MCX",
-    "CRUDEOILM": "MCX",
-    "NATURALGAS": "MCX",
 }
 
 
@@ -89,7 +81,7 @@ def generate_daily_report(closed_trades, signals_log: list[dict],
         lines.append("  No trades or signals today.")
         lines.append("")
 
-    for cat in ["INDICES", "MCX", "INDEX_FUTURES", "OTHER"]:
+    for cat in ["INDICES", "INDEX_FUTURES", "OTHER"]:
         if cat not in categories:
             continue
         c = categories[cat]

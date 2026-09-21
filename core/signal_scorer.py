@@ -23,8 +23,6 @@ IST = ZoneInfo("Asia/Kolkata")
 CORRELATION_GROUPS = {
     "NSE_INDEX": ["NIFTY", "BANKNIFTY", "FINNIFTY", "SENSEX", "BANKEX"],
     "NSE_FUT": ["NIFTY_FUT", "BANKNIFTY_FUT"],
-    "PRECIOUS": ["GOLD", "GOLDM", "SILVER", "SILVERM"],
-    "ENERGY": ["CRUDEOIL", "CRUDEOILM", "NATURALGAS"],
 }
 
 
@@ -73,10 +71,6 @@ def _get_correlation_group(symbol: str) -> str:
 
 def _categorize(symbol: str) -> str:
     upper = symbol.upper()
-    mcx = ["GOLD", "SILVER", "CRUDEOIL", "NATURALGAS"]
-    for m in mcx:
-        if m in upper:
-            return "MCX"
     if "FUT" in upper:
         return "INDEX_FUTURES"
     return "INDICES"

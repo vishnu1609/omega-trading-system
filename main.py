@@ -122,13 +122,16 @@ def main() -> None:
         session_start=session_cfg.get("start_time", "09:16"),
         square_off_time=session_cfg.get("square_off_time", "15:10"),
         mode=mode,
-        allow_mcx_live=category_cfg.get("allow_mcx_live", False),
         allow_index_futures_live=category_cfg.get("allow_index_futures_live", False),
     )
 
     instruments = instruments_cfg.get("instruments", {})
+    _sg_watch = settings.get("signal_generator", {}).get("watch", [])
+    _watch_set = {w.upper() for w in (args.watch or _sg_watch)}
     for name, cfg in instruments.items():
         if "session_start" in cfg and "square_off" in cfg:
+            if _watch_set and name.upper() not in _watch_set:
+                continue
             re.register_instrument_session(name, cfg["session_start"], cfg["square_off"])
 
     im_cfg = settings.get("imessage", {})
@@ -145,14 +148,11 @@ def main() -> None:
     guardrails = Guardrails(
         capital=capital,
         max_risk_per_trade_pct=guardrails_cfg.get("max_risk_per_trade_pct", 2.0),
-        nse_allocation_cap=guardrails_cfg.get("nse_allocation_cap", 0.60),
-        mcx_allocation_cap=guardrails_cfg.get("mcx_allocation_cap", 0.40),
+        nse_allocation_cap=guardrails_cfg.get("nse_allocation_cap", 0.70),
         adx_min_threshold=guardrails_cfg.get("adx_min_threshold", 22.0),
         vwap_warmup_time=guardrails_cfg.get("vwap_warmup_time", "09:30"),
         candle_max_staleness_sec=guardrails_cfg.get("candle_max_staleness_sec", 330),
         expiry_day_cutoff=guardrails_cfg.get("expiry_day_cutoff", "12:30"),
-        natgas_thursday_close=guardrails_cfg.get("natgas_thursday_close", "19:50"),
-        natgas_thursday_reopen=guardrails_cfg.get("natgas_thursday_reopen", "20:15"),
     )
     log.info("Guardrails initialized: capital=₹%s, risk/trade=%s%%, ADX min=%s",
              f"{capital:,}", guardrails_cfg.get("max_risk_per_trade_pct", 2.0),
@@ -412,13 +412,6 @@ def main() -> None:
 
             try:
                 strategy.monitor_positions()
-
-                if guardrails.should_close_natgas():
-                    for pos in pm.open_positions:
-                        if "NATURALGAS" in pos.symbol.upper():
-                            log.warning("NatGas Thursday auto-close: %s", pos.symbol)
-                            ltp = pos.current_price or pos.entry_price
-                            strategy._exit_position(pos, ltp, "NATGAS_THURSDAY")
             except Exception as exc:
                 log.error("Position monitoring error: %s", exc)
                 tg.error("monitor_positions", exc)

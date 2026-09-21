@@ -10,7 +10,7 @@ Gates (in order):
   4. Not in cooldown period
   5. Concurrent position limit
   6. Stop-loss cap (8-10% of trade amount, scaled by confluence score)
-  7. Category toggle (MCX / Index Futures disabled in live mode)
+  7. Category toggle (Index Futures disabled in live mode) + margin check
 """
 from __future__ import annotations
 
@@ -26,15 +26,6 @@ from core.position_manager import PositionManager
 log = logging.getLogger(__name__)
 
 IST = ZoneInfo("Asia/Kolkata")
-
-MCX_SYMBOLS = {"GOLD", "GOLDM", "SILVER", "SILVERM", "CRUDEOIL", "CRUDEOILM", "NATURALGAS"}
-INDEX_FUTURE_SUFFIXES = ("FUT",)
-
-
-def _is_mcx(symbol: str) -> bool:
-    upper = symbol.upper()
-    return any(s in upper for s in MCX_SYMBOLS)
-
 
 def _is_index_future(symbol: str) -> bool:
     upper = symbol.upper()
@@ -55,7 +46,6 @@ class RiskEngine:
         session_start: str = "09:16",
         square_off_time: str = "15:10",
         mode: str = "paper",
-        allow_mcx_live: bool = False,
         allow_index_futures_live: bool = False,
     ):
         self.pm = position_manager
@@ -67,7 +57,6 @@ class RiskEngine:
         self.cooldown_minutes = cooldown_minutes
         self.margin_buffer_pct = margin_buffer_pct
         self.mode = mode
-        self.allow_mcx_live = allow_mcx_live
         self.allow_index_futures_live = allow_index_futures_live
 
         sh, sm = map(int, session_start.split(":"))
@@ -159,12 +148,9 @@ class RiskEngine:
                 )
                 return False
 
-        # Gate 7: Category toggle (MCX / Index Futures in live mode)
+        # Gate 7: Category toggle (Index Futures in live mode)
         check_symbol = symbol or instrument
         if check_symbol and self.mode == "live":
-            if _is_mcx(check_symbol) and not self.allow_mcx_live:
-                self.last_reason = f"MCX disabled in live mode ({check_symbol})"
-                return False
             if _is_index_future(check_symbol) and not self.allow_index_futures_live:
                 self.last_reason = f"Index Futures disabled in live mode ({check_symbol})"
                 return False

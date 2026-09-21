@@ -31,7 +31,7 @@ SAVE_BATCH_SIZE = 10          # flush hit-count updates every N evaluations
 EFFECTIVENESS_MIN_TRADES = 15  # min trades after rule creation to judge it
 RULE_MAX_AGE_DAYS = 90        # deactivate stale rules that haven't been re-confirmed
 
-_BASE_SYMBOLS = ["NIFTY", "BANKNIFTY", "SENSEX", "GOLD", "SILVER", "CRUDEOIL", "NATURALGAS"]
+_BASE_SYMBOLS = ["NIFTY", "BANKNIFTY", "SENSEX"]
 _ADX_ZONES = [(15, 20, "flat"), (20, 25, "weak"), (25, 30, "moderate"),
               (30, 40, "strong"), (40, 100, "very_strong")]
 
@@ -932,9 +932,6 @@ def _adx_zone_label(adx: float) -> str:
 
 def _categorize(symbol: str) -> str:
     upper = symbol.upper()
-    for m in ["GOLD", "SILVER", "CRUDEOIL", "NATURALGAS"]:
-        if m in upper:
-            return "MCX"
     if "FUT" in upper:
         return "INDEX_FUTURES"
     return "INDICES"
