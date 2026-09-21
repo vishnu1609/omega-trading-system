@@ -4,12 +4,12 @@ broker:
   access_token: "${DHAN_ACCESS_TOKEN}"
 
 risk:
-  max_daily_loss: 5000
-  max_concurrent_positions: 2
-  sl_buffer_pct: 2.5            # wider SL for commodity volatility
-  cooldown_after_losses: 2
-  cooldown_minutes: 30
-  margin_buffer_pct: 20         # commodities need more margin headroom
+  max_daily_loss: 100000
+  max_concurrent_positions: 10
+  sl_buffer_pct: 2.5
+  cooldown_after_losses: 0
+  cooldown_minutes: 0
+  margin_buffer_pct: 0
 
 session:
   start_time: "09:00"           # MCX opens at 09:00
@@ -37,9 +37,9 @@ signal_generator:
 
 guardrails:
   capital: 100000
-  max_risk_per_trade_pct: 3.0
-  mcx_allocation_cap: 0.70
-  adx_min_threshold: 18
+  max_risk_per_trade_pct: 100.0
+  mcx_allocation_cap: 1.0
+  adx_min_threshold: 15
   vwap_warmup_time: "09:15"
   candle_max_staleness_sec: 1200
   expiry_day_cutoff: "20:00"      # block new 0-DTE entries after 20:00 for MCX
