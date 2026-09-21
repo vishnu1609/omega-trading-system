@@ -262,14 +262,13 @@ class SignalGenerator:
                 raw = self._filter_ghost_candles(raw, inst_name)
                 raw = self._sanitize_outliers(raw, inst_name)
                 return raw[-500:] if len(raw) > 500 else raw
-            log.warning("Dhan fetch empty for %s (token expired or API down?)", inst_name)
+            log.warning("Dhan fetch empty for %s — falling back to Yahoo", inst_name)
 
-        if not dhan_info:
-            candles = self._fetch_yahoo(inst_name)
-            if candles:
-                candles = self._filter_ghost_candles(candles, inst_name)
-                candles = self._sanitize_outliers(candles, inst_name)
-                return candles[-500:] if len(candles) > 500 else candles
+        candles = self._fetch_yahoo(inst_name)
+        if candles:
+            candles = self._filter_ghost_candles(candles, inst_name)
+            candles = self._sanitize_outliers(candles, inst_name)
+            return candles[-500:] if len(candles) > 500 else candles
 
         return []
 
@@ -463,8 +462,9 @@ class SignalGenerator:
         prev_bear = (st_dir[prev] > 0 and candles[prev].close < vwap_vals[prev]
                      and adx_vals[prev] > self.adx_threshold) if prev >= 0 else False
 
-        buy_signal = bull_entry and not prev_bull
-        sell_signal = bear_entry and not prev_bear
+        first_scan = inst_name not in self._last_signal
+        buy_signal = bull_entry and (not prev_bull or first_scan)
+        sell_signal = bear_entry and (not prev_bear or first_scan)
 
         trade_dir = self._trade_dir.get(inst_name, 0)
 
@@ -493,6 +493,7 @@ class SignalGenerator:
                 "symbol": inst_name,
                 "side": side,
                 "sl": sl,
+                "close": close,
                 "asset": asset,
                 "strike": 0,
             }

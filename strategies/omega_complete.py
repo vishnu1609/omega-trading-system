@@ -88,6 +88,8 @@ class OmegaStrategy:
         log.info("Signal received: %s %s strike=%s sl=%s asset=%s",
                  side, symbol, strike, sl, asset)
 
+        underlying_close = payload.get("close", 0)
+
         if side == "EXIT":
             self._handle_exit(symbol, strategy)
             return
@@ -188,7 +190,7 @@ class OmegaStrategy:
 
         fill_price = resp.fill_price if resp.fill_price > 0 else entry_price
         if fill_price <= 0:
-            fill_price = entry_price if entry_price > 0 else 100
+            fill_price = underlying_close if underlying_close > 0 else entry_price
         sl_price = self.re.compute_sl_price(fill_price, direction, confluence_score=score)
         tp_price = self.re.compute_tp_price(fill_price, direction)
 
