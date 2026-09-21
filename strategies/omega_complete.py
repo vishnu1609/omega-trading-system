@@ -32,11 +32,12 @@ from zoneinfo import ZoneInfo
 
 from core.broker_base import BrokerBase
 from core.instrument_selector import InstrumentSelector
+from core.option_chain import OptionChainResolver, OptionContract
 from core.order_manager import OrderManager, Signal
 from core.position_manager import Position, PositionManager
 from core.risk_engine import RiskEngine
 from core.trade_memory import TradeMemory
-from utils.telegram_alert import TelegramAlert
+from utils.imessage_alert import IMessageAlert
 
 log = logging.getLogger(__name__)
 
@@ -53,7 +54,7 @@ class OmegaStrategy:
         position_manager: PositionManager,
         risk_engine: RiskEngine,
         instrument_selector: InstrumentSelector,
-        telegram: TelegramAlert,
+        telegram: IMessageAlert,
         instruments_config: dict,
         default_qty_lots: int = 1,
         mode: str = "paper",
@@ -71,6 +72,8 @@ class OmegaStrategy:
         self.mode = mode
         self.guardrails = guardrails
         self.memory = trade_memory
+        self.option_chain: OptionChainResolver | None = None
+        self.live_feed = None
         self._signal_context: dict[str, dict] = {}
 
     def process_signal(self, payload: dict) -> None:
@@ -99,23 +102,33 @@ class OmegaStrategy:
         quantity = lot_size * self.default_qty_lots
         direction = "LONG" if side.startswith("BUY") else "SHORT"
 
-        if asset == "futures":
-            exchange = inst_cfg.get("exchange", "NSE")
-            if exchange == "MCX":
-                exchange_seg = "MCX_COMM"
-            else:
-                exchange_seg = "NSE_FNO"
-            trade_symbol = inst_name
-            security_id = self._lookup_security_id(trade_symbol, exchange_seg)
-            option_type = ""
+        option_type = "CE" if side.endswith("CE") else "PE"
+        strike_step = inst_cfg.get("strike_step", 50)
+        exchange_seg = "NSE_FNO" if inst_cfg.get("exchange") == "NSE" else "BSE_FNO"
+
+        contract: OptionContract | None = None
+        if self.option_chain and asset == "options":
+            underlying_price = sl * 1.01 if sl > 0 else 0
+            contract = self.option_chain.resolve_atm_option(
+                underlying=inst_name,
+                underlying_price=underlying_price,
+                option_type=option_type,
+                lot_size=lot_size,
+                strike_step=strike_step,
+            )
+
+        if contract:
+            trade_symbol = contract.trade_symbol
+            security_id = contract.security_id
+            exchange_seg = contract.exchange_segment
+            strike = contract.strike
+            entry_price = contract.ltp
         else:
-            strike_step = inst_cfg.get("strike_step", 50)
-            exchange_seg = "NSE_FNO" if inst_cfg.get("exchange") == "NSE" else "BSE_FNO"
-            option_type = "CE" if side.endswith("CE") else "PE"
             if not strike:
                 strike = self._compute_atm_strike(inst_name, strike_step)
             trade_symbol = f"{inst_name}{strike}{option_type}"
-            security_id = self._lookup_security_id(trade_symbol, exchange_seg)
+            security_id = trade_symbol
+            entry_price = 0
 
         signal = Signal(
             strategy=strategy,
@@ -124,15 +137,23 @@ class OmegaStrategy:
             exchange_segment=exchange_seg,
             side=side,
             quantity=quantity,
-            price=0,
+            price=entry_price,
             sl=sl,
             strike=strike,
         )
 
-        if self.guardrails and sl > 0:
-            est_entry = sl * 1.02 if direction == "LONG" else sl * 0.98
+        if self.guardrails and entry_price > 0:
+            premium_sl = entry_price * 0.50
             risk_check = self.guardrails.check_per_trade_risk(
-                est_entry, sl, quantity)
+                entry_price, entry_price - premium_sl, quantity)
+            if not risk_check:
+                log.warning("Trade blocked by guardrail: %s", risk_check.reason)
+                return
+        elif self.guardrails and sl > 0:
+            est_premium = sl * 0.01
+            est_sl = est_premium * 0.90
+            risk_check = self.guardrails.check_per_trade_risk(
+                est_premium, est_sl, quantity)
             if not risk_check:
                 log.warning("Trade blocked by guardrail: %s", risk_check.reason)
                 return
@@ -160,12 +181,15 @@ class OmegaStrategy:
                 signal.quantity = quantity
                 log.info("Position size reduced by memory: %d → %d", original_qty, quantity)
 
+        score = payload.get("score", 0)
         resp = self.om.place_entry(signal, self.re, instrument=inst_name)
         if not resp:
             return
 
-        fill_price = resp.fill_price if resp.fill_price > 0 else signal.price or 100
-        sl_price = self.re.compute_sl_price(fill_price, direction)
+        fill_price = resp.fill_price if resp.fill_price > 0 else entry_price
+        if fill_price <= 0:
+            fill_price = entry_price if entry_price > 0 else 100
+        sl_price = self.re.compute_sl_price(fill_price, direction, confluence_score=score)
         tp_price = self.re.compute_tp_price(fill_price, direction)
 
         position = Position(
@@ -183,6 +207,18 @@ class OmegaStrategy:
             strategy=strategy,
         )
         self.pm.add_position(position)
+
+        if self.live_feed and contract and contract.security_id.isdigit():
+            try:
+                from dhanhq import MarketFeed as MF
+                seg_int = {"NSE_FNO": MF.NSE_FNO, "BSE_FNO": MF.BSE_FNO}.get(
+                    exchange_seg, MF.NSE_FNO)
+                self.live_feed.subscribe(
+                    [(seg_int, contract.security_id, MF.Quote)])
+                log.info("LiveFeed subscribed: %s sid=%s",
+                         trade_symbol, contract.security_id)
+            except Exception as e:
+                log.warning("LiveFeed subscribe failed: %s", e)
 
         if self.memory:
             self._signal_context[security_id] = {
@@ -214,6 +250,11 @@ class OmegaStrategy:
             qty=quantity,
             price=fill_price,
             order_id=resp.order_id,
+            strike=str(strike) if strike else "",
+            expiry=contract.expiry if contract else "",
+            iv=contract.iv if contract else 0,
+            oi=contract.oi if contract else 0,
+            score=score,
         )
 
     def _handle_exit(self, symbol: str, strategy: str) -> None:
@@ -316,7 +357,24 @@ class OmegaStrategy:
             if self.guardrails:
                 est_margin = pos.entry_price * pos.quantity
                 self.guardrails.release_allocation(pos.symbol, est_margin)
-            self.tg.sl_hit(trade.symbol, trade.pnl)
+            duration = ""
+            if hasattr(trade, "entry_time") and hasattr(trade, "exit_time"):
+                try:
+                    dur = trade.exit_time - trade.entry_time
+                    mins = int(dur.total_seconds() // 60)
+                    if mins >= 60:
+                        duration = f"{mins // 60}h {mins % 60}m"
+                    else:
+                        duration = f"{mins}m"
+                except Exception:
+                    pass
+            self.tg.sl_hit(
+                trade.symbol, trade.pnl,
+                reason=reason,
+                entry=pos.entry_price,
+                exit_price=price,
+                duration=duration,
+            )
             self._record_to_memory(pos, trade, reason)
 
     def _record_to_memory(self, pos: Position, trade, reason: str) -> None:

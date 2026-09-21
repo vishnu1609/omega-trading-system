@@ -20,7 +20,7 @@ import uvicorn
 import yaml
 from dotenv import load_dotenv
 
-from core.broker_base import BrokerBase
+from core.broker_base import BrokerAuthError, BrokerBase
 from core.broker_dhan import DhanBroker
 from core.broker_paper import PaperBroker
 from core.instrument_selector import InstrumentSelector
@@ -29,12 +29,15 @@ from core.position_manager import PositionManager
 from core.risk_engine import RiskEngine
 from core.daily_report import generate_daily_report, save_daily_report
 from core.guardrails import Guardrails
+from core.live_feed import LiveFeed, EXCHANGE_SEG_MAP
+from core.option_chain import OptionChainResolver
 from core.signal_generator import SignalGenerator
 from core.trade_memory import TradeMemory
 from webhook.dashboard import update_state
 from strategies.omega_complete import OmegaStrategy
 from utils.logger import setup_logging
-from utils.telegram_alert import TelegramAlert
+from utils.imessage_alert import IMessageAlert
+from utils.market_calendar import MarketCalendar
 from webhook.tv_receiver import app, signal_queue
 
 IST = ZoneInfo("Asia/Kolkata")
@@ -106,18 +109,21 @@ def main() -> None:
 
     risk_cfg = settings.get("risk", {})
     session_cfg = settings.get("session", {})
+    category_cfg = settings.get("category_toggle", {})
     re = RiskEngine(
         position_manager=pm,
         broker=broker,
         max_daily_loss=risk_cfg.get("max_daily_loss", 5000),
         max_concurrent_positions=risk_cfg.get("max_concurrent_positions", 2),
-        max_trades_per_day=risk_cfg.get("max_trades_per_day", 10),
         sl_buffer_pct=risk_cfg.get("sl_buffer_pct", 1.5),
         cooldown_after_losses=risk_cfg.get("cooldown_after_losses", 2),
         cooldown_minutes=risk_cfg.get("cooldown_minutes", 30),
         margin_buffer_pct=risk_cfg.get("margin_buffer_pct", 10),
         session_start=session_cfg.get("start_time", "09:16"),
-        square_off_time=session_cfg.get("square_off_time", "15:15"),
+        square_off_time=session_cfg.get("square_off_time", "15:10"),
+        mode=mode,
+        allow_mcx_live=category_cfg.get("allow_mcx_live", False),
+        allow_index_futures_live=category_cfg.get("allow_index_futures_live", False),
     )
 
     instruments = instruments_cfg.get("instruments", {})
@@ -125,11 +131,10 @@ def main() -> None:
         if "session_start" in cfg and "square_off" in cfg:
             re.register_instrument_session(name, cfg["session_start"], cfg["square_off"])
 
-    tg_cfg = settings.get("telegram", {})
-    tg = TelegramAlert(
-        bot_token=resolve_env(tg_cfg.get("bot_token", "")),
-        chat_id=resolve_env(tg_cfg.get("chat_id", "")),
-        enabled=tg_cfg.get("enabled", True),
+    im_cfg = settings.get("imessage", {})
+    tg = IMessageAlert(
+        recipient=im_cfg.get("recipient", ""),
+        enabled=im_cfg.get("enabled", True),
     )
 
     om = OrderManager(broker=broker, slippage_pct=0.5, telegram=tg)
@@ -163,6 +168,23 @@ def main() -> None:
         for alert in health["alerts"]:
             log.warning("TradeMemory alert: %s", alert)
 
+    option_chain = OptionChainResolver()
+    log.info("Option chain resolver initialized (Dhan API)")
+
+    live_feed = LiveFeed()
+    idx_instruments = []
+    from dhanhq import MarketFeed as MF
+    idx_map = {"NIFTY": "13", "BANKNIFTY": "25", "SENSEX": "51"}
+    _sg_cfg = settings.get("signal_generator", {})
+    for idx_name in (args.watch or _sg_cfg.get("watch", ["NIFTY", "BANKNIFTY"])):
+        sec = idx_map.get(idx_name.upper())
+        if sec:
+            idx_instruments.append((MF.IDX, sec, MF.Quote))
+    live_feed.start(idx_instruments)
+    if isinstance(broker, PaperBroker):
+        broker.live_feed = live_feed
+    log.info("LiveFeed started — streaming %d indices", len(idx_instruments))
+
     strategy = OmegaStrategy(
         broker=broker,
         order_manager=om,
@@ -176,6 +198,15 @@ def main() -> None:
         guardrails=guardrails,
         trade_memory=memory,
     )
+    strategy.option_chain = option_chain
+    strategy.live_feed = live_feed
+
+    if mode == "live" and hasattr(broker, 'validate_token'):
+        if not broker.validate_token():
+            log.critical("DH-901: Invalid or expired token — refusing to start")
+            tg.error("DH-901_STARTUP", Exception(
+                "CRITICAL: Dhan token invalid. Renew at api.dhan.co and restart."))
+            sys.exit(1)
 
     tg.bot_started(mode, "omega_complete")
 
@@ -258,6 +289,12 @@ def main() -> None:
         )
         sig_gen.set_guardrails(guardrails)
 
+        calendar = MarketCalendar(base_path=base_path)
+        sig_gen.set_calendar(calendar)
+        status = calendar.market_status()
+        log.info("Market status: %s | Next trading day: %s",
+                 status["status"], status["next_trading_day"])
+
         sig_thread = threading.Thread(
             target=sig_gen.run,
             args=(signal_queue, shutdown_event, watch),
@@ -268,14 +305,52 @@ def main() -> None:
     else:
         log.info("Webhook-only mode — waiting for TradingView signals")
 
+    _signals_frozen = threading.Event()
+
     def _broker_heartbeat():
+        import os, requests as _req
         fail_count = 0
+        _last_renew = 0
+        RENEW_INTERVAL = 3600 * 6
         while not shutdown_event.is_set():
             try:
                 broker.get_available_margin()
                 if fail_count > 0:
                     log.info("Broker heartbeat recovered after %d failures", fail_count)
+                    if _signals_frozen.is_set():
+                        _signals_frozen.clear()
+                        log.info("Signals unfrozen — broker connection restored")
                 fail_count = 0
+            except BrokerAuthError:
+                if not _signals_frozen.is_set():
+                    _signals_frozen.set()
+                    log.critical("DH-901: Token expired — attempting auto-renewal")
+                    try:
+                        token = os.environ.get("DHAN_ACCESS_TOKEN", "")
+                        cid = os.environ.get("DHAN_CLIENT_ID", "")
+                        resp = _req.get("https://api.dhan.co/v2/RenewToken",
+                                        headers={"access-token": token, "dhanClientId": cid},
+                                        timeout=10)
+                        if resp.status_code == 200:
+                            new_token = resp.json().get("access_token", "")
+                            if new_token:
+                                os.environ["DHAN_ACCESS_TOKEN"] = new_token
+                                option_chain.update_token(new_token)
+                                live_feed.update_token(new_token)
+                                if hasattr(broker, '_session'):
+                                    broker._session.headers["access-token"] = new_token
+                                _signals_frozen.clear()
+                                log.info("Token auto-renewed successfully")
+                                tg.send("TOKEN RENEWED\nDhan access token refreshed automatically")
+                            else:
+                                raise Exception("Empty token in response")
+                        else:
+                            raise Exception(f"Renew failed: {resp.status_code}")
+                    except Exception as renew_err:
+                        log.critical("Token auto-renewal failed: %s", renew_err)
+                        tg.error("DH-901_MID_SESSION", Exception(
+                            "CRITICAL: Token expired & auto-renew failed. "
+                            "Renew at api.dhan.co and restart."))
             except Exception:
                 fail_count += 1
                 if fail_count >= 3:
@@ -283,6 +358,25 @@ def main() -> None:
                     tg.error("heartbeat", Exception(
                         f"Broker API unreachable {fail_count}x — open positions at risk"))
                     fail_count = 0
+
+            now_ts = time.time()
+            if now_ts - _last_renew > RENEW_INTERVAL:
+                _last_renew = now_ts
+                try:
+                    token = os.environ.get("DHAN_ACCESS_TOKEN", "")
+                    cid = os.environ.get("DHAN_CLIENT_ID", "")
+                    resp = _req.get("https://api.dhan.co/v2/RenewToken",
+                                    headers={"access-token": token, "dhanClientId": cid},
+                                    timeout=10)
+                    if resp.status_code == 200:
+                        new_token = resp.json().get("access_token", "")
+                        if new_token:
+                            os.environ["DHAN_ACCESS_TOKEN"] = new_token
+                            option_chain.update_token(new_token)
+                            log.info("Proactive token renewal succeeded")
+                except Exception:
+                    pass
+
             shutdown_event.wait(timeout=30)
 
     heartbeat_thread = threading.Thread(target=_broker_heartbeat, daemon=True)
@@ -306,6 +400,10 @@ def main() -> None:
             while not signal_queue.empty():
                 try:
                     payload = signal_queue.get_nowait()
+                    if _signals_frozen.is_set():
+                        log.warning("Signal DROPPED (frozen — auth expired): %s %s",
+                                    payload.get("side"), payload.get("symbol"))
+                        continue
                     signals_log.append(payload)
                     strategy.process_signal(payload)
                 except Exception as exc:

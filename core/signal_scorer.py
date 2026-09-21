@@ -198,6 +198,8 @@ def score_signal(
             scored.volume_score = 30
         else:
             scored.volume_score = 10
+    else:
+        scored.volume_score = 55
 
     scored.compute_total()
     return scored

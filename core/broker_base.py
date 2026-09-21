@@ -81,6 +81,10 @@ class BrokerError(Exception):
     pass
 
 
+class BrokerAuthError(BrokerError):
+    pass
+
+
 class BrokerRateLimit(BrokerError):
     pass
 
