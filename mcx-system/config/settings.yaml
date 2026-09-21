@@ -1,0 +1,51 @@
+broker:
+  name: "dhan"
+  client_id: "${DHAN_CLIENT_ID}"
+  access_token: "${DHAN_ACCESS_TOKEN}"
+
+risk:
+  max_daily_loss: 5000
+  max_concurrent_positions: 2
+  sl_buffer_pct: 2.5            # wider SL for commodity volatility
+  cooldown_after_losses: 2
+  cooldown_minutes: 30
+  margin_buffer_pct: 20         # commodities need more margin headroom
+
+session:
+  start_time: "09:00"           # MCX opens at 09:00
+  end_time: "23:15"             # square-off before MCX close
+  square_off_time: "23:15"
+
+strategy:
+  name: "omega_mcx"
+  mode: "paper"
+  default_qty_lots: 1
+
+imessage:
+  enabled: true
+  recipient: "tvishnuteja16@gmail.com"
+
+signal_generator:
+  watch: ["GOLD", "CRUDEOIL", "NATURALGAS"]
+  poll_interval: 60
+  st_period: 10
+  st_mult: 3.0
+  adx_len: 14
+  adx_threshold: 22
+  chand_len: 22
+  chand_mult: 3.0
+
+guardrails:
+  capital: 100000
+  max_risk_per_trade_pct: 3.0
+  mcx_allocation_cap: 0.70
+  adx_min_threshold: 18
+  vwap_warmup_time: "09:15"
+  candle_max_staleness_sec: 1200
+  expiry_day_cutoff: "20:00"      # block new 0-DTE entries after 20:00 for MCX
+  natgas_thursday_close: "19:50"  # EIA inventory report window
+  natgas_thursday_reopen: "20:15"
+
+logging:
+  level: "INFO"
+  file: "logs/mcx.log"
