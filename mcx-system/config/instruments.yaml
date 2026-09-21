@@ -1,0 +1,112 @@
+## ── MCX COMMODITY OPTIONS ────────────────────────────────────────────────
+
+instruments:
+  GOLD:
+    exchange: "MCX"
+    segment: "MCX_OPT"
+    asset_class: "commodity_options"
+    lot_size: 1          # 1 gram per lot (mini: GOLDM = 0.1g)
+    strike_step: 100
+    tick_size: 0.5
+    dhan_security_id: ""  # fill from Dhan instrument master
+    expiry_day: "friday"
+    symbol_prefix: "GOLD"
+    session_start: "09:00"
+    session_end: "23:30"
+    square_off: "23:15"
+
+  GOLDM:
+    exchange: "MCX"
+    segment: "MCX_OPT"
+    asset_class: "commodity_options"
+    lot_size: 1
+    strike_step: 50
+    tick_size: 0.5
+    dhan_security_id: ""
+    expiry_day: "friday"
+    symbol_prefix: "GOLDM"
+    session_start: "09:00"
+    session_end: "23:30"
+    square_off: "23:15"
+
+  SILVER:
+    exchange: "MCX"
+    segment: "MCX_OPT"
+    asset_class: "commodity_options"
+    lot_size: 1          # 1 kg
+    strike_step: 500
+    tick_size: 1.0
+    dhan_security_id: ""
+    expiry_day: "friday"
+    symbol_prefix: "SILVER"
+    session_start: "09:00"
+    session_end: "23:30"
+    square_off: "23:15"
+
+  SILVERM:
+    exchange: "MCX"
+    segment: "MCX_OPT"
+    asset_class: "commodity_options"
+    lot_size: 1
+    strike_step: 250
+    tick_size: 1.0
+    dhan_security_id: ""
+    expiry_day: "friday"
+    symbol_prefix: "SILVERM"
+    session_start: "09:00"
+    session_end: "23:30"
+    square_off: "23:15"
+
+  CRUDEOIL:
+    exchange: "MCX"
+    segment: "MCX_OPT"
+    asset_class: "commodity_options"
+    lot_size: 100        # 100 barrels
+    strike_step: 50
+    tick_size: 1.0
+    dhan_security_id: ""
+    expiry_day: "friday"
+    symbol_prefix: "CRUDEOIL"
+    session_start: "09:00"
+    session_end: "23:30"
+    square_off: "23:15"
+
+  CRUDEOILM:
+    exchange: "MCX"
+    segment: "MCX_OPT"
+    asset_class: "commodity_options"
+    lot_size: 10
+    strike_step: 25
+    tick_size: 1.0
+    dhan_security_id: ""
+    expiry_day: "friday"
+    symbol_prefix: "CRUDEOILM"
+    session_start: "09:00"
+    session_end: "23:30"
+    square_off: "23:15"
+
+  NATURALGAS:
+    exchange: "MCX"
+    segment: "MCX_OPT"
+    asset_class: "commodity_options"
+    lot_size: 1250       # 1250 MMBtu
+    strike_step: 5
+    tick_size: 0.1
+    dhan_security_id: ""
+    expiry_day: "friday"
+    symbol_prefix: "NATURALGAS"
+    session_start: "09:00"
+    session_end: "23:30"
+    square_off: "23:15"
+
+## ── COST MODELS ──────────────────────────────────────────────────────────
+
+costs:
+  commodity_options:
+    brokerage_per_order: 20
+    ctt_sell_pct: 0.05          # CTT on sell side (commodity options)
+    exchange_txn_pct: 0.05
+    sebi_per_crore: 10
+    gst_pct: 18
+    stamp_duty_pct: 0.003
+    slippage_ticks: 2

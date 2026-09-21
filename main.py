@@ -390,6 +390,7 @@ def main() -> None:
     started_at = datetime.now(IST).strftime("%H:%M:%S")
 
     update_state(
+        system="indices",
         mode=mode,
         started_at=started_at,
         watching=watch if not args.webhook_only else [],
@@ -436,6 +437,7 @@ def main() -> None:
                     pass
 
             update_state(
+                system="indices",
                 positions=[{
                     "symbol": p.symbol,
                     "direction": p.direction,

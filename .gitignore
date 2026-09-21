@@ -29,3 +29,4 @@ backtest/optimization_results.csv
 # OS
 .DS_Store
 Thumbs.db
+data/dashboard_state.json
