@@ -30,8 +30,6 @@ EXPIRY_DAYS = {
 
 SECTOR_NSE = {"NIFTY", "BANKNIFTY", "FINNIFTY", "SENSEX", "BANKEX",
               "NIFTY_FUT", "BANKNIFTY_FUT"}
-SECTOR_MCX = {"GOLD", "GOLDM", "SILVER", "SILVERM",
-              "CRUDEOIL", "CRUDEOILM", "NATURALGAS"}
 
 INDEX_SYMBOLS = {"NIFTY", "BANKNIFTY", "FINNIFTY", "SENSEX", "BANKEX"}
 
@@ -56,14 +54,11 @@ class Guardrails:
         self,
         capital: float = 100_000,
         max_risk_per_trade_pct: float = 2.0,
-        nse_allocation_cap: float = 0.60,
-        mcx_allocation_cap: float = 0.40,
+        nse_allocation_cap: float = 0.70,
         adx_min_threshold: float = 22.0,
         vwap_warmup_time: str = "09:30",
         candle_max_staleness_sec: float = 330,
         expiry_day_cutoff: str = "12:30",
-        natgas_thursday_close: str = "19:50",
-        natgas_thursday_reopen: str = "20:15",
         event_blackout_minutes_before: int = 15,
         event_blackout_minutes_after: int = 30,
         step_trail_breakeven_pct: float = 20.0,
@@ -73,7 +68,6 @@ class Guardrails:
         self.capital = capital
         self.max_risk_per_trade_pct = max_risk_per_trade_pct
         self.nse_cap = nse_allocation_cap
-        self.mcx_cap = mcx_allocation_cap
         self.adx_min = adx_min_threshold
 
         h, m = map(int, vwap_warmup_time.split(":"))
@@ -84,11 +78,6 @@ class Guardrails:
         eh, em = map(int, expiry_day_cutoff.split(":"))
         self.expiry_cutoff = dt_time(eh, em, tzinfo=IST)
 
-        nch, ncm = map(int, natgas_thursday_close.split(":"))
-        self.ng_close = dt_time(nch, ncm, tzinfo=IST)
-        nrh, nrm = map(int, natgas_thursday_reopen.split(":"))
-        self.ng_reopen = dt_time(nrh, nrm, tzinfo=IST)
-
         self.event_before = event_blackout_minutes_before
         self.event_after = event_blackout_minutes_after
 
@@ -98,55 +87,27 @@ class Guardrails:
 
         self._event_blackouts: list[datetime] = []
         self._allocated_nse: float = 0.0
-        self._allocated_mcx: float = 0.0
         self._recent_index_signals: dict[str, str] = {}
 
     # ── Scenario 1: Capital Allocation Caps (time-aware) ────────────────
 
-    def _get_allocation_caps(self) -> tuple[float, float]:
-        now = datetime.now(IST).timetz()
-        nse_close = dt_time(15, 30, tzinfo=IST)
-        if now < nse_close:
-            return 0.80, 0.20
-        return 0.50, 0.50
-
     def check_sector_allocation(self, symbol: str,
                                 estimated_margin: float) -> GuardrailResult:
-        upper = symbol.upper()
-        nse_pct, mcx_pct = self._get_allocation_caps()
-        if upper in SECTOR_NSE or any(s in upper for s in SECTOR_NSE):
-            cap = self.capital * nse_pct
-            if self._allocated_nse + estimated_margin > cap:
-                return GuardrailResult(
-                    False,
-                    f"NSE allocation cap ₹{cap:,.0f} ({nse_pct:.0%}) would be exceeded "
-                    f"(current: ₹{self._allocated_nse:,.0f} + ₹{estimated_margin:,.0f})",
-                    "sector_allocation",
-                )
-        elif upper in SECTOR_MCX or any(s in upper for s in SECTOR_MCX):
-            cap = self.capital * mcx_pct
-            if self._allocated_mcx + estimated_margin > cap:
-                return GuardrailResult(
-                    False,
-                    f"MCX allocation cap ₹{cap:,.0f} ({mcx_pct:.0%}) would be exceeded "
-                    f"(current: ₹{self._allocated_mcx:,.0f} + ₹{estimated_margin:,.0f})",
-                    "sector_allocation",
-                )
+        cap = self.capital * self.nse_cap
+        if self._allocated_nse + estimated_margin > cap:
+            return GuardrailResult(
+                False,
+                f"Allocation cap ₹{cap:,.0f} ({self.nse_cap:.0%}) would be exceeded "
+                f"(current: ₹{self._allocated_nse:,.0f} + ₹{estimated_margin:,.0f})",
+                "sector_allocation",
+            )
         return PASS
 
     def record_allocation(self, symbol: str, margin: float) -> None:
-        upper = symbol.upper()
-        if upper in SECTOR_NSE or any(s in upper for s in SECTOR_NSE):
-            self._allocated_nse += margin
-        elif upper in SECTOR_MCX or any(s in upper for s in SECTOR_MCX):
-            self._allocated_mcx += margin
+        self._allocated_nse += margin
 
     def release_allocation(self, symbol: str, margin: float) -> None:
-        upper = symbol.upper()
-        if upper in SECTOR_NSE or any(s in upper for s in SECTOR_NSE):
-            self._allocated_nse = max(0, self._allocated_nse - margin)
-        elif upper in SECTOR_MCX or any(s in upper for s in SECTOR_MCX):
-            self._allocated_mcx = max(0, self._allocated_mcx - margin)
+        self._allocated_nse = max(0, self._allocated_nse - margin)
 
     # ── Scenario 2: Per-Trade Risk Cap ───────────────────────────────────
 
@@ -286,58 +247,18 @@ class Guardrails:
             )
         return PASS
 
-    # ── Scenario 11: Natural Gas Thursday Blackout ───────────────────────
-
-    def check_natgas_thursday(self, symbol: str) -> GuardrailResult:
-        if "NATURALGAS" not in symbol.upper():
-            return PASS
-        now = datetime.now(IST)
-        if now.weekday() != 3:  # Thursday
-            return PASS
-        if self.ng_close <= now.timetz() <= self.ng_reopen:
-            return GuardrailResult(
-                False,
-                f"NatGas Thursday blackout: EIA inventory report window "
-                f"{self.ng_close.strftime('%H:%M')}-{self.ng_reopen.strftime('%H:%M')} — "
-                f"no new entries, existing positions auto-closed at {self.ng_close.strftime('%H:%M')}",
-                "natgas_thursday",
-            )
-        return PASS
-
-    def should_close_natgas(self) -> bool:
-        now = datetime.now(IST)
-        if now.weekday() != 3:
-            return False
-        close_window_start = self.ng_close
-        from datetime import timedelta
-        close_check = (datetime.combine(now.date(), self.ng_close,
-                                        tzinfo=IST) - timedelta(minutes=2)).timetz()
-        return close_check <= now.timetz() <= self.ng_close
-
     # ── Scenario 12: Session Kill-Switch (hardcoded times) ───────────────
 
     def check_session_killswitch(self, symbol: str) -> GuardrailResult:
         now = datetime.now(IST)
-        upper = symbol.upper()
-
-        if upper in SECTOR_MCX or any(s in upper for s in SECTOR_MCX):
-            kill_time = dt_time(23, 10, tzinfo=IST)
-            if now.timetz() >= kill_time:
-                return GuardrailResult(
-                    False,
-                    f"MCX session kill-switch: past 23:10 — "
-                    f"no new entries (Dhan MIS auto-square-off at 23:15-23:25)",
-                    "session_killswitch",
-                )
-        else:
-            kill_time = dt_time(15, 10, tzinfo=IST)
-            if now.timetz() >= kill_time:
-                return GuardrailResult(
-                    False,
-                    f"NSE session kill-switch: past 15:10 — "
-                    f"no new entries (square-off imminent)",
-                    "session_killswitch",
-                )
+        kill_time = dt_time(15, 10, tzinfo=IST)
+        if now.timetz() >= kill_time:
+            return GuardrailResult(
+                False,
+                f"Session kill-switch: past 15:10 — "
+                f"no new entries (square-off imminent)",
+                "session_killswitch",
+            )
         return PASS
 
     # ── Scenario 15: Step-Ladder Trailing Stop ───────────────────────────
@@ -407,7 +328,6 @@ class Guardrails:
             self.check_vwap_warmup(symbol),
             self.check_adx_regime(adx_value, symbol),
             self.check_expiry_day(symbol),
-            self.check_natgas_thursday(symbol),
             self.check_session_killswitch(symbol),
             self.check_event_blackout(),
         ]
@@ -450,7 +370,7 @@ class Guardrails:
                     pass
             return False
 
-    # ── Scenario 18: MCX Contract Rollover ───────────────────────────────
+    # ── Scenario 18: Contract Rollover ──────────────────────────────────
 
     def check_contract_rollover(self, symbol: str,
                                 expiry_date: datetime | None = None,
@@ -491,7 +411,6 @@ class Guardrails:
 
     def reset_daily(self) -> None:
         self._allocated_nse = 0.0
-        self._allocated_mcx = 0.0
         self._recent_index_signals.clear()
         self._event_blackouts.clear()
         log.info("Guardrails reset for new trading day")

@@ -34,7 +34,7 @@ DHAN_INDEX_MAP = {
     "NIFTY": ("13", "IDX_I", "INDEX"),
     "BANKNIFTY": ("25", "IDX_I", "INDEX"),
     "FINNIFTY": ("27", "IDX_I", "INDEX"),
-    "SENSEX": ("1", "IDX_I", "INDEX"),
+    "SENSEX": ("51", "IDX_I", "INDEX"),
     "BANKEX": ("12", "IDX_I", "INDEX"),
 }
 
@@ -43,10 +43,6 @@ YAHOO_SYMBOLS = {
     "BANKNIFTY": "^NSEBANK",
     "FINNIFTY": "NIFTY_FIN_SERVICE.NS",
     "SENSEX": "^BSESN",
-    "GOLD": "GC=F",
-    "SILVER": "SI=F",
-    "CRUDEOIL": "CL=F",
-    "NATURALGAS": "NG=F",
 }
 
 _get_corr_group = _get_correlation_group
@@ -266,13 +262,14 @@ class SignalGenerator:
                 raw = self._filter_ghost_candles(raw, inst_name)
                 raw = self._sanitize_outliers(raw, inst_name)
                 return raw[-500:] if len(raw) > 500 else raw
-            log.warning("Dhan fetch empty for %s — falling back to Yahoo", inst_name)
+            log.warning("Dhan fetch empty for %s (token expired or API down?)", inst_name)
 
-        candles = self._fetch_yahoo(inst_name)
-        if candles:
-            candles = self._filter_ghost_candles(candles, inst_name)
-            candles = self._sanitize_outliers(candles, inst_name)
-            return candles[-500:] if len(candles) > 500 else candles
+        if not dhan_info:
+            candles = self._fetch_yahoo(inst_name)
+            if candles:
+                candles = self._filter_ghost_candles(candles, inst_name)
+                candles = self._sanitize_outliers(candles, inst_name)
+                return candles[-500:] if len(candles) > 500 else candles
 
         return []
 
@@ -570,7 +567,7 @@ class SignalGenerator:
                         _holiday_logged = now.date()
                     shutdown_event.wait(timeout=300)
                     continue
-                if not self.calendar.is_nse_open(now) and not self.calendar.is_mcx_open(now):
+                if not self.calendar.is_nse_open(now):
                     if cycle == 0:
                         log.info("Pre/post market — waiting for session open")
                     shutdown_event.wait(timeout=60)
