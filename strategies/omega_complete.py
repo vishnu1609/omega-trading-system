@@ -30,12 +30,15 @@ import time
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
+import re as regex
+
 from core.broker_base import BrokerBase
 from core.instrument_selector import InstrumentSelector
 from core.option_chain import OptionChainResolver, OptionContract
 from core.order_manager import OrderManager, Signal
 from core.position_manager import Position, PositionManager
 from core.risk_engine import RiskEngine
+from core.signal_generator import YAHOO_SYMBOLS
 from core.trade_memory import TradeMemory
 from utils.imessage_alert import IMessageAlert
 
@@ -75,6 +78,30 @@ class OmegaStrategy:
         self.option_chain: OptionChainResolver | None = None
         self.live_feed = None
         self._signal_context: dict[str, dict] = {}
+        self._underlying_cache: dict[str, tuple[float, float]] = {}
+
+    def _get_underlying_ltp(self, symbol: str) -> float:
+        """Extract underlying name from option symbol and fetch its price."""
+        underlying = regex.sub(r'\d*(CE|PE)$', '', symbol).upper()
+        if not underlying:
+            return 0.0
+        now = time.time()
+        cached = self._underlying_cache.get(underlying)
+        if cached and now - cached[1] < 15:
+            return cached[0]
+        yahoo_sym = YAHOO_SYMBOLS.get(underlying)
+        if not yahoo_sym:
+            return 0.0
+        try:
+            import yfinance as yf
+            df = yf.download(yahoo_sym, period='1d', interval='5m', progress=False)
+            if not df.empty:
+                price = float(df['Close'].iloc[-1].iloc[0]) if hasattr(df['Close'].iloc[-1], 'iloc') else float(df['Close'].iloc[-1])
+                self._underlying_cache[underlying] = (price, now)
+                return price
+        except Exception:
+            pass
+        return 0.0
 
     def process_signal(self, payload: dict) -> None:
         """Main entry point — receives a parsed webhook payload."""
@@ -277,7 +304,8 @@ class OmegaStrategy:
                 resp = self.om.place_exit(exit_signal, pos.direction)
                 if resp:
                     price = resp.fill_price if resp.fill_price > 0 else (
-                        pos.current_price if pos.current_price > 0 else pos.entry_price
+                        pos.current_price if pos.current_price > 0 else
+                        self._get_underlying_ltp(pos.symbol) or pos.entry_price
                     )
                     trade = self.pm.close_position(pos.security_id, price, "SIGNAL_EXIT")
                     if trade:
@@ -291,6 +319,8 @@ class OmegaStrategy:
         for pos in self.pm.open_positions:
             try:
                 ltp = self.broker.get_ltp(pos.security_id, pos.exchange_segment)
+                if ltp <= 0:
+                    ltp = self._get_underlying_ltp(pos.symbol)
                 if ltp <= 0:
                     continue
                 self.pm.update_price(pos.security_id, ltp)
