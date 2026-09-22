@@ -40,6 +40,7 @@ class RiskEngine:
         max_daily_loss: float = 5000,
         max_concurrent_positions: int = 2,
         sl_buffer_pct: float = 1.5,
+        trail_pct: float = 0.15,
         cooldown_after_losses: int = 2,
         cooldown_minutes: int = 30,
         margin_buffer_pct: float = 10,
@@ -53,6 +54,7 @@ class RiskEngine:
         self.max_daily_loss = max_daily_loss
         self.max_concurrent = max_concurrent_positions
         self.sl_buffer_pct = sl_buffer_pct
+        self.trail_pct = trail_pct
         self.cooldown_after_losses = cooldown_after_losses
         self.cooldown_minutes = cooldown_minutes
         self.margin_buffer_pct = margin_buffer_pct
@@ -211,7 +213,9 @@ class RiskEngine:
 
     def compute_trail_sl(self, current_price: float, entry_price: float,
                          existing_sl: float, direction: str,
-                         trail_pct: float = 0.8) -> float:
+                         trail_pct: float | None = None) -> float:
+        if trail_pct is None:
+            trail_pct = self.trail_pct
         if direction == "LONG":
             move = current_price - entry_price
             if move <= 0:

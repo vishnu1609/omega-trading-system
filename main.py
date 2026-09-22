@@ -115,7 +115,8 @@ def main() -> None:
         broker=broker,
         max_daily_loss=risk_cfg.get("max_daily_loss", 5000),
         max_concurrent_positions=risk_cfg.get("max_concurrent_positions", 2),
-        sl_buffer_pct=risk_cfg.get("sl_buffer_pct", 1.5),
+        sl_buffer_pct=risk_cfg.get("sl_buffer_pct", 0.3),
+        trail_pct=risk_cfg.get("trail_pct", 0.15),
         cooldown_after_losses=risk_cfg.get("cooldown_after_losses", 2),
         cooldown_minutes=risk_cfg.get("cooldown_minutes", 30),
         margin_buffer_pct=risk_cfg.get("margin_buffer_pct", 10),
@@ -147,12 +148,15 @@ def main() -> None:
     capital = guardrails_cfg.get("capital", 10_000)
     guardrails = Guardrails(
         capital=capital,
-        max_risk_per_trade_pct=guardrails_cfg.get("max_risk_per_trade_pct", 2.0),
+        max_risk_per_trade_pct=guardrails_cfg.get("max_risk_per_trade_pct", 6.0),
         nse_allocation_cap=guardrails_cfg.get("nse_allocation_cap", 0.70),
         adx_min_threshold=guardrails_cfg.get("adx_min_threshold", 22.0),
         vwap_warmup_time=guardrails_cfg.get("vwap_warmup_time", "09:30"),
         candle_max_staleness_sec=guardrails_cfg.get("candle_max_staleness_sec", 330),
         expiry_day_cutoff=guardrails_cfg.get("expiry_day_cutoff", "12:30"),
+        step_trail_breakeven_pct=guardrails_cfg.get("step_trail_breakeven_pct", 0.15),
+        step_trail_lock_pct=guardrails_cfg.get("step_trail_lock_pct", 0.30),
+        step_trail_tight_pct=guardrails_cfg.get("step_trail_tight_pct", 0.50),
     )
     log.info("Guardrails initialized: capital=₹%s, risk/trade=%s%%, ADX min=%s",
              f"{capital:,}", guardrails_cfg.get("max_risk_per_trade_pct", 2.0),
