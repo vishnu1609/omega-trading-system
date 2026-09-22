@@ -35,7 +35,7 @@ imessage:
 
 signal_generator:
   watch: ["NIFTY", "BANKNIFTY", "SENSEX"]
-  poll_interval: 60               # seconds between candle fetches
+  poll_interval: 30               # seconds between candle fetches
   st_period: 10                   # SuperTrend period
   st_mult: 3.0                   # SuperTrend multiplier
   adx_len: 14                    # ADX length
