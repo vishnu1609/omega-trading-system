@@ -330,7 +330,8 @@ class OmegaStrategy:
 
             if self.guardrails:
                 new_trail = self.guardrails.compute_step_trail_sl(
-                    pos.entry_price, ltp, pos.trail_sl, pos.direction)
+                    pos.entry_price, ltp, pos.trail_sl, pos.direction,
+                    trail_pct=self.re.trail_pct)
             else:
                 new_trail = self.re.compute_trail_sl(
                     ltp, pos.entry_price, pos.trail_sl, pos.direction)

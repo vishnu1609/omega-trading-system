@@ -6,7 +6,8 @@ broker:
 risk:
   max_daily_loss: 5000          # 5% of 1L capital — hard stop for the day
   max_concurrent_positions: 2   # max 2 positions at a time
-  sl_buffer_pct: 2.0            # wider SL buffer for options volatility
+  sl_buffer_pct: 0.3            # 0.3% SL for underlying index prices (~₹70 NIFTY, ~₹170 BANKNIFTY)
+  trail_pct: 0.15               # continuous trailing: 0.15% behind current price once in profit zone
   cooldown_after_losses: 2      # consecutive losses before 30-min pause
   cooldown_minutes: 30
   margin_buffer_pct: 15         # require 15% extra margin headroom
@@ -45,12 +46,15 @@ signal_generator:
 
 guardrails:
   capital: 100000                   # 1 lakh capital
-  max_risk_per_trade_pct: 3.0       # max 3% = ₹3,000 risk per trade (option premium SL distance × qty)
+  max_risk_per_trade_pct: 6.0       # 6% = ₹6,000 max risk (underlying prices × lot size needs more room)
   nse_allocation_cap: 0.70          # max 70% = ₹70K in NSE indices
   adx_min_threshold: 18             # suppress signals if ADX < 18 (truly flat/dead market)
   vwap_warmup_time: "09:30"         # wait for 3 candles before trusting VWAP
   candle_max_staleness_sec: 330     # reject signal if candle > 5.5 min old
   expiry_day_cutoff: "12:30"        # block new 0-DTE option entries after 12:30
+  step_trail_breakeven_pct: 0.15    # move SL to breakeven at +0.15% profit (~₹35 NIFTY)
+  step_trail_lock_pct: 0.30         # lock in 0.15% profit at +0.30% gain (~₹70 NIFTY)
+  step_trail_tight_pct: 0.50        # active trailing at +0.50% gain (~₹117 NIFTY)
 
 logging:
   level: "INFO"
