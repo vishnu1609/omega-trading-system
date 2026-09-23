@@ -290,6 +290,15 @@ class OmegaStrategy:
         closed = []
         for pos in self.pm.open_positions:
             if symbol in pos.symbol or pos.strategy == strategy:
+                trail_at_breakeven = (
+                    (pos.direction == "LONG" and pos.trail_sl >= pos.entry_price) or
+                    (pos.direction == "SHORT" and 0 < pos.trail_sl <= pos.entry_price)
+                )
+                if trail_at_breakeven:
+                    log.info("SIGNAL_EXIT skipped for %s — trail at breakeven (SL=%.2f, entry=%.2f), letting trail manage",
+                             pos.symbol, pos.trail_sl, pos.entry_price)
+                    continue
+
                 exit_tag = f"{strategy}_{pos.symbol}_{int(time.time())}_exit"
                 exit_signal = Signal(
                     strategy=strategy,

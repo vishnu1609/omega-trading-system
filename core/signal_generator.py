@@ -217,10 +217,12 @@ class SignalGenerator:
         adx_threshold: int = 25,
         chand_len: int = 22,
         chand_mult: float = 3.0,
+        signal_cooldown_sec: int = 600,
     ):
         self.instruments = instruments
         self.access_token = access_token or os.environ.get("DHAN_ACCESS_TOKEN", "")
         self.poll_interval = poll_interval
+        self.signal_cooldown_sec = signal_cooldown_sec
         self.st_period = st_period
         self.st_mult = st_mult
         self.adx_len = adx_len
@@ -235,6 +237,7 @@ class SignalGenerator:
         })
 
         self._last_signal: dict[str, str] = {}
+        self._signal_time: dict[str, float] = {}
         self._trade_dir: dict[str, int] = {}
         self._scan_count: int = 0
         self._cycle_lock = Lock()
@@ -519,20 +522,27 @@ class SignalGenerator:
                      side, inst_name, format_score_report(scored))
             return payload
 
-        if buy_signal and last != "BUY":
+        now_ts = time.time()
+        last_sig_ts = self._signal_time.get(inst_name, 0)
+        in_cooldown = (now_ts - last_sig_ts) < self.signal_cooldown_sec
+
+        if buy_signal and last != "BUY" and not in_cooldown:
             self._last_signal[inst_name] = "BUY"
+            self._signal_time[inst_name] = now_ts
             side = "BUY" if asset == "futures" else "BUY_CE"
             sl = round(chand_long[i], 2)
             return _build_signal(side, sl, chand_long[i])
 
-        if sell_signal and last != "SELL":
+        if sell_signal and last != "SELL" and not in_cooldown:
             self._last_signal[inst_name] = "SELL"
+            self._signal_time[inst_name] = now_ts
             side = "SELL" if asset == "futures" else "BUY_PE"
             sl = round(chand_short[i], 2)
             return _build_signal(side, sl, chand_short[i])
 
         if (trail_exit_long or trail_exit_short) and last != "EXIT":
             self._last_signal[inst_name] = "EXIT"
+            self._signal_time[inst_name] = now_ts
             log.info("SIGNAL: EXIT %s — trail stop hit", inst_name)
             return {
                 "strategy": strategy,
