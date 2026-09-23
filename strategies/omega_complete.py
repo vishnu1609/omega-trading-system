@@ -310,16 +310,10 @@ class OmegaStrategy:
                     price=0,
                     tag=exit_tag,
                 )
-                resp = self.om.place_exit(exit_signal, pos.direction)
-                if resp:
-                    price = resp.fill_price if resp.fill_price > 0 else (
-                        pos.current_price if pos.current_price > 0 else
-                        self._get_underlying_ltp(pos.symbol) or pos.entry_price
-                    )
-                    trade = self.pm.close_position(pos.security_id, price, "SIGNAL_EXIT")
-                    if trade:
-                        closed.append(trade)
-                        self.tg.sl_hit(trade.symbol, trade.pnl)
+                self._exit_position(pos, pos.current_price if pos.current_price > 0 else
+                                    self._get_underlying_ltp(pos.symbol) or pos.entry_price,
+                                    "SIGNAL_EXIT")
+                closed.append(pos.symbol)
 
         log.info("Exited %d positions on signal", len(closed))
 
