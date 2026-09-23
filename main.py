@@ -290,6 +290,7 @@ def main() -> None:
             adx_threshold=sig_cfg.get("adx_threshold", 25),
             chand_len=sig_cfg.get("chand_len", 22),
             chand_mult=sig_cfg.get("chand_mult", 3.0),
+            signal_cooldown_sec=sig_cfg.get("signal_cooldown_sec", 600),
         )
         sig_gen.set_guardrails(guardrails)
 
