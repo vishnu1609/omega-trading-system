@@ -12,6 +12,13 @@ from zoneinfo import ZoneInfo
 IST = ZoneInfo("Asia/Kolkata")
 log = logging.getLogger(__name__)
 
+
+def _parse_dt(s: str) -> datetime:
+    dt = datetime.fromisoformat(s)
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=IST)
+    return dt
+
 MEMORY_FILE = "data/omega_memory.json"
 
 # Legacy files (auto-migrated on first load)
@@ -661,7 +668,7 @@ class TradeMemory:
 
         now = datetime.now(IST)
         recent = [t for t in self._trades
-                  if (now - datetime.fromisoformat(t.exit_time)).days <= 7]
+                  if (now - _parse_dt(t.exit_time)).days <= 7]
 
         total_wr = self._simple_win_rate(self._trades)
         recent_wr = self._simple_win_rate(recent) if recent else total_wr
@@ -848,7 +855,7 @@ class TradeMemory:
         win_w = 0.0
         for t in trades:
             try:
-                age = (now - datetime.fromisoformat(t.exit_time)).days
+                age = (now - _parse_dt(t.exit_time)).days
             except (ValueError, TypeError):
                 age = 0
             w = math.exp(-0.693 * age / DECAY_HALF_LIFE_DAYS)
