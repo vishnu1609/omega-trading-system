@@ -392,13 +392,21 @@ class OmegaStrategy:
                 log.warning("LTP fetch failed for %s: %s", pos.symbol, exc)
                 continue
 
+            trail_eval = self.re.evaluate_trail(
+                current_price=ltp,
+                entry_price=pos.entry_price,
+                existing_sl=pos.trail_sl,
+                direction=pos.direction,
+                peak_price=pos.peak_price,
+            )
+            pos.peak_price = trail_eval["peak"]
+
             if self.guardrails:
                 new_trail = self.guardrails.compute_step_trail_sl(
-                    pos.entry_price, ltp, pos.trail_sl, pos.direction,
+                    pos.entry_price, ltp, trail_eval["sl"], pos.direction,
                     trail_pct=self.re.trail_pct)
             else:
-                new_trail = self.re.compute_trail_sl(
-                    ltp, pos.entry_price, pos.trail_sl, pos.direction)
+                new_trail = trail_eval["sl"]
             old_trail = pos.trail_sl
             self.pm.update_trail_sl(pos.security_id, new_trail)
 

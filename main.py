@@ -497,6 +497,8 @@ def main() -> None:
                 },
                 risk_metrics=re.get_risk_metrics(
                     capital=guardrails.capital if guardrails else 100000),
+                feed_health=live_feed.get_health_metrics(),
+                broker_metrics=broker.get_broker_metrics() if hasattr(broker, "get_broker_metrics") else {},
             )
 
             if re.all_sessions_done():
