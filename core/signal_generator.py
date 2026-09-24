@@ -409,12 +409,17 @@ class SignalGenerator:
                 raw = self._filter_ghost_candles(raw, inst_name)
                 raw = self._sanitize_outliers(raw, inst_name)
                 return raw[-500:] if len(raw) > 500 else raw
-            log.warning("Dhan fetch empty for %s — falling back to Yahoo", inst_name)
+            log.warning("Dhan fetch empty for %s — falling back to Yahoo (15-20 min delayed!)", inst_name)
 
         candles = self._fetch_yahoo(inst_name)
         if candles:
             candles = self._filter_ghost_candles(candles, inst_name)
             candles = self._sanitize_outliers(candles, inst_name)
+            now = datetime.now(IST)
+            last_candle_age = (now - candles[-1].timestamp.replace(tzinfo=IST) if candles[-1].timestamp.tzinfo is None else now - candles[-1].timestamp).total_seconds()
+            if last_candle_age > 900:
+                log.warning("DELAYED DATA: %s Yahoo candle is %.0fs (%.1f min) old — signals may be stale",
+                            inst_name, last_candle_age, last_candle_age / 60)
             return candles[-500:] if len(candles) > 500 else candles
 
         return []
@@ -441,6 +446,12 @@ class SignalGenerator:
         if ffill_count:
             log.warning("Forward-filled %d ghost candles for %s (flat OHLC)",
                         ffill_count, symbol)
+        recent = cleaned[-20:] if len(cleaned) >= 20 else cleaned
+        recent_ghosts = sum(1 for c in recent if c.volume > 0 and c.volume < 1)
+        ghost_pct = recent_ghosts / len(recent) * 100 if recent else 0
+        if ghost_pct > 40:
+            log.warning("GHOST DATA: %s has %.0f%% ghost candles in last 20 — indicators unreliable",
+                        symbol, ghost_pct)
         return cleaned
 
     @staticmethod
@@ -929,7 +940,7 @@ class SignalGenerator:
                             )
                             scored.append(sc)
 
-                        best = select_best_signals(scored, max_positions=3, min_score=35)
+                        best = select_best_signals(scored, max_positions=3, min_score=40)
 
                         for pick in best:
                             signal_queue.put(pick.raw_signal)

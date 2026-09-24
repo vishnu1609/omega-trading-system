@@ -21,11 +21,11 @@ log = logging.getLogger(__name__)
 IST = ZoneInfo("Asia/Kolkata")
 
 EXPIRY_DAYS = {
-    "NIFTY": 3,       # Thursday = weekday 3
-    "BANKNIFTY": 2,   # Wednesday = weekday 2
-    "FINNIFTY": 1,    # Tuesday = weekday 1
-    "SENSEX": 4,      # Friday = weekday 4
-    "BANKEX": 0,      # Monday = weekday 0
+    "NIFTY": 3,       # Thursday = weekday 3 (weekly expiry — only NSE weekly left post-SEBI Nov 2024)
+    "BANKNIFTY": 3,   # Monthly expiry (last Thursday) — weekly discontinued Nov 2024
+    "FINNIFTY": 3,    # Monthly expiry (last Tuesday→Thursday) — weekly discontinued Nov 2024
+    "SENSEX": 4,      # Friday = weekday 4 (weekly expiry — only BSE weekly left post-SEBI Nov 2024)
+    "BANKEX": 0,      # Monthly expiry — weekly discontinued Nov 2024
 }
 
 SECTOR_NSE = {"NIFTY", "BANKNIFTY", "FINNIFTY", "SENSEX", "BANKEX",

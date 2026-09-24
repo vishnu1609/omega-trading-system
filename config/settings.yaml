@@ -37,7 +37,7 @@ imessage:
 
 signal_generator:
   watch: ["NIFTY", "BANKNIFTY", "SENSEX"]
-  poll_interval: 5                # seconds between candle fetches (fast scan for better market grip)
+  poll_interval: 1                # seconds between candle fetches (1s for maximum precision)
   signal_cooldown_sec: 600        # 10 min cooldown between signals per instrument (prevents whipsaw)
   st_period: 10                   # SuperTrend period
   st_mult: 3.0                   # SuperTrend multiplier

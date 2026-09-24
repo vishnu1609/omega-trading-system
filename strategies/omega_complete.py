@@ -171,6 +171,19 @@ class OmegaStrategy:
             strike=strike,
         )
 
+        correlated = {"NIFTY", "BANKNIFTY", "FINNIFTY", "SENSEX", "BANKEX"}
+        if inst_name and inst_name.upper() in correlated:
+            for pos in self.pm.open_positions:
+                pos_base = None
+                for c in correlated:
+                    if c in pos.symbol.upper():
+                        pos_base = c
+                        break
+                if pos_base and pos_base != inst_name.upper() and pos.direction == direction:
+                    log.warning("Correlated position blocked: %s %s already open with %s %s",
+                                direction, inst_name, pos.direction, pos.symbol)
+                    return
+
         if self.guardrails and entry_price > 0:
             premium_sl = entry_price * 0.50
             risk_check = self.guardrails.check_per_trade_risk(
@@ -188,6 +201,22 @@ class OmegaStrategy:
                 return
 
         if self.memory:
+            exp = self.memory.get_expectancy(trade_symbol)
+            if exp.get("enough_data") and exp.get("win_rate", 0) > 0:
+                kelly_size = self.re.kelly_position_size(
+                    win_rate=exp["win_rate"],
+                    avg_win_r=exp.get("avg_win_r", 1.0),
+                    avg_loss_r=exp.get("avg_loss_r", 1.0),
+                    capital=self.guardrails.capital if self.guardrails else 100000,
+                )
+                max_qty_by_kelly = int(kelly_size / max(entry_price, 1)) if entry_price > 0 else quantity
+                if max_qty_by_kelly < quantity and max_qty_by_kelly >= lot_size:
+                    log.info("Kelly sizing: %d → %d (win=%.0f%%, R:R=%.1f:%.1f)",
+                             quantity, max_qty_by_kelly,
+                             exp["win_rate"] * 100, exp.get("avg_win_r", 0), exp.get("avg_loss_r", 0))
+                    quantity = max_qty_by_kelly
+                    signal.quantity = quantity
+
             now = datetime.now(IST)
             blocked, block_reason = self.memory.should_block(
                 symbol=trade_symbol, side=side,
@@ -211,20 +240,49 @@ class OmegaStrategy:
                 log.info("Position size reduced by memory: %d → %d", original_qty, quantity)
 
         score = payload.get("score", 0)
+        atr_for_sizing = payload.get("atr", 0)
+        confidence_for_risk = payload.get("confidence", "LOW")
+        if atr_for_sizing > 0 and entry_price > 0:
+            risk_pct = {"HIGH": 3.0, "MEDIUM": 2.0, "LOW": 1.0}.get(confidence_for_risk, 1.0)
+            sl_mult_for_sizing = {"HIGH": 2.0, "MEDIUM": 1.5, "LOW": 1.0}.get(confidence_for_risk, 1.0)
+            cap = self.guardrails.capital if self.guardrails else 100000
+            atr_qty = self.re.atr_position_size(
+                capital=cap, risk_pct=risk_pct,
+                entry_price=entry_price, atr_value=atr_for_sizing,
+                sl_multiplier=sl_mult_for_sizing, lot_size=lot_size)
+            if atr_qty < quantity:
+                log.info("ATR position sizing: %d → %d (risk=%.0f%%, ATR=%.2f, %s)",
+                         quantity, atr_qty, risk_pct, atr_for_sizing, confidence_for_risk)
+                quantity = atr_qty
+                signal.quantity = quantity
+
         resp = self.om.place_entry(signal, self.re, instrument=inst_name)
         if not resp:
             return
 
         fill_price = resp.fill_price if resp.fill_price > 0 else entry_price
+        if fill_price <= 0 and asset == "options":
+            log.warning("No option premium available for %s — cannot calculate P&L accurately, skipping trade", trade_symbol)
+            return
         if fill_price <= 0:
             fill_price = underlying_close if underlying_close > 0 else entry_price
         atr_value = payload.get("atr", 0)
+        confidence = payload.get("confidence", "LOW")
+        if confidence == "HIGH":
+            sl_mult, tp_mult = 2.0, 6.0
+        elif confidence == "MEDIUM":
+            sl_mult, tp_mult = 1.5, 3.0
+        else:
+            sl_mult, tp_mult = 1.0, 1.5
+
         if atr_value > 0:
-            sl_price = self.re.compute_atr_sl(fill_price, direction, atr_value, multiplier=1.5)
-            tp_price = self.re.compute_atr_tp(fill_price, direction, atr_value, multiplier=3.0)
+            sl_price = self.re.compute_atr_sl(fill_price, direction, atr_value, multiplier=sl_mult)
+            tp_price = self.re.compute_atr_tp(fill_price, direction, atr_value, multiplier=tp_mult)
         else:
             sl_price = self.re.compute_sl_price(fill_price, direction, confluence_score=score)
             tp_price = self.re.compute_tp_price(fill_price, direction)
+        log.info("Confidence-based SL/TP: %s → SL=%.2f (%.1f×ATR) TP=%.2f (%.1f×ATR)",
+                 confidence, sl_price, sl_mult, tp_price, tp_mult)
 
         position = Position(
             symbol=trade_symbol,
@@ -256,7 +314,7 @@ class OmegaStrategy:
                 log.warning("LiveFeed subscribe failed: %s", e)
 
         if self.memory:
-            self._signal_context[security_id] = {
+            self._signal_context[trade_symbol] = {
                 "signal_score": payload.get("score", 0),
                 "signal_confidence": payload.get("confidence", "LOW"),
                 "adx_value": payload.get("adx", 0),
@@ -272,7 +330,7 @@ class OmegaStrategy:
                 "choppiness": payload.get("choppiness", 50),
             }
 
-        self.om.place_sl_limit(
+        sl_resp = self.om.place_sl_limit(
             security_id=security_id,
             exchange_segment=exchange_seg,
             direction=direction,
@@ -280,6 +338,8 @@ class OmegaStrategy:
             trigger_price=sl_price,
             buffer_pct=2.0,
         )
+        if sl_resp and sl_resp.order_id:
+            position.sl_order_id = sl_resp.order_id
 
         if self.guardrails:
             est_margin = fill_price * quantity
@@ -311,17 +371,6 @@ class OmegaStrategy:
                              pos.symbol, pos.trail_sl, pos.entry_price)
                     continue
 
-                exit_tag = f"{strategy}_{pos.symbol}_{int(time.time())}_exit"
-                exit_signal = Signal(
-                    strategy=strategy,
-                    symbol=pos.symbol,
-                    security_id=pos.security_id,
-                    exchange_segment=pos.exchange_segment,
-                    side="EXIT",
-                    quantity=pos.quantity,
-                    price=0,
-                    tag=exit_tag,
-                )
                 self._exit_position(pos, pos.current_price if pos.current_price > 0 else
                                     self._get_underlying_ltp(pos.symbol) or pos.entry_price,
                                     "SIGNAL_EXIT")
@@ -350,7 +399,27 @@ class OmegaStrategy:
             else:
                 new_trail = self.re.compute_trail_sl(
                     ltp, pos.entry_price, pos.trail_sl, pos.direction)
+            old_trail = pos.trail_sl
             self.pm.update_trail_sl(pos.security_id, new_trail)
+
+            if pos.trail_sl != old_trail and pos.sl_order_id:
+                try:
+                    self.broker.cancel_order(pos.sl_order_id)
+                    sl_resp = self.om.place_sl_limit(
+                        security_id=pos.security_id,
+                        exchange_segment=pos.exchange_segment,
+                        direction=pos.direction,
+                        quantity=pos.quantity,
+                        trigger_price=pos.trail_sl,
+                        buffer_pct=2.0,
+                    )
+                    if sl_resp and sl_resp.order_id:
+                        pos.sl_order_id = sl_resp.order_id
+                    log.info("Broker SL synced: %s %.2f → %.2f (order=%s)",
+                             pos.symbol, old_trail, pos.trail_sl,
+                             sl_resp.order_id if sl_resp else "FAILED")
+                except Exception as e:
+                    log.error("Broker SL sync failed for %s: %s", pos.symbol, e)
 
             if pos.is_sl_hit:
                 log.info("SL HIT: %s %s @ %.2f (SL=%.2f)",
@@ -429,7 +498,7 @@ class OmegaStrategy:
         if not self.memory:
             return
         try:
-            ctx = self._signal_context.pop(pos.security_id, {})
+            ctx = self._signal_context.pop(pos.symbol, self._signal_context.pop(pos.security_id, {}))
             trade_ctx = self.memory.build_trade_context(
                 symbol=pos.symbol, direction=pos.direction,
                 option_type=pos.option_type,
@@ -459,12 +528,26 @@ class OmegaStrategy:
             log.error("Failed to record trade to memory: %s", e)
 
     def auto_select_instrument(self) -> str | None:
+        from core.signal_generator import calc_adx, calc_atr, SignalGenerator
         scores = []
         for name in self.instruments:
+            adx_val = 25.0
+            vol_rank = 0.5
+            try:
+                sg = SignalGenerator(self.instruments, poll_interval=5)
+                candles = sg.fetch_candles(name)
+                if candles and len(candles) > 20:
+                    adx_vals = calc_adx(candles, 14)
+                    adx_val = adx_vals[-1] if adx_vals else 25.0
+                    atr_vals = calc_atr(candles, 14)
+                    atr_pct = (atr_vals[-1] / candles[-1].close * 100) if candles[-1].close > 0 and atr_vals[-1] > 0 else 0.5
+                    vol_rank = min(atr_pct / 2.0, 1.0)
+            except Exception:
+                pass
             scores.append(self.ins_sel.score(
                 name=name,
-                adx=25.0,
-                volume_rank=0.7,
+                adx=adx_val,
+                volume_rank=vol_rank,
                 iv_percentile=40.0,
                 spread_pct=0.3,
             ))

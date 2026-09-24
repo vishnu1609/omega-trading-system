@@ -334,6 +334,18 @@ class RiskEngine:
             return round(entry_price + atr_distance, 2)
         return round(max(entry_price - atr_distance, 0.05), 2)
 
+    def atr_position_size(self, capital: float, risk_pct: float,
+                          entry_price: float, atr_value: float,
+                          sl_multiplier: float = 1.5,
+                          lot_size: int = 75) -> int:
+        if atr_value <= 0 or entry_price <= 0:
+            return lot_size
+        risk_amount = capital * risk_pct / 100
+        atr_distance = atr_value * sl_multiplier
+        raw_qty = risk_amount / atr_distance
+        lots = max(1, int(raw_qty / lot_size))
+        return lots * lot_size
+
     def reset_daily(self) -> None:
         self._bot_killed = False
         self._cooldown_until = None
