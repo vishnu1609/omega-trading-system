@@ -90,6 +90,53 @@ def _stats(closed: list[dict]) -> dict:
             "streak_type": last or "", "profit_factor": round(pf, 2), "expectancy": round(mean)}
 
 
+def _build_risk_html(risk: dict) -> str:
+    if not risk:
+        return ""
+    zone = risk.get("risk_zone", "SAFE")
+    zone_colors = {
+        "SAFE": "#10b981", "ELEVATED": "#f59e0b",
+        "WARNING": "#f97316", "CRITICAL": "#ef4444",
+    }
+    zc = zone_colors.get(zone, "#64748b")
+    pnl = risk.get("daily_pnl", 0)
+    pnl_c = "#10b981" if pnl >= 0 else "#ef4444"
+    loss_pct = risk.get("daily_loss_used_pct", 0)
+    bar_w = min(loss_pct, 100)
+    bar_c = "#10b981" if loss_pct < 30 else ("#f59e0b" if loss_pct < 50 else ("#f97316" if loss_pct < 80 else "#ef4444"))
+    killed = risk.get("bot_killed", False)
+    return f'''
+        <div class="sec-title">Risk Monitor</div>
+        <div class="panel" style="border-left:3px solid {zc}">
+            <div style="display:flex;align-items:center;gap:14px;margin-bottom:12px;flex-wrap:wrap">
+                <span style="background:{zc}22;color:{zc};border:1px solid {zc}44;padding:4px 12px;border-radius:20px;font-weight:700;font-size:12px">{zone}{"  BOT KILLED" if killed else ""}</span>
+                <span style="color:{pnl_c};font-weight:700;font-size:16px">₹{pnl:+,.2f}</span>
+                <span style="color:#64748b;font-size:12px">({risk.get("daily_pnl_pct", 0):+.2f}%)</span>
+            </div>
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px">
+                <div>
+                    <div style="color:#64748b;font-size:10px;text-transform:uppercase;letter-spacing:1px">Daily Loss Used</div>
+                    <div style="position:relative;height:18px;background:#1e293b;border-radius:4px;margin-top:4px;overflow:hidden">
+                        <div style="position:absolute;top:0;left:0;height:100%;width:{bar_w}%;background:{bar_c};opacity:0.4;border-radius:4px"></div>
+                        <span style="position:relative;z-index:1;font-size:12px;font-weight:700;line-height:18px;padding-left:6px">{loss_pct:.0f}%</span>
+                    </div>
+                </div>
+                <div>
+                    <div style="color:#64748b;font-size:10px;text-transform:uppercase;letter-spacing:1px">Trades Today</div>
+                    <div style="font-size:18px;font-weight:700;margin-top:2px">{risk.get("trades_today", 0)} <span style="color:#64748b;font-size:12px">/ {risk.get("trades_today", 0) + risk.get("trades_remaining", 6)}</span></div>
+                </div>
+                <div>
+                    <div style="color:#64748b;font-size:10px;text-transform:uppercase;letter-spacing:1px">Consecutive Losses</div>
+                    <div style="font-size:18px;font-weight:700;margin-top:2px;color:{"#ef4444" if risk.get("consecutive_losses", 0) >= 2 else "#e2e8f0"}">{risk.get("consecutive_losses", 0)}</div>
+                </div>
+                <div>
+                    <div style="color:#64748b;font-size:10px;text-transform:uppercase;letter-spacing:1px">Recovery Needed</div>
+                    <div style="font-size:18px;font-weight:700;margin-top:2px;color:{"#ef4444" if risk.get("drawdown_recovery_pct", 0) > 5 else "#e2e8f0"}">{risk.get("drawdown_recovery_pct", 0):.1f}%</div>
+                </div>
+            </div>
+        </div>'''
+
+
 def _build_system_html(sys_data: dict, sys_name: str, color: str, icon: str) -> str:
     mode = sys_data.get("mode", "paper").upper()
     started = sys_data.get("started_at", "—")
@@ -99,6 +146,7 @@ def _build_system_html(sys_data: dict, sys_name: str, color: str, icon: str) -> 
     closed = sys_data.get("closed_trades", [])
     signals = sys_data.get("signals", [])
     last_update = sys_data.get("last_update", "—")
+    risk = sys_data.get("risk_metrics", {})
 
     total_pnl = sum(t.get("pnl", 0) for t in closed)
     total_trades = len(closed)
@@ -281,6 +329,8 @@ def _build_system_html(sys_data: dict, sys_name: str, color: str, icon: str) -> 
                 {worst_html}
             </div>
         </div>
+
+        {_build_risk_html(risk)}
     </div>'''
 
 

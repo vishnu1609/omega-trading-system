@@ -37,8 +37,9 @@ class RiskEngine:
         self,
         position_manager: PositionManager,
         broker: BrokerBase | None = None,
-        max_daily_loss: float = 5000,
+        max_daily_loss: float = 3000,
         max_concurrent_positions: int = 2,
+        max_daily_trades: int = 6,
         sl_buffer_pct: float = 1.5,
         trail_pct: float = 0.15,
         cooldown_after_losses: int = 2,
@@ -53,6 +54,7 @@ class RiskEngine:
         self.broker = broker
         self.max_daily_loss = max_daily_loss
         self.max_concurrent = max_concurrent_positions
+        self.max_daily_trades = max_daily_trades
         self.sl_buffer_pct = sl_buffer_pct
         self.trail_pct = trail_pct
         self.cooldown_after_losses = cooldown_after_losses
@@ -71,6 +73,9 @@ class RiskEngine:
         self.last_reason: str = ""
         self._cooldown_until: datetime | None = None
         self._bot_killed = False
+        self._daily_trade_count: int = 0
+        self._daily_pnl_history: list[float] = []
+        self._peak_capital: float = 0
         self._gate_lock = threading.Lock()
 
     def register_instrument_session(self, name: str, start: str, square_off: str) -> None:
@@ -138,6 +143,24 @@ class RiskEngine:
         if self.pm.open_count >= self.max_concurrent:
             self.last_reason = f"Max concurrent positions ({self.max_concurrent}) reached"
             return False
+
+        # Gate 5b: Max daily trades (prevent overtrading)
+        if self._daily_trade_count >= self.max_daily_trades:
+            self.last_reason = (
+                f"Max daily trades ({self.max_daily_trades}) reached — "
+                f"quality over quantity, done for the day"
+            )
+            return False
+
+        # Gate 5c: Progressive loss reduction — halve after 50% daily loss used
+        half_loss = self.max_daily_loss / 2
+        if self.pm.daily_pnl <= -half_loss and self.pm.daily_pnl > -self.max_daily_loss:
+            if self.pm.open_count >= 1:
+                self.last_reason = (
+                    f"Half daily loss used (₹{abs(self.pm.daily_pnl):,.0f}/₹{self.max_daily_loss:,.0f}) "
+                    f"— max 1 concurrent position until recovery"
+                )
+                return False
 
         # Gate 6: Stop-loss cap (8-10% of trade amount by confluence score)
         if entry_price > 0 and sl_price > 0:
@@ -239,6 +262,36 @@ class RiskEngine:
             return round(entry_price + reward, 2)
         return round(max(entry_price - reward, 0.05), 2)
 
+    def record_trade_taken(self) -> None:
+        self._daily_trade_count += 1
+
+    def get_risk_metrics(self, capital: float = 100000) -> dict:
+        daily_pnl = self.pm.daily_pnl
+        pnl_pct = (daily_pnl / capital * 100) if capital > 0 else 0
+        loss_used_pct = (abs(min(0, daily_pnl)) / self.max_daily_loss * 100) if self.max_daily_loss > 0 else 0
+        drawdown_recovery_needed = 0
+        if daily_pnl < 0:
+            remaining = capital + daily_pnl
+            drawdown_recovery_needed = ((capital / remaining) - 1) * 100 if remaining > 0 else 999
+        risk_of_ruin_zone = "SAFE"
+        if loss_used_pct > 80:
+            risk_of_ruin_zone = "CRITICAL"
+        elif loss_used_pct > 50:
+            risk_of_ruin_zone = "WARNING"
+        elif loss_used_pct > 30:
+            risk_of_ruin_zone = "ELEVATED"
+        return {
+            "daily_pnl": round(daily_pnl, 2),
+            "daily_pnl_pct": round(pnl_pct, 2),
+            "daily_loss_used_pct": round(loss_used_pct, 1),
+            "drawdown_recovery_pct": round(drawdown_recovery_needed, 2),
+            "trades_today": self._daily_trade_count,
+            "trades_remaining": max(0, self.max_daily_trades - self._daily_trade_count),
+            "consecutive_losses": self.pm.consecutive_losses,
+            "risk_zone": risk_of_ruin_zone,
+            "bot_killed": self._bot_killed,
+        }
+
     def compute_r_multiple(self, entry_price: float, exit_price: float,
                            sl_price: float, direction: str) -> float:
         if entry_price <= 0 or sl_price <= 0:
@@ -284,5 +337,6 @@ class RiskEngine:
     def reset_daily(self) -> None:
         self._bot_killed = False
         self._cooldown_until = None
+        self._daily_trade_count = 0
         self.last_reason = ""
         log.info("Risk engine reset for new trading day")
