@@ -3,7 +3,7 @@ Live HTML Dashboard — served at /dashboard
 
 Two-system view: INDICES and MCX, each with its own stats.
 Uses a shared JSON file so both bots can push state independently.
-Auto-refreshes every 30 seconds.
+Auto-refreshes every 5 seconds.
 """
 from __future__ import annotations
 
@@ -299,7 +299,7 @@ async def dashboard():
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta http-equiv="refresh" content="30">
+<meta http-equiv="refresh" content="5">
 <title>Omega Dashboard</title>
 <style>
 * {{ margin:0; padding:0; box-sizing:border-box; }}
@@ -449,7 +449,7 @@ body {{
     {mcx_html}
 </div>
 
-<div class="footer">Omega Trading System &mdash; Auto-refreshes every 30s</div>
+<div class="footer">Omega Trading System &mdash; Auto-refreshes every 5s</div>
 
 <script>
 function switchSys(id, btn) {{

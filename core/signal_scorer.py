@@ -1,12 +1,17 @@
 """
-Signal Scoring & Selection Engine
+Signal Scoring & Selection Engine — v2 (10-factor)
 
 Scores each signal 0-100 based on:
-  1. ADX strength (trend momentum)
-  2. VWAP proximity (entry quality)
-  3. Risk/Reward ratio (Chandelier stop distance vs potential)
-  4. SuperTrend confidence (how far price is from ST line)
-  5. Volume surge (above-average volume = institutional interest)
+  1. ADX strength (trend momentum)                    — 15%
+  2. VWAP proximity (entry quality)                   — 10%
+  3. Risk/Reward ratio (Chandelier stop vs potential)  — 15%
+  4. SuperTrend confidence (distance from ST line)     — 10%
+  5. Volume surge (institutional interest)             — 10%
+  6. RSI momentum (not overbought/oversold)            — 10%
+  7. Bollinger Band squeeze (volatility breakout)      — 5%
+  8. EMA alignment (9/21 crossover)                    — 5%
+  9. ORB breakout (opening range)                      — 5%
+  10. Confluence count (how many factors agree)         — 15%
 
 When multiple signals fire, picks the best non-correlated set.
 """
@@ -38,6 +43,11 @@ class ScoredSignal:
     rr_score: float = 0.0
     st_score: float = 0.0
     volume_score: float = 0.0
+    rsi_score: float = 0.0
+    bb_score: float = 0.0
+    ema_score: float = 0.0
+    orb_score: float = 0.0
+    confluence_score: float = 0.0
     total_score: float = 0.0
     confidence: str = "LOW"
     category: str = ""
@@ -46,13 +56,18 @@ class ScoredSignal:
 
     def compute_total(self):
         self.total_score = (
-            self.adx_score * 0.25 +
-            self.vwap_score * 0.20 +
-            self.rr_score * 0.25 +
-            self.st_score * 0.15 +
-            self.volume_score * 0.15
+            self.adx_score * 0.15 +
+            self.vwap_score * 0.10 +
+            self.rr_score * 0.15 +
+            self.st_score * 0.10 +
+            self.volume_score * 0.10 +
+            self.rsi_score * 0.10 +
+            self.bb_score * 0.05 +
+            self.ema_score * 0.05 +
+            self.orb_score * 0.05 +
+            self.confluence_score * 0.15
         )
-        if self.total_score >= 75:
+        if self.total_score >= 72:
             self.confidence = "HIGH"
         elif self.total_score >= 55:
             self.confidence = "MEDIUM"
@@ -91,6 +106,14 @@ def score_signal(
     avg_volume: float = 0.0,
     current_volume: float = 0.0,
     atr_value: float = 0.0,
+    rsi_value: float = 50.0,
+    rsi_ob: float = 70.0,
+    rsi_os: float = 30.0,
+    bb_squeeze: bool = False,
+    ema_aligned: bool = False,
+    orb_breakout: bool = False,
+    confluence_count: int = 0,
+    rsi_divergence: bool = False,
 ) -> ScoredSignal:
 
     scored = ScoredSignal(
@@ -116,23 +139,13 @@ def score_signal(
         else:
             scored.adx_score = max(0, adx_value / adx_threshold * 40)
 
-    # 2. VWAP Score (0-100): how well aligned price is with VWAP
+    # 2. VWAP Score (0-100): alignment with VWAP direction
     if close_price > 0 and vwap_price > 0:
         vwap_dist_pct = abs(close_price - vwap_price) / vwap_price * 100
-
         is_buy = "BUY" in side.upper()
         price_above_vwap = close_price > vwap_price
 
-        if is_buy and price_above_vwap:
-            if vwap_dist_pct < 0.3:
-                scored.vwap_score = 95
-            elif vwap_dist_pct < 0.6:
-                scored.vwap_score = 80
-            elif vwap_dist_pct < 1.0:
-                scored.vwap_score = 60
-            else:
-                scored.vwap_score = max(20, 60 - vwap_dist_pct * 10)
-        elif not is_buy and not price_above_vwap:
+        if (is_buy and price_above_vwap) or (not is_buy and not price_above_vwap):
             if vwap_dist_pct < 0.3:
                 scored.vwap_score = 95
             elif vwap_dist_pct < 0.6:
@@ -144,16 +157,11 @@ def score_signal(
         else:
             scored.vwap_score = 20
 
-    # 3. Risk/Reward Score (0-100): chandelier stop distance vs 2x target
+    # 3. Risk/Reward Score (0-100): chandelier stop vs ATR target
     if close_price > 0 and chandelier_stop > 0 and atr_value > 0:
         is_buy = "BUY" in side.upper()
-        if is_buy:
-            risk = abs(close_price - chandelier_stop)
-            reward = atr_value * 2
-        else:
-            risk = abs(chandelier_stop - close_price)
-            reward = atr_value * 2
-
+        risk = abs(close_price - chandelier_stop)
+        reward = atr_value * 2
         if risk > 0:
             rr_ratio = reward / risk
             if rr_ratio >= 3.0:
@@ -167,7 +175,7 @@ def score_signal(
             else:
                 scored.rr_score = 15
 
-    # 4. SuperTrend Score (0-100): distance from ST line = conviction
+    # 4. SuperTrend Score (0-100): distance = conviction
     if close_price > 0 and st_value > 0:
         st_dist_pct = abs(close_price - st_value) / close_price * 100
         if st_dist_pct > 2.0:
@@ -194,6 +202,58 @@ def score_signal(
             scored.volume_score = 10
     else:
         scored.volume_score = 55
+
+    # 6. RSI Score (0-100): momentum quality
+    is_buy = "BUY" in side.upper()
+    if is_buy:
+        if 40 <= rsi_value <= 60:
+            scored.rsi_score = 90
+        elif 30 <= rsi_value < 40:
+            scored.rsi_score = 75
+        elif 60 < rsi_value <= 70:
+            scored.rsi_score = 60
+        elif rsi_value > rsi_ob:
+            scored.rsi_score = 15
+        elif rsi_value < rsi_os:
+            scored.rsi_score = 50
+        else:
+            scored.rsi_score = 40
+    else:
+        if 40 <= rsi_value <= 60:
+            scored.rsi_score = 90
+        elif 60 < rsi_value <= 70:
+            scored.rsi_score = 75
+        elif 30 <= rsi_value < 40:
+            scored.rsi_score = 60
+        elif rsi_value < rsi_os:
+            scored.rsi_score = 15
+        elif rsi_value > rsi_ob:
+            scored.rsi_score = 50
+        else:
+            scored.rsi_score = 40
+    if rsi_divergence:
+        scored.rsi_score = min(100, scored.rsi_score + 20)
+
+    # 7. Bollinger Band Score (0-100): squeeze = breakout potential
+    scored.bb_score = 85 if bb_squeeze else 45
+
+    # 8. EMA Score (0-100): 9/21 alignment
+    scored.ema_score = 90 if ema_aligned else 20
+
+    # 9. ORB Score (0-100): opening range breakout
+    scored.orb_score = 85 if orb_breakout else 40
+
+    # 10. Confluence Score (0-100): how many factors agree
+    if confluence_count >= 6:
+        scored.confluence_score = 100
+    elif confluence_count >= 5:
+        scored.confluence_score = 85
+    elif confluence_count >= 4:
+        scored.confluence_score = 65
+    elif confluence_count >= 3:
+        scored.confluence_score = 40
+    else:
+        scored.confluence_score = 15
 
     scored.compute_total()
     return scored
@@ -229,6 +289,8 @@ def format_score_report(scored: ScoredSignal) -> str:
         f"Score={scored.total_score:.0f}/100 "
         f"(ADX={scored.adx_score:.0f} VWAP={scored.vwap_score:.0f} "
         f"R:R={scored.rr_score:.0f} ST={scored.st_score:.0f} "
-        f"Vol={scored.volume_score:.0f}) "
+        f"Vol={scored.volume_score:.0f} RSI={scored.rsi_score:.0f} "
+        f"BB={scored.bb_score:.0f} EMA={scored.ema_score:.0f} "
+        f"ORB={scored.orb_score:.0f} Conf={scored.confluence_score:.0f}) "
         f"[{scored.category}]"
     )

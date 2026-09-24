@@ -36,7 +36,7 @@ imessage:
 
 signal_generator:
   watch: ["NIFTY", "BANKNIFTY", "SENSEX"]
-  poll_interval: 30               # seconds between candle fetches
+  poll_interval: 5                # seconds between candle fetches (fast scan for better market grip)
   signal_cooldown_sec: 600        # 10 min cooldown between signals per instrument (prevents whipsaw)
   st_period: 10                   # SuperTrend period
   st_mult: 3.0                   # SuperTrend multiplier
@@ -44,6 +44,16 @@ signal_generator:
   adx_threshold: 20              # min ADX for entry (lowered — Yahoo vol=0 skews ADX)
   chand_len: 22                  # Chandelier Exit length
   chand_mult: 3.0                # Chandelier multiplier
+  rsi_period: 14                  # RSI period for momentum
+  rsi_overbought: 70.0            # RSI overbought level — blocks BUY above this
+  rsi_oversold: 30.0              # RSI oversold level — blocks SELL below this
+  bb_period: 20                   # Bollinger Bands period
+  bb_std: 2.0                    # Bollinger Bands standard deviation
+  ema_fast: 9                    # Fast EMA for crossover
+  ema_slow: 21                   # Slow EMA for crossover
+  chop_period: 14                 # Choppiness Index period
+  chop_threshold: 61.8            # Above this = choppy market, signals suppressed
+  orb_minutes: 30                 # Opening Range Breakout window (9:15 + 30 min = 9:45)
 
 guardrails:
   capital: 100000                   # 1 lakh capital
