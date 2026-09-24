@@ -296,6 +296,7 @@ class OmegaStrategy:
             trail_sl=sl_price,
             tp_price=tp_price,
             entry_order_id=resp.order_id,
+            peak_price=fill_price,
             strategy=strategy,
         )
         self.pm.add_position(position)

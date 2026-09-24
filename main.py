@@ -240,6 +240,7 @@ def main() -> None:
                     current_price=entry,
                     sl_price=re.compute_sl_price(entry, direction),
                     trail_sl=re.compute_sl_price(entry, direction),
+                    peak_price=entry,
                     strategy="orphan_sync",
                 )
                 pm.add_position(pos)
@@ -356,8 +357,8 @@ def main() -> None:
                                 os.environ["DHAN_ACCESS_TOKEN"] = new_token
                                 option_chain.update_token(new_token)
                                 live_feed.update_token(new_token)
-                                if hasattr(broker, '_session'):
-                                    broker._session.headers["access-token"] = new_token
+                                if hasattr(broker, '_client'):
+                                    broker._client.headers["access-token"] = new_token
                                 _signals_frozen.clear()
                                 log.info("Token auto-renewed successfully")
                                 tg.send("TOKEN RENEWED\nDhan access token refreshed automatically")
