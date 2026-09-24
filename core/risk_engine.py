@@ -11,10 +11,16 @@ Gates (in order):
   5. Concurrent position limit
   6. Stop-loss cap (8-10% of trade amount, scaled by confluence score)
   7. Category toggle (Index Futures disabled in live mode) + margin check
+
+Trailing stop logic adapted from OpenAlgo's services/risk/position.py:
+- Peak-based trail arming (uses highest/lowest excursion, not current price)
+- Stop-beyond-peak guard (trail can never place SL past the best traded price)
+- NaN/zero/missing price protection (zero is not a price on Indian exchanges)
 """
 from __future__ import annotations
 
 import logging
+import math
 import threading
 from datetime import datetime, time as dt_time, timedelta
 from typing import Any
@@ -236,21 +242,39 @@ class RiskEngine:
 
     def compute_trail_sl(self, current_price: float, entry_price: float,
                          existing_sl: float, direction: str,
-                         trail_pct: float | None = None) -> float:
+                         trail_pct: float | None = None,
+                         peak_price: float = 0.0) -> float:
+        """Compute trailing SL with peak-based arming (OpenAlgo pattern).
+
+        Args:
+            peak_price: Highest price seen (LONG) or lowest (SHORT). When
+                provided, the trail is calculated from the peak — not the
+                current price — so it can never silently widen after a pullback.
+        """
         if trail_pct is None:
             trail_pct = self.trail_pct
-        if direction == "LONG":
-            move = current_price - entry_price
-            if move <= 0:
+        if not _is_valid_price(current_price) or not _is_valid_price(entry_price):
+            return existing_sl
+
+        is_long = direction == "LONG"
+        best = peak_price if _is_valid_price(peak_price) else current_price
+
+        if is_long:
+            best = max(best, current_price)
+            favourable = best - entry_price
+            if favourable <= 0:
                 return existing_sl
-            new_sl = current_price - (current_price * trail_pct / 100)
+            new_sl = best - (best * trail_pct / 100)
+            new_sl = min(new_sl, best)
             return max(round(new_sl, 2), existing_sl)
         else:
-            move = entry_price - current_price
-            if move <= 0:
+            best = min(best, current_price) if _is_valid_price(peak_price) else current_price
+            favourable = entry_price - best
+            if favourable <= 0:
                 return existing_sl
-            new_sl = current_price + (current_price * trail_pct / 100)
-            if existing_sl <= 0:
+            new_sl = best + (best * trail_pct / 100)
+            new_sl = max(new_sl, best)
+            if not _is_valid_price(existing_sl):
                 return round(new_sl, 2)
             return min(round(new_sl, 2), existing_sl)
 
@@ -346,9 +370,75 @@ class RiskEngine:
         lots = max(1, int(raw_qty / lot_size))
         return lots * lot_size
 
+    def evaluate_trail(self, current_price: float, entry_price: float,
+                       existing_sl: float, direction: str,
+                       peak_price: float = 0.0,
+                       trail_step: float = 0.0,
+                       trail_trigger: float = 1.0) -> dict:
+        """Evaluate position trailing stop with full peak-based logic.
+
+        Returns a dict with:
+            sl: new SL price (only ever tightens)
+            peak: updated peak price to store back
+            trail_armed: whether trail trigger has been reached
+            stop_hit: whether current price has hit the SL
+            detail: human-readable status
+        """
+        if not _is_valid_price(current_price) or not _is_valid_price(entry_price):
+            return {"sl": existing_sl, "peak": peak_price,
+                    "trail_armed": False, "stop_hit": False,
+                    "detail": "invalid price"}
+
+        is_long = direction == "LONG"
+        step = trail_step if trail_step > 0 else entry_price * self.trail_pct / 100
+
+        if is_long:
+            peak = max(peak_price, current_price) if _is_valid_price(peak_price) else current_price
+            favourable = max(0, peak - entry_price)
+        else:
+            peak = min(peak_price, current_price) if _is_valid_price(peak_price) else current_price
+            favourable = max(0, entry_price - peak)
+
+        trail_armed = favourable > 0 and favourable >= trail_trigger
+        sl = existing_sl
+        detail = ""
+
+        if trail_armed:
+            if is_long:
+                candidate = peak - step
+                candidate = min(candidate, peak)
+                if not _is_valid_price(sl) or candidate > sl:
+                    detail = f"trail moved {sl:.2f} → {candidate:.2f}"
+                    sl = round(candidate, 2)
+            else:
+                candidate = peak + step
+                candidate = max(candidate, peak)
+                if not _is_valid_price(sl) or candidate < sl:
+                    detail = f"trail moved {sl:.2f} → {candidate:.2f}"
+                    sl = round(candidate, 2)
+
+        stop_hit = False
+        if _is_valid_price(sl):
+            stop_hit = (current_price <= sl) if is_long else (current_price >= sl)
+
+        return {"sl": sl, "peak": peak, "trail_armed": trail_armed,
+                "stop_hit": stop_hit, "detail": detail}
+
     def reset_daily(self) -> None:
         self._bot_killed = False
         self._cooldown_until = None
         self._daily_trade_count = 0
         self.last_reason = ""
         log.info("Risk engine reset for new trading day")
+
+
+def _is_valid_price(value: Any) -> bool:
+    """True when value is a usable, strictly positive, finite price.
+    Adapted from OpenAlgo: zero is not a price on Indian exchanges."""
+    if value is None or isinstance(value, bool):
+        return False
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return False
+    return math.isfinite(number) and number > 0.0

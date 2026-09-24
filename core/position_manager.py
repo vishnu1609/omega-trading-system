@@ -41,6 +41,7 @@ class Position:
     tp_price: float = 0.0
     entry_order_id: str = ""
     sl_order_id: str = ""
+    peak_price: float = 0.0
     entry_time: datetime = field(default_factory=datetime.now)
     strategy: str = ""
 
@@ -228,7 +229,8 @@ class PositionManager:
                         "entry_price": p.entry_price, "current_price": p.current_price,
                         "sl_price": p.sl_price, "trail_sl": p.trail_sl,
                         "tp_price": p.tp_price, "entry_order_id": p.entry_order_id,
-                        "sl_order_id": p.sl_order_id, "strategy": p.strategy,
+                        "sl_order_id": p.sl_order_id, "peak_price": p.peak_price,
+                        "strategy": p.strategy,
                         "entry_time": p.entry_time.isoformat(),
                     } for sid, p in self._open.items()
                 },
@@ -257,6 +259,7 @@ class PositionManager:
                     tp_price=data.get("tp_price", 0),
                     entry_order_id=data.get("entry_order_id", ""),
                     sl_order_id=data.get("sl_order_id", ""),
+                    peak_price=data.get("peak_price", 0),
                     strategy=data.get("strategy", ""),
                     entry_time=datetime.fromisoformat(data["entry_time"]),
                 )
