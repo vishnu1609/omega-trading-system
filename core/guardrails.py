@@ -316,11 +316,48 @@ class Guardrails:
                 return round(new_sl, 2)
             return min(round(new_sl, 2), existing_sl)
 
+    # ── Scenario 19: Time-of-Day Filter ────────────────────────────────────
+
+    def check_time_of_day(self, symbol: str) -> GuardrailResult:
+        now = datetime.now(IST)
+        t = now.timetz()
+
+        opening_end = dt_time(9, 30, tzinfo=IST)
+        if t < opening_end:
+            return GuardrailResult(
+                False,
+                f"Opening chaos filter: {symbol} — first 15min (9:15-9:30) "
+                f"is erratic with gap reactions, waiting for direction",
+                "time_of_day",
+            )
+
+        lunch_start = dt_time(11, 30, tzinfo=IST)
+        lunch_end = dt_time(13, 0, tzinfo=IST)
+        if lunch_start <= t < lunch_end:
+            return GuardrailResult(
+                False,
+                f"Lunch trap filter: {symbol} — 11:30-13:00 has 50% lower volume, "
+                f"choppy low-conviction moves, avoiding new entries",
+                "time_of_day",
+            )
+
+        close_zone = dt_time(14, 50, tzinfo=IST)
+        if t >= close_zone:
+            return GuardrailResult(
+                False,
+                f"Close zone filter: {symbol} — after 14:50, square-off pressure "
+                f"creates erratic moves, no new entries",
+                "time_of_day",
+            )
+
+        return PASS
+
     # ── Combined Pre-Signal Check ────────────────────────────────────────
 
     def pre_signal_check(self, symbol: str, adx_value: float = 0,
                          candle_time: datetime | None = None) -> GuardrailResult:
         checks = [
+            self.check_time_of_day(symbol),
             self.check_vwap_warmup(symbol),
             self.check_adx_regime(adx_value, symbol),
             self.check_expiry_day(symbol),

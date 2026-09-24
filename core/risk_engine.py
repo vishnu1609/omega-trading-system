@@ -239,6 +239,48 @@ class RiskEngine:
             return round(entry_price + reward, 2)
         return round(max(entry_price - reward, 0.05), 2)
 
+    def compute_r_multiple(self, entry_price: float, exit_price: float,
+                           sl_price: float, direction: str) -> float:
+        if entry_price <= 0 or sl_price <= 0:
+            return 0.0
+        initial_risk = abs(entry_price - sl_price)
+        if initial_risk == 0:
+            return 0.0
+        if direction == "LONG":
+            pnl = exit_price - entry_price
+        else:
+            pnl = entry_price - exit_price
+        return round(pnl / initial_risk, 2)
+
+    def kelly_position_size(self, win_rate: float, avg_win_r: float,
+                            avg_loss_r: float, capital: float,
+                            fraction: float = 0.5) -> float:
+        if avg_loss_r == 0 or win_rate <= 0 or win_rate >= 1:
+            return capital * 0.02
+        rr_ratio = abs(avg_win_r / avg_loss_r)
+        kelly_pct = (win_rate * rr_ratio - (1 - win_rate)) / rr_ratio
+        kelly_pct = max(0, min(kelly_pct, 0.25))
+        position_pct = kelly_pct * fraction
+        return round(capital * position_pct, 2)
+
+    def compute_atr_sl(self, entry_price: float, direction: str,
+                       atr_value: float, multiplier: float = 1.5) -> float:
+        if atr_value <= 0:
+            return self.compute_sl_price(entry_price, direction)
+        atr_distance = atr_value * multiplier
+        if direction == "LONG":
+            return round(max(entry_price - atr_distance, 0.05), 2)
+        return round(entry_price + atr_distance, 2)
+
+    def compute_atr_tp(self, entry_price: float, direction: str,
+                       atr_value: float, multiplier: float = 3.0) -> float:
+        if atr_value <= 0:
+            return self.compute_tp_price(entry_price, direction)
+        atr_distance = atr_value * multiplier
+        if direction == "LONG":
+            return round(entry_price + atr_distance, 2)
+        return round(max(entry_price - atr_distance, 0.05), 2)
+
     def reset_daily(self) -> None:
         self._bot_killed = False
         self._cooldown_until = None

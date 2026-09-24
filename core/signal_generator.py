@@ -279,6 +279,30 @@ def detect_rsi_divergence(candles: list[Candle], rsi_vals: list[float],
     return bullish_div, bearish_div
 
 
+def calc_keltner(candles: list[Candle], period: int = 20,
+                 multiplier: float = 1.5) -> tuple[list[float], list[float], list[float]]:
+    closes = [c.close for c in candles]
+    mid = _ema(closes, period)
+    atr_vals = calc_atr(candles, period)
+    n = len(candles)
+    upper = [0.0] * n
+    lower = [0.0] * n
+    for i in range(n):
+        upper[i] = mid[i] + multiplier * atr_vals[i]
+        lower[i] = mid[i] - multiplier * atr_vals[i]
+    return mid, upper, lower
+
+
+def detect_ttm_squeeze(bb_upper: list[float], bb_lower: list[float],
+                       kc_upper: list[float], kc_lower: list[float]) -> list[bool]:
+    n = len(bb_upper)
+    squeeze = [False] * n
+    for i in range(n):
+        if bb_upper[i] > 0 and kc_upper[i] > 0:
+            squeeze[i] = bb_lower[i] > kc_lower[i] and bb_upper[i] < kc_upper[i]
+    return squeeze
+
+
 def calc_chandelier(candles: list[Candle], period: int = 22,
                     multiplier: float = 3.0) -> tuple[list[float], list[float]]:
     atr_vals = calc_atr(candles, period)
@@ -649,8 +673,10 @@ class SignalGenerator:
         rsi_overbought = rsi_vals[i] > self.rsi_ob
         rsi_oversold = rsi_vals[i] < self.rsi_os
 
-        bb_squeeze = False
-        if len(bb_widths) > 20:
+        kc_mid, kc_upper, kc_lower = calc_keltner(candles, self.bb_period, 1.5)
+        ttm_squeeze = detect_ttm_squeeze(bb_upper, bb_lower, kc_upper, kc_lower)
+        bb_squeeze = ttm_squeeze[i]
+        if not bb_squeeze and len(bb_widths) > 20:
             recent_avg_width = sum(bb_widths[i - 20:i]) / 20 if i >= 20 else bb_widths[i]
             bb_squeeze = bb_widths[i] < recent_avg_width * 0.75
 

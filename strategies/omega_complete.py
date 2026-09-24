@@ -218,8 +218,13 @@ class OmegaStrategy:
         fill_price = resp.fill_price if resp.fill_price > 0 else entry_price
         if fill_price <= 0:
             fill_price = underlying_close if underlying_close > 0 else entry_price
-        sl_price = self.re.compute_sl_price(fill_price, direction, confluence_score=score)
-        tp_price = self.re.compute_tp_price(fill_price, direction)
+        atr_value = payload.get("atr", 0)
+        if atr_value > 0:
+            sl_price = self.re.compute_atr_sl(fill_price, direction, atr_value, multiplier=1.5)
+            tp_price = self.re.compute_atr_tp(fill_price, direction, atr_value, multiplier=3.0)
+        else:
+            sl_price = self.re.compute_sl_price(fill_price, direction, confluence_score=score)
+            tp_price = self.re.compute_tp_price(fill_price, direction)
 
         position = Position(
             symbol=trade_symbol,
@@ -258,6 +263,12 @@ class OmegaStrategy:
                 "supertrend_dir": payload.get("supertrend_dir", "UNKNOWN"),
                 "volume_ratio": payload.get("volume_ratio", 1.0),
                 "atr_value": payload.get("atr", 0),
+                "rsi_value": payload.get("rsi", 50),
+                "bb_squeeze": payload.get("bb_squeeze", False),
+                "ema_aligned": payload.get("ema_aligned", False),
+                "orb_breakout": payload.get("orb_breakout", False),
+                "confluence_count": payload.get("bull_factors", 0) or payload.get("bear_factors", 0),
+                "choppiness": payload.get("choppiness", 50),
             }
 
         self.om.place_sl_limit(
