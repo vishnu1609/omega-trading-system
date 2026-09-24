@@ -719,6 +719,7 @@ class TradeMemory:
             "active_bans": len(active_bans),
             "drawdown_factor": drawdown,
             "kelly_overall": self.get_kelly_sizing(""),
+            "expectancy": self.get_expectancy(),
             "alerts": alerts,
             "recommended_score_threshold": self._recommended_threshold(total_wr, streak),
         }
@@ -882,6 +883,34 @@ class TradeMemory:
     def _avg_r_multiple(self) -> float:
         valid = [t for t in self._trades if t.r_multiple != 0]
         return sum(t.r_multiple for t in valid) / len(valid) if valid else 0.0
+
+    def get_expectancy(self, symbol: str = "") -> dict:
+        base = _extract_base(symbol) if symbol else ""
+        subset = [t for t in self._trades if base and base in t.symbol.upper()] if base else self._trades
+        if len(subset) < MIN_SAMPLE_SIZE:
+            return {"expectancy_r": 0, "expectancy_inr": 0, "sample": len(subset), "enough_data": False}
+        wins = [t for t in subset if t.is_win]
+        losses = [t for t in subset if not t.is_win]
+        win_rate = len(wins) / len(subset) if subset else 0
+        avg_win = sum(t.pnl for t in wins) / len(wins) if wins else 0
+        avg_loss = sum(abs(t.pnl) for t in losses) / len(losses) if losses else 0
+        expectancy_inr = (win_rate * avg_win) - ((1 - win_rate) * avg_loss)
+        avg_win_r = sum(t.r_multiple for t in wins) / len(wins) if wins else 0
+        avg_loss_r = sum(abs(t.r_multiple) for t in losses) / len(losses) if losses else 0
+        expectancy_r = (win_rate * avg_win_r) - ((1 - win_rate) * avg_loss_r)
+        profit_factor = (sum(t.pnl for t in wins) / sum(abs(t.pnl) for t in losses)) if losses and sum(abs(t.pnl) for t in losses) > 0 else 0
+        return {
+            "expectancy_r": round(expectancy_r, 3),
+            "expectancy_inr": round(expectancy_inr, 2),
+            "win_rate": round(win_rate, 3),
+            "avg_win_r": round(avg_win_r, 2),
+            "avg_loss_r": round(avg_loss_r, 2),
+            "avg_win_inr": round(avg_win, 2),
+            "avg_loss_inr": round(avg_loss, 2),
+            "profit_factor": round(profit_factor, 2),
+            "sample": len(subset),
+            "enough_data": True,
+        }
 
     @staticmethod
     def _pattern_label(dimension: str, value: Any) -> str:
