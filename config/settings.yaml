@@ -4,8 +4,9 @@ broker:
   access_token: "${DHAN_ACCESS_TOKEN}"
 
 risk:
-  max_daily_loss: 5000          # 5% of 1L capital — hard stop for the day
+  max_daily_loss: 3000          # 3% of 1L — hard stop. At 5% you need 5.26% to recover, 3% needs only 3.09%
   max_concurrent_positions: 2   # max 2 positions at a time
+  max_daily_trades: 6           # prevent overtrading — 6 quality trades > 20 mediocre ones
   sl_buffer_pct: 0.3            # 0.3% SL for underlying index prices (~₹70 NIFTY, ~₹170 BANKNIFTY)
   trail_pct: 0.15               # continuous trailing: 0.15% behind current price once in profit zone
   cooldown_after_losses: 2      # consecutive losses before 30-min pause
@@ -57,7 +58,7 @@ signal_generator:
 
 guardrails:
   capital: 100000                   # 1 lakh capital
-  max_risk_per_trade_pct: 6.0       # 6% = ₹6,000 max risk (underlying prices × lot size needs more room)
+  max_risk_per_trade_pct: 3.0        # 3% = ₹3,000 max risk. At 6%, 5 losses = 26% drawdown (fatal). At 3%, 5 losses = 14% (survivable)
   nse_allocation_cap: 0.70          # max 70% = ₹70K in NSE indices
   adx_min_threshold: 18             # suppress signals if ADX < 18 (truly flat/dead market)
   vwap_warmup_time: "09:30"         # wait for 3 candles before trusting VWAP

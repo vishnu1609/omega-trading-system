@@ -113,8 +113,9 @@ def main() -> None:
     re = RiskEngine(
         position_manager=pm,
         broker=broker,
-        max_daily_loss=risk_cfg.get("max_daily_loss", 5000),
+        max_daily_loss=risk_cfg.get("max_daily_loss", 3000),
         max_concurrent_positions=risk_cfg.get("max_concurrent_positions", 2),
+        max_daily_trades=risk_cfg.get("max_daily_trades", 6),
         sl_buffer_pct=risk_cfg.get("sl_buffer_pct", 0.3),
         trail_pct=risk_cfg.get("trail_pct", 0.15),
         cooldown_after_losses=risk_cfg.get("cooldown_after_losses", 2),
@@ -474,7 +475,10 @@ def main() -> None:
                 memory={
                     "health": memory.get_health_report(),
                     "insights": memory.get_insights(),
+                    "expectancy": memory.get_expectancy(),
                 },
+                risk_metrics=re.get_risk_metrics(
+                    capital=guardrails.capital if guardrails else 100000),
             )
 
             if re.all_sessions_done():

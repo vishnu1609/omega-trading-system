@@ -241,6 +241,7 @@ class OmegaStrategy:
             strategy=strategy,
         )
         self.pm.add_position(position)
+        self.re.record_trade_taken()
 
         if self.live_feed and contract and contract.security_id.isdigit():
             try:
