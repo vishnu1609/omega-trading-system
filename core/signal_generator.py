@@ -766,6 +766,11 @@ class SignalGenerator:
                 dynamic_sl = round(close + atr_sl, 2)
                 sl = min(sl, dynamic_sl) if sl > 0 else dynamic_sl
 
+            vwap_pos = "ABOVE" if close > vwap_vals[i] else "BELOW" if close < vwap_vals[i] else "AT"
+            st_direction = "BULLISH" if st_dir[i] < 0 else "BEARISH" if st_dir[i] > 0 else "NEUTRAL"
+            cur_vol = candles[i].volume if candles[i].volume > 0 else 1
+            vol_ratio = round(cur_vol / avg_vol, 2) if avg_vol > 0 else 1.0
+
             payload = {
                 "strategy": strategy,
                 "symbol": inst_name,
@@ -775,6 +780,10 @@ class SignalGenerator:
                 "asset": asset,
                 "strike": 0,
                 "atr": round(atr_vals[i], 2),
+                "adx": round(adx_vals[i], 2),
+                "vwap_position": vwap_pos,
+                "supertrend_dir": st_direction,
+                "volume_ratio": vol_ratio,
                 "rsi": round(rsi_vals[i], 1),
                 "bb_squeeze": bb_squeeze,
                 "choppiness": round(chop_vals[i], 1),
