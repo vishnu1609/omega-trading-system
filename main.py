@@ -291,6 +291,16 @@ def main() -> None:
             chand_len=sig_cfg.get("chand_len", 22),
             chand_mult=sig_cfg.get("chand_mult", 3.0),
             signal_cooldown_sec=sig_cfg.get("signal_cooldown_sec", 600),
+            rsi_period=sig_cfg.get("rsi_period", 14),
+            rsi_ob=sig_cfg.get("rsi_overbought", 70.0),
+            rsi_os=sig_cfg.get("rsi_oversold", 30.0),
+            bb_period=sig_cfg.get("bb_period", 20),
+            bb_std=sig_cfg.get("bb_std", 2.0),
+            ema_fast=sig_cfg.get("ema_fast", 9),
+            ema_slow=sig_cfg.get("ema_slow", 21),
+            chop_period=sig_cfg.get("chop_period", 14),
+            chop_threshold=sig_cfg.get("chop_threshold", 61.8),
+            orb_minutes=sig_cfg.get("orb_minutes", 30),
         )
         sig_gen.set_guardrails(guardrails)
 
