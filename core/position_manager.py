@@ -14,12 +14,16 @@ premium prices, not the underlying index price.
 """
 from __future__ import annotations
 
+import json
 import logging
 import threading
 from dataclasses import dataclass, field
 from datetime import datetime
+from pathlib import Path
 
 log = logging.getLogger(__name__)
+
+POSITIONS_FILE = "data/paper_positions.json"
 
 
 @dataclass
@@ -36,6 +40,7 @@ class Position:
     trail_sl: float = 0.0
     tp_price: float = 0.0
     entry_order_id: str = ""
+    sl_order_id: str = ""
     entry_time: datetime = field(default_factory=datetime.now)
     strategy: str = ""
 
@@ -212,6 +217,62 @@ class PositionManager:
         losses = sum(1 for t in self._closed if t.pnl < 0)
         return wins, losses
 
+    def save_state(self) -> None:
+        try:
+            state = {
+                "open": {
+                    sid: {
+                        "symbol": p.symbol, "security_id": p.security_id,
+                        "exchange_segment": p.exchange_segment, "option_type": p.option_type,
+                        "direction": p.direction, "quantity": p.quantity,
+                        "entry_price": p.entry_price, "current_price": p.current_price,
+                        "sl_price": p.sl_price, "trail_sl": p.trail_sl,
+                        "tp_price": p.tp_price, "entry_order_id": p.entry_order_id,
+                        "sl_order_id": p.sl_order_id, "strategy": p.strategy,
+                        "entry_time": p.entry_time.isoformat(),
+                    } for sid, p in self._open.items()
+                },
+                "closed_count": len(self._closed),
+            }
+            Path(POSITIONS_FILE).parent.mkdir(parents=True, exist_ok=True)
+            Path(POSITIONS_FILE).write_text(json.dumps(state, indent=2))
+        except Exception as e:
+            log.error("Failed to save position state: %s", e)
+
+    def load_state(self) -> int:
+        try:
+            path = Path(POSITIONS_FILE)
+            if not path.exists():
+                return 0
+            state = json.loads(path.read_text())
+            loaded = 0
+            for sid, data in state.get("open", {}).items():
+                pos = Position(
+                    symbol=data["symbol"], security_id=data["security_id"],
+                    exchange_segment=data["exchange_segment"],
+                    option_type=data["option_type"], direction=data["direction"],
+                    quantity=data["quantity"], entry_price=data["entry_price"],
+                    current_price=data.get("current_price", 0),
+                    sl_price=data["sl_price"], trail_sl=data.get("trail_sl", 0),
+                    tp_price=data.get("tp_price", 0),
+                    entry_order_id=data.get("entry_order_id", ""),
+                    sl_order_id=data.get("sl_order_id", ""),
+                    strategy=data.get("strategy", ""),
+                    entry_time=datetime.fromisoformat(data["entry_time"]),
+                )
+                self._open[sid] = pos
+                loaded += 1
+            if loaded:
+                log.info("Restored %d position(s) from disk", loaded)
+            return loaded
+        except Exception as e:
+            log.error("Failed to load position state: %s", e)
+            return 0
+
     def reset_daily(self) -> None:
         self._open.clear()
         self._closed.clear()
+        try:
+            Path(POSITIONS_FILE).unlink(missing_ok=True)
+        except Exception:
+            pass

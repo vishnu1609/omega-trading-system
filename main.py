@@ -106,6 +106,9 @@ def main() -> None:
     broker = create_broker(mode, settings.get("broker", {}))
 
     pm = PositionManager()
+    restored = pm.load_state()
+    if restored:
+        log.info("Restored %d paper position(s) from previous session", restored)
 
     risk_cfg = settings.get("risk", {})
     session_cfg = settings.get("session", {})
@@ -404,6 +407,7 @@ def main() -> None:
     _last_margin_sync = 0
     signals_log: list[dict] = []
     started_at = datetime.now(IST).strftime("%H:%M:%S")
+    _last_trading_date = datetime.now(IST).date()
 
     update_state(
         system="indices",
@@ -414,6 +418,19 @@ def main() -> None:
 
     try:
         while not shutdown_event.is_set():
+            today = datetime.now(IST).date()
+            if today != _last_trading_date:
+                log.info("New trading day detected: %s → %s", _last_trading_date, today)
+                re.reset_daily()
+                pm.reset_daily()
+                guardrails.reset_daily()
+                if sig_gen:
+                    sig_gen._orb_levels.clear()
+                    sig_gen._last_signal.clear()
+                    sig_gen._trade_dir.clear()
+                signals_log.clear()
+                _last_trading_date = today
+
             while not signal_queue.empty():
                 try:
                     payload = signal_queue.get_nowait()
@@ -429,6 +446,7 @@ def main() -> None:
 
             try:
                 strategy.monitor_positions()
+                pm.save_state()
             except Exception as exc:
                 log.error("Position monitoring error: %s", exc)
                 tg.error("monitor_positions", exc)
