@@ -1,17 +1,19 @@
 """
-Signal Scoring & Selection Engine — v2 (10-factor)
+Signal Scoring & Selection Engine — v3 (12-factor)
 
 Scores each signal 0-100 based on:
-  1. ADX strength (trend momentum)                    — 15%
-  2. VWAP proximity (entry quality)                   — 10%
-  3. Risk/Reward ratio (Chandelier stop vs potential)  — 15%
-  4. SuperTrend confidence (distance from ST line)     — 10%
+  1. ADX strength (trend momentum)                    — 12%
+  2. VWAP proximity (entry quality)                   — 8%
+  3. Risk/Reward ratio (Chandelier stop vs potential)  — 12%
+  4. SuperTrend confidence (distance from ST line)     — 8%
   5. Volume surge (institutional interest)             — 10%
-  6. RSI momentum (not overbought/oversold)            — 10%
+  6. RSI momentum (not overbought/oversold)            — 8%
   7. Bollinger Band squeeze (volatility breakout)      — 5%
   8. EMA alignment (9/21 crossover)                    — 5%
   9. ORB breakout (opening range)                      — 5%
-  10. Confluence count (how many factors agree)         — 15%
+  10. Confluence count (how many factors agree)         — 12%
+  11. Time-of-day quality (ML book: minute-of-day)     — 10%
+  12. Momentum spread (acceleration detection)         — 5%
 
 When multiple signals fire, picks the best non-correlated set.
 """
@@ -48,6 +50,8 @@ class ScoredSignal:
     ema_score: float = 0.0
     orb_score: float = 0.0
     confluence_score: float = 0.0
+    time_score: float = 0.0
+    momentum_spread_score: float = 0.0
     total_score: float = 0.0
     confidence: str = "LOW"
     category: str = ""
@@ -56,16 +60,18 @@ class ScoredSignal:
 
     def compute_total(self):
         self.total_score = (
-            self.adx_score * 0.15 +
-            self.vwap_score * 0.10 +
-            self.rr_score * 0.15 +
-            self.st_score * 0.10 +
+            self.adx_score * 0.12 +
+            self.vwap_score * 0.08 +
+            self.rr_score * 0.12 +
+            self.st_score * 0.08 +
             self.volume_score * 0.10 +
-            self.rsi_score * 0.10 +
+            self.rsi_score * 0.08 +
             self.bb_score * 0.05 +
             self.ema_score * 0.05 +
             self.orb_score * 0.05 +
-            self.confluence_score * 0.15
+            self.confluence_score * 0.12 +
+            self.time_score * 0.10 +
+            self.momentum_spread_score * 0.05
         )
         if self.total_score >= 72:
             self.confidence = "HIGH"
@@ -114,6 +120,9 @@ def score_signal(
     orb_breakout: bool = False,
     confluence_count: int = 0,
     rsi_divergence: bool = False,
+    signal_hour: int = -1,
+    signal_minute: int = -1,
+    momentum_spread: float = 0.0,
 ) -> ScoredSignal:
 
     scored = ScoredSignal(
@@ -255,6 +264,42 @@ def score_signal(
     else:
         scored.confluence_score = 15
 
+    # 11. Time-of-day Score (0-100): NSE intraday edge windows
+    if signal_hour >= 0:
+        t = signal_hour * 60 + (signal_minute if signal_minute >= 0 else 0)
+        if 570 <= t < 630:       # 9:30-10:30 — trend establishment
+            scored.time_score = 90
+        elif 630 <= t < 690:     # 10:30-11:30 — still good
+            scored.time_score = 75
+        elif 690 <= t < 810:     # 11:30-13:30 — choppy lunch
+            scored.time_score = 30
+        elif 810 <= t < 870:     # 13:30-14:30 — afternoon revival
+            scored.time_score = 65
+        elif 870 <= t < 910:     # 14:30-15:10 — closing momentum
+            scored.time_score = 80
+        else:
+            scored.time_score = 40
+    else:
+        scored.time_score = 50
+
+    # 12. Momentum Spread Score (0-100): acceleration detection
+    if momentum_spread != 0:
+        is_buy = "BUY" in side.upper()
+        if (is_buy and momentum_spread > 0) or (not is_buy and momentum_spread < 0):
+            abs_spread = abs(momentum_spread)
+            if abs_spread > 0.5:
+                scored.momentum_spread_score = 95
+            elif abs_spread > 0.3:
+                scored.momentum_spread_score = 80
+            elif abs_spread > 0.1:
+                scored.momentum_spread_score = 60
+            else:
+                scored.momentum_spread_score = 45
+        else:
+            scored.momentum_spread_score = 20
+    else:
+        scored.momentum_spread_score = 50
+
     scored.compute_total()
     return scored
 
@@ -291,6 +336,7 @@ def format_score_report(scored: ScoredSignal) -> str:
         f"R:R={scored.rr_score:.0f} ST={scored.st_score:.0f} "
         f"Vol={scored.volume_score:.0f} RSI={scored.rsi_score:.0f} "
         f"BB={scored.bb_score:.0f} EMA={scored.ema_score:.0f} "
-        f"ORB={scored.orb_score:.0f} Conf={scored.confluence_score:.0f}) "
+        f"ORB={scored.orb_score:.0f} Conf={scored.confluence_score:.0f} "
+        f"Time={scored.time_score:.0f} Mom={scored.momentum_spread_score:.0f}) "
         f"[{scored.category}]"
     )

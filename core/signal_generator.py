@@ -771,6 +771,16 @@ class SignalGenerator:
 
         avg_vol = sum(c.volume for c in candles[-20:]) / 20 if len(candles) >= 20 else 1
 
+        ret_1 = (candles[i].close - candles[i - 1].close) / candles[i - 1].close * 100 if i >= 1 and candles[i - 1].close > 0 else 0
+        ret_10 = (candles[i].close - candles[max(0, i - 10)].close) / candles[max(0, i - 10)].close * 100 if i >= 10 and candles[i - 10].close > 0 else 0
+        mom_spread = round(ret_10 - ret_1, 4)
+
+        sig_time = candles[i].timestamp
+        if hasattr(sig_time, 'astimezone'):
+            sig_time = sig_time.astimezone(IST)
+        sig_hour = sig_time.hour
+        sig_minute = sig_time.minute
+
         def _build_signal(side: str, sl: float, chand_stop: float) -> dict:
             atr_sl = atr_vals[i] * 1.5
             if "BUY" in side.upper():
@@ -820,9 +830,13 @@ class SignalGenerator:
                 orb_breakout=(orb_bull if "BUY" in side.upper() else orb_bear),
                 confluence_count=(bull_factors if "BUY" in side.upper() else bear_factors),
                 rsi_divergence=(bull_div if "BUY" in side.upper() else bear_div),
+                signal_hour=sig_hour,
+                signal_minute=sig_minute,
+                momentum_spread=mom_spread,
             )
             payload["score"] = round(scored.total_score, 1)
             payload["confidence"] = scored.confidence
+            payload["momentum_spread"] = mom_spread
             payload["score_details"] = {
                 "adx": round(scored.adx_score, 1),
                 "vwap": round(scored.vwap_score, 1),
@@ -834,6 +848,8 @@ class SignalGenerator:
                 "ema": round(scored.ema_score, 1),
                 "orb": round(scored.orb_score, 1),
                 "confluence": round(scored.confluence_score, 1),
+                "time": round(scored.time_score, 1),
+                "momentum": round(scored.momentum_spread_score, 1),
             }
             log.info("SIGNAL: %s %s — %s",
                      side, inst_name, format_score_report(scored))

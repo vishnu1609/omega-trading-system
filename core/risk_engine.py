@@ -76,6 +76,9 @@ class RiskEngine:
 
         self._instrument_sessions: dict[str, tuple[dt_time, dt_time]] = {}
 
+        self.max_exposure_pct: float = 80.0
+        self.symbol_cooldown_minutes: int = 15
+
         self.last_reason: str = ""
         self._cooldown_until: datetime | None = None
         self._bot_killed = False
@@ -83,6 +86,7 @@ class RiskEngine:
         self._daily_pnl_history: list[float] = []
         self._peak_capital: float = 0
         self._gate_lock = threading.Lock()
+        self._symbol_cooldowns: dict[str, datetime] = {}
 
     def register_instrument_session(self, name: str, start: str, square_off: str) -> None:
         sh, sm = map(int, start.split(":"))
@@ -198,8 +202,44 @@ class RiskEngine:
                 log.warning(self.last_reason)
                 return False
 
+        # Gate 8: Portfolio exposure cap
+        if estimated_margin > 0 and self.broker:
+            try:
+                total_margin = self.broker.get_available_margin()
+                open_exposure = sum(
+                    p.entry_price * p.quantity for p in self.pm.open_positions)
+                if total_margin > 0:
+                    exposure_pct = (open_exposure + estimated_margin) / total_margin * 100
+                    if exposure_pct > self.max_exposure_pct:
+                        self.last_reason = (
+                            f"Portfolio exposure cap: {exposure_pct:.0f}% "
+                            f"(max {self.max_exposure_pct:.0f}%)"
+                        )
+                        return False
+            except Exception:
+                pass
+
+        # Gate 9: Per-symbol post-SL cooldown
+        check_sym = symbol or instrument
+        if check_sym and check_sym in self._symbol_cooldowns:
+            cooldown_end = self._symbol_cooldowns[check_sym]
+            if now < cooldown_end:
+                remaining = (cooldown_end - now).total_seconds() / 60
+                self.last_reason = (
+                    f"Symbol cooldown: {check_sym} had SL hit — "
+                    f"blocked for {remaining:.0f} more min"
+                )
+                return False
+            else:
+                del self._symbol_cooldowns[check_sym]
+
         self.last_reason = ""
         return True
+
+    def record_symbol_sl(self, symbol: str) -> None:
+        self._symbol_cooldowns[symbol] = (
+            datetime.now(IST) + timedelta(minutes=self.symbol_cooldown_minutes)
+        )
 
     def clamp_sl_price(self, entry_price: float, sl_price: float,
                        direction: str, confluence_score: float = 0) -> float:
@@ -472,6 +512,7 @@ class RiskEngine:
         self._bot_killed = False
         self._cooldown_until = None
         self._daily_trade_count = 0
+        self._symbol_cooldowns.clear()
         self.last_reason = ""
         log.info("Risk engine reset for new trading day")
 

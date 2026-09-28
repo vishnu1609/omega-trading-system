@@ -586,6 +586,8 @@ class OmegaStrategy:
         self.om.place_exit(exit_signal, pos.direction)
         trade = self.pm.close_position(pos.security_id, price, reason)
         if trade:
+            if reason in ("TRAIL_SL", "SL_SKIP_EMERGENCY") and trade.pnl < 0:
+                self.re.record_symbol_sl(pos.symbol)
             if self.guardrails:
                 est_margin = pos.entry_price * pos.quantity
                 self.guardrails.release_allocation(pos.symbol, est_margin)
