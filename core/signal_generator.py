@@ -373,10 +373,12 @@ class SignalGenerator:
         self.chop_threshold = chop_threshold
         self.orb_minutes = orb_minutes
 
+        self._client_id = os.environ.get("DHAN_CLIENT_ID", "")
         self._session = requests.Session()
         self._session.headers.update({
             "Content-Type": "application/json",
             "access-token": self.access_token,
+            "client-id": self._client_id,
         })
 
         self._last_signal: dict[str, str] = {}
@@ -537,7 +539,7 @@ class SignalGenerator:
     def _fetch_dhan(self, security_id: str, exchange_segment: str,
                     instrument_type: str) -> list[Candle]:
         today = datetime.now(IST)
-        from_date = (today - timedelta(days=7)).strftime("%Y-%m-%d")
+        from_date = (today - timedelta(days=5)).strftime("%Y-%m-%d")
         payload = {
             "securityId": security_id,
             "exchangeSegment": exchange_segment,
@@ -546,13 +548,25 @@ class SignalGenerator:
             "toDate": today.strftime("%Y-%m-%d"),
         }
 
-        try:
-            resp = self._session.post(DHAN_CHART_URL, json=payload, timeout=10)
-            if resp.status_code != 200:
+        data = None
+        for attempt in range(3):
+            try:
+                resp = self._session.post(DHAN_CHART_URL, json=payload, timeout=10)
+                if resp.status_code == 429:
+                    time.sleep(2 * (attempt + 1))
+                    continue
+                if resp.status_code != 200:
+                    return []
+                data = resp.json()
+                break
+            except Exception as exc:
+                if attempt < 2:
+                    time.sleep(1)
+                    continue
+                log.error("Dhan candle fetch failed after 3 attempts: %s", exc)
                 return []
-            data = resp.json()
-        except Exception as exc:
-            log.error("Dhan candle fetch failed: %s", exc)
+
+        if data is None:
             return []
 
         timestamps = data.get("timestamp", [])

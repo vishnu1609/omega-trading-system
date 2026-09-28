@@ -361,28 +361,56 @@ class RiskEngine:
     def atr_position_size(self, capital: float, risk_pct: float,
                           entry_price: float, atr_value: float,
                           sl_multiplier: float = 1.5,
-                          lot_size: int = 75) -> int:
+                          lot_size: int = 75,
+                          fee_rate: float = 0.0005) -> int:
         if atr_value <= 0 or entry_price <= 0:
             return lot_size
         risk_amount = capital * risk_pct / 100
+        risk_amount *= (1 - fee_rate * 3)
         atr_distance = atr_value * sl_multiplier
         raw_qty = risk_amount / atr_distance
         lots = max(1, int(raw_qty / lot_size))
         return lots * lot_size
 
+    def time_decay_tp(self, original_tp: float, entry_price: float,
+                      direction: str, hold_minutes: float) -> float:
+        """Reduce TP target as hold time increases (Freqtrade ROI table pattern).
+
+        Options lose value over time due to theta, so waiting for
+        a large TP becomes increasingly unlikely.
+        """
+        if hold_minutes < 15 or original_tp <= 0 or entry_price <= 0:
+            return original_tp
+
+        tp_distance = abs(original_tp - entry_price)
+
+        if hold_minutes < 30:
+            decay = 0.75
+        elif hold_minutes < 60:
+            decay = 0.50
+        elif hold_minutes < 120:
+            decay = 0.25
+        else:
+            decay = 0.10
+
+        reduced_distance = tp_distance * decay
+        if direction == "LONG":
+            return round(entry_price + reduced_distance, 2)
+        return round(max(entry_price - reduced_distance, 0.05), 2)
+
     def evaluate_trail(self, current_price: float, entry_price: float,
                        existing_sl: float, direction: str,
                        peak_price: float = 0.0,
                        trail_step: float = 0.0,
-                       trail_trigger: float = 1.0) -> dict:
-        """Evaluate position trailing stop with full peak-based logic.
+                       trail_trigger: float = 1.0,
+                       atr_value: float = 0.0) -> dict:
+        """ATR-based trailing stop with phased progression.
 
-        Returns a dict with:
-            sl: new SL price (only ever tightens)
-            peak: updated peak price to store back
-            trail_armed: whether trail trigger has been reached
-            stop_hit: whether current price has hit the SL
-            detail: human-readable status
+        Phases (based on profit in ATR multiples):
+          < 1.0× ATR: no trail change (let trade develop)
+          1.0× ATR: move SL to breakeven
+          2.0× ATR: lock 1.0× ATR profit
+          3.0× ATR+: tight trail at 1.5× ATR from peak
         """
         if not _is_valid_price(current_price) or not _is_valid_price(entry_price):
             return {"sl": existing_sl, "peak": peak_price,
@@ -390,7 +418,7 @@ class RiskEngine:
                     "detail": "invalid price"}
 
         is_long = direction == "LONG"
-        step = trail_step if trail_step > 0 else entry_price * self.trail_pct / 100
+        atr = atr_value if atr_value > 0 else entry_price * 0.02
 
         if is_long:
             peak = max(peak_price, current_price) if _is_valid_price(peak_price) else current_price
@@ -399,29 +427,45 @@ class RiskEngine:
             peak = min(peak_price, current_price) if _is_valid_price(peak_price) else current_price
             favourable = max(0, entry_price - peak)
 
-        trail_armed = favourable > 0 and favourable >= trail_trigger
+        atr_multiples = favourable / atr if atr > 0 else 0
         sl = existing_sl
         detail = ""
 
-        if trail_armed:
+        if atr_multiples >= 3.0:
             if is_long:
-                candidate = peak - step
-                candidate = min(candidate, peak)
-                if not _is_valid_price(sl) or candidate > sl:
-                    detail = f"trail moved {sl:.2f} → {candidate:.2f}"
-                    sl = round(candidate, 2)
+                candidate = peak - (1.5 * atr)
             else:
-                candidate = peak + step
-                candidate = max(candidate, peak)
-                if not _is_valid_price(sl) or candidate < sl:
-                    detail = f"trail moved {sl:.2f} → {candidate:.2f}"
-                    sl = round(candidate, 2)
+                candidate = peak + (1.5 * atr)
+            detail = f"tight trail (3×ATR): {sl:.2f} → {candidate:.2f}"
+        elif atr_multiples >= 2.0:
+            if is_long:
+                candidate = entry_price + (1.0 * atr)
+            else:
+                candidate = entry_price - (1.0 * atr)
+            detail = f"lock profit (2×ATR): {sl:.2f} → {candidate:.2f}"
+        elif atr_multiples >= 1.0:
+            candidate = entry_price
+            detail = f"breakeven (1×ATR): {sl:.2f} → {candidate:.2f}"
+        else:
+            candidate = sl
+
+        candidate = round(candidate, 2)
+        if is_long:
+            if _is_valid_price(candidate) and candidate > sl:
+                sl = candidate
+            else:
+                detail = ""
+        else:
+            if _is_valid_price(candidate) and (sl <= 0 or candidate < sl):
+                sl = candidate
+            else:
+                detail = ""
 
         stop_hit = False
         if _is_valid_price(sl):
             stop_hit = (current_price <= sl) if is_long else (current_price >= sl)
 
-        return {"sl": sl, "peak": peak, "trail_armed": trail_armed,
+        return {"sl": sl, "peak": peak, "trail_armed": atr_multiples >= 1.0,
                 "stop_hit": stop_hit, "detail": detail}
 
     def reset_daily(self) -> None:

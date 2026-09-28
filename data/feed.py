@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import csv
 import logging
+import os
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -87,11 +88,12 @@ class DhanHistorical:
 
     BASE = "https://api.dhan.co/v2"
 
-    def __init__(self, access_token: str):
+    def __init__(self, access_token: str, client_id: str = ""):
         self.session = requests.Session()
         self.session.headers.update({
             "Content-Type": "application/json",
             "access-token": access_token,
+            "client-id": client_id or os.environ.get("DHAN_CLIENT_ID", ""),
         })
 
     def get_candles(self, security_id: str, exchange_segment: str,

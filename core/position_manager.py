@@ -44,6 +44,9 @@ class Position:
     peak_price: float = 0.0
     entry_time: datetime = field(default_factory=datetime.now)
     strategy: str = ""
+    atr_value: float = 0.0
+    partial_exit_done: bool = False
+    original_quantity: int = 0
 
     @property
     def is_long(self) -> bool:

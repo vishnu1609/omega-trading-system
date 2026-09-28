@@ -272,49 +272,12 @@ class Guardrails:
         prev_candle_low: float = 0,
         brokerage: float = 40,
         trail_pct: float = 0.15,
+        atr_value: float = 0.0,
     ) -> float:
         if entry_price <= 0 or current_price <= 0:
             return existing_sl
 
-        if direction == "LONG":
-            pnl_pct = (current_price - entry_price) / entry_price * 100
-
-            if pnl_pct >= self.step_tight:
-                trail_sl = current_price - (current_price * trail_pct / 100)
-                if prev_candle_low > 0 and prev_candle_low > entry_price:
-                    new_sl = max(prev_candle_low, trail_sl)
-                else:
-                    new_sl = trail_sl
-            elif pnl_pct >= self.step_lock:
-                lock_amount = entry_price * self.step_breakeven / 100
-                new_sl = entry_price + lock_amount
-            elif pnl_pct >= self.step_breakeven:
-                new_sl = entry_price + (brokerage / max(1, entry_price))
-            else:
-                return existing_sl
-
-            return max(round(new_sl, 2), existing_sl)
-
-        else:  # SHORT
-            pnl_pct = (entry_price - current_price) / entry_price * 100
-
-            if pnl_pct >= self.step_tight:
-                trail_sl = current_price + (current_price * trail_pct / 100)
-                if prev_candle_low > 0 and prev_candle_low < entry_price:
-                    new_sl = min(prev_candle_low, trail_sl)
-                else:
-                    new_sl = trail_sl
-            elif pnl_pct >= self.step_lock:
-                lock_amount = entry_price * self.step_breakeven / 100
-                new_sl = entry_price - lock_amount
-            elif pnl_pct >= self.step_breakeven:
-                new_sl = entry_price - (brokerage / max(1, entry_price))
-            else:
-                return existing_sl
-
-            if existing_sl <= 0:
-                return round(new_sl, 2)
-            return min(round(new_sl, 2), existing_sl)
+        return existing_sl
 
     # ── Scenario 19: Time-of-Day Filter ────────────────────────────────────
 

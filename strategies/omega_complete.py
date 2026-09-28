@@ -40,6 +40,8 @@ from core.position_manager import Position, PositionManager
 from core.risk_engine import RiskEngine
 from core.signal_generator import YAHOO_SYMBOLS
 from core.trade_memory import TradeMemory
+from core.database import OmegaDB
+from core.wallet import Wallet
 from utils.imessage_alert import IMessageAlert
 
 log = logging.getLogger(__name__)
@@ -63,6 +65,7 @@ class OmegaStrategy:
         mode: str = "paper",
         guardrails=None,
         trade_memory: TradeMemory | None = None,
+        wallet: Wallet | None = None,
     ):
         self.broker = broker
         self.om = order_manager
@@ -75,6 +78,7 @@ class OmegaStrategy:
         self.mode = mode
         self.guardrails = guardrails
         self.memory = trade_memory
+        self.wallet = wallet
         self.option_chain: OptionChainResolver | None = None
         self.live_feed = None
         self._signal_context: dict[str, dict] = {}
@@ -112,13 +116,20 @@ class OmegaStrategy:
         sl = payload.get("sl", 0)
         asset = payload.get("asset", "options")
 
-        log.info("Signal received: %s %s strike=%s sl=%s asset=%s",
-                 side, symbol, strike, sl, asset)
+        confidence = payload.get("confidence", "LOW")
+        score = payload.get("score", 0)
+        log.info("Signal received: %s %s strike=%s sl=%s asset=%s conf=%s score=%.0f",
+                 side, symbol, strike, sl, asset, confidence, score)
 
         underlying_close = payload.get("close", 0)
 
         if side == "EXIT":
             self._handle_exit(symbol, strategy)
+            return
+
+        if confidence == "LOW" or score < 55:
+            log.info("Signal rejected: %s %s — confidence=%s score=%.0f (need MEDIUM+ and score>=55)",
+                     side, symbol, confidence, score)
             return
 
         inst_name = self._resolve_instrument(symbol)
@@ -271,9 +282,9 @@ class OmegaStrategy:
         if confidence == "HIGH":
             sl_mult, tp_mult = 2.0, 6.0
         elif confidence == "MEDIUM":
-            sl_mult, tp_mult = 1.5, 3.0
+            sl_mult, tp_mult = 1.5, 4.5
         else:
-            sl_mult, tp_mult = 1.0, 1.5
+            sl_mult, tp_mult = 1.5, 3.0
 
         if atr_value > 0:
             sl_price = self.re.compute_atr_sl(fill_price, direction, atr_value, multiplier=sl_mult)
@@ -298,9 +309,30 @@ class OmegaStrategy:
             entry_order_id=resp.order_id,
             peak_price=fill_price,
             strategy=strategy,
+            atr_value=atr_value if atr_value > 0 else fill_price * 0.02,
+            original_quantity=quantity,
         )
         self.pm.add_position(position)
         self.re.record_trade_taken()
+
+        if self.wallet:
+            margin = fill_price * quantity
+            self.wallet.deduct_margin(margin, trade_symbol)
+
+        try:
+            db = OmegaDB.get()
+            db.upsert_position(
+                security_id=security_id, symbol=trade_symbol,
+                exchange_segment=exchange_seg, option_type=option_type,
+                direction=direction, quantity=quantity,
+                entry_price=fill_price, current_price=0,
+                sl_price=position.sl_price, trail_sl=position.trail_sl,
+                tp_price=position.tp_price, peak_price=fill_price,
+                entry_order_id=resp.order_id, strategy=strategy,
+                entry_time=position.entry_time.isoformat(),
+            )
+        except Exception as e:
+            log.warning("DB position upsert failed: %s", e)
 
         if self.live_feed and contract and contract.security_id.isdigit():
             try:
@@ -372,20 +404,21 @@ class OmegaStrategy:
                              pos.symbol, pos.trail_sl, pos.entry_price)
                     continue
 
-                self._exit_position(pos, pos.current_price if pos.current_price > 0 else
-                                    self._get_underlying_ltp(pos.symbol) or pos.entry_price,
-                                    "SIGNAL_EXIT")
+                exit_price = pos.current_price if pos.current_price > 0 else pos.entry_price
+                ltp = self.broker.get_ltp(pos.security_id, pos.exchange_segment)
+                if ltp > 0:
+                    exit_price = ltp
+                self._exit_position(pos, exit_price, "SIGNAL_EXIT")
                 closed.append(pos.symbol)
 
         log.info("Exited %d positions on signal", len(closed))
 
     def monitor_positions(self) -> None:
         """Called periodically to check SL/TP/trail on open positions."""
+        now = datetime.now(IST)
         for pos in self.pm.open_positions:
             try:
                 ltp = self.broker.get_ltp(pos.security_id, pos.exchange_segment)
-                if ltp <= 0:
-                    ltp = self._get_underlying_ltp(pos.symbol)
                 if ltp <= 0:
                     continue
                 self.pm.update_price(pos.security_id, ltp)
@@ -393,22 +426,28 @@ class OmegaStrategy:
                 log.warning("LTP fetch failed for %s: %s", pos.symbol, exc)
                 continue
 
+            hold_seconds = (now - pos.entry_time).total_seconds()
+            hold_minutes = hold_seconds / 60
+
             trail_eval = self.re.evaluate_trail(
                 current_price=ltp,
                 entry_price=pos.entry_price,
                 existing_sl=pos.trail_sl,
                 direction=pos.direction,
                 peak_price=pos.peak_price,
+                atr_value=pos.atr_value,
             )
             pos.peak_price = trail_eval["peak"]
 
-            if self.guardrails:
-                new_trail = self.guardrails.compute_step_trail_sl(
-                    pos.entry_price, ltp, trail_eval["sl"], pos.direction,
-                    trail_pct=self.re.trail_pct)
-            else:
-                new_trail = trail_eval["sl"]
+            new_trail = trail_eval["sl"]
             old_trail = pos.trail_sl
+
+            if new_trail != old_trail and hold_seconds < 180:
+                atr = pos.atr_value if pos.atr_value > 0 else pos.entry_price * 0.02
+                favourable = (ltp - pos.entry_price) if pos.direction == "LONG" else (pos.entry_price - ltp)
+                if favourable < 2.0 * atr:
+                    new_trail = old_trail
+
             self.pm.update_trail_sl(pos.security_id, new_trail)
 
             if pos.trail_sl != old_trail and pos.sl_order_id:
@@ -430,14 +469,35 @@ class OmegaStrategy:
                 except Exception as e:
                     log.error("Broker SL sync failed for %s: %s", pos.symbol, e)
 
+            if trail_eval["detail"]:
+                log.info("Trail: %s %s hold=%.0fs ATR=%.2f | %s",
+                         pos.direction, pos.symbol, hold_seconds,
+                         pos.atr_value, trail_eval["detail"])
+
+            atr = pos.atr_value if pos.atr_value > 0 else pos.entry_price * 0.02
+            favourable = (ltp - pos.entry_price) if pos.direction == "LONG" else (pos.entry_price - ltp)
+
+            if not pos.partial_exit_done and favourable >= 2.0 * atr:
+                lot_size = self._get_lot_size(pos.symbol)
+                half_qty = max(lot_size, (pos.quantity // 2) // lot_size * lot_size)
+                if half_qty < pos.quantity:
+                    log.info("PARTIAL EXIT: %s %s — profit %.1f×ATR, exiting %d of %d @ %.2f",
+                             pos.direction, pos.symbol, favourable / atr,
+                             half_qty, pos.quantity, ltp)
+                    self._partial_exit(pos, half_qty, ltp)
+
+            decayed_tp = self.re.time_decay_tp(
+                pos.tp_price, pos.entry_price, pos.direction, hold_minutes)
+
             if pos.is_sl_hit:
-                log.info("SL HIT: %s %s @ %.2f (SL=%.2f)",
-                         pos.direction, pos.symbol, ltp, pos.trail_sl)
+                log.info("SL HIT: %s %s @ %.2f (SL=%.2f) hold=%.0fs",
+                         pos.direction, pos.symbol, ltp, pos.trail_sl, hold_seconds)
                 self._exit_position(pos, ltp, "TRAIL_SL")
 
-            elif pos.is_tp_hit:
-                log.info("TP HIT: %s %s @ %.2f (TP=%.2f)",
-                         pos.direction, pos.symbol, ltp, pos.tp_price)
+            elif self._check_tp_hit(pos, ltp, decayed_tp):
+                log.info("TP HIT: %s %s @ %.2f (TP=%.2f, decayed from %.2f) hold=%.0fs",
+                         pos.direction, pos.symbol, ltp, decayed_tp,
+                         pos.tp_price, hold_seconds)
                 self._exit_position(pos, ltp, "TP")
 
             elif self._is_sl_skipped(pos, ltp):
@@ -445,6 +505,50 @@ class OmegaStrategy:
                              "emergency exit at LTP-1%%",
                              pos.direction, pos.symbol, ltp, pos.trail_sl)
                 self._exit_position(pos, ltp, "SL_SKIP_EMERGENCY")
+
+    def _check_tp_hit(self, pos, ltp: float, decayed_tp: float) -> bool:
+        if decayed_tp <= 0 or ltp <= 0:
+            return False
+        if pos.direction == "LONG":
+            return ltp >= decayed_tp
+        return ltp <= decayed_tp
+
+    def _get_lot_size(self, symbol: str) -> int:
+        upper = symbol.upper()
+        for name, cfg in self.instruments.items():
+            if name in upper:
+                return cfg.get("lot_size", 75)
+        return 75
+
+    def _partial_exit(self, pos, exit_qty: int, price: float) -> None:
+        exit_tag = f"{pos.strategy}_{pos.symbol}_{int(time.time())}_partial"
+        exit_signal = Signal(
+            strategy=pos.strategy,
+            symbol=pos.symbol,
+            security_id=pos.security_id,
+            exchange_segment=pos.exchange_segment,
+            side="EXIT",
+            quantity=exit_qty,
+            price=0,
+            tag=exit_tag,
+        )
+        self.om.place_exit(exit_signal, pos.direction)
+
+        pnl = (price - pos.entry_price) * exit_qty if pos.direction == "LONG" \
+            else (pos.entry_price - price) * exit_qty
+        pos.quantity -= exit_qty
+        pos.partial_exit_done = True
+
+        if self.wallet:
+            margin_released = pos.entry_price * exit_qty
+            self.wallet.release_margin(margin_released, pnl, pos.symbol, "PARTIAL_TP")
+
+        self.tg.sl_hit(pos.symbol, round(pnl, 2), reason="PARTIAL_TP",
+                       entry=pos.entry_price, exit_price=price,
+                       duration=f"partial {exit_qty}qty")
+
+        log.info("PARTIAL EXIT done: %s pnl=₹%.2f, remaining qty=%d",
+                 pos.symbol, pnl, pos.quantity)
 
     def _is_sl_skipped(self, pos, ltp: float) -> bool:
         active_sl = pos.trail_sl if pos.trail_sl > 0 else pos.sl_price
@@ -462,7 +566,9 @@ class OmegaStrategy:
             return
         log.info("SQUARE OFF: closing %d positions", self.pm.open_count)
         for pos in self.pm.open_positions:
-            ltp = pos.current_price if pos.current_price > 0 else pos.entry_price
+            ltp = self.broker.get_ltp(pos.security_id, pos.exchange_segment)
+            if ltp <= 0:
+                ltp = pos.current_price if pos.current_price > 0 else pos.entry_price
             self._exit_position(pos, ltp, "SQUARE_OFF")
 
     def _exit_position(self, pos: Position, price: float, reason: str) -> None:
@@ -483,6 +589,24 @@ class OmegaStrategy:
             if self.guardrails:
                 est_margin = pos.entry_price * pos.quantity
                 self.guardrails.release_allocation(pos.symbol, est_margin)
+            if self.wallet:
+                margin = pos.entry_price * pos.quantity
+                self.wallet.release_margin(margin, trade.pnl, pos.symbol, reason)
+            try:
+                db = OmegaDB.get()
+                db.record_trade(
+                    symbol=trade.symbol, direction=trade.direction,
+                    option_type=trade.option_type, quantity=trade.quantity,
+                    entry_price=trade.entry_price, exit_price=trade.exit_price,
+                    pnl=trade.pnl,
+                    entry_time=trade.entry_time.isoformat(),
+                    exit_time=trade.exit_time.isoformat(),
+                    exit_reason=reason, strategy=pos.strategy,
+                    balance_after=self.wallet.balance if self.wallet else 0,
+                )
+                db.delete_position(pos.security_id)
+            except Exception as e:
+                log.warning("DB trade record failed: %s", e)
             duration = ""
             if hasattr(trade, "entry_time") and hasattr(trade, "exit_time"):
                 try:
