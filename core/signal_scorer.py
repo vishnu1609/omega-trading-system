@@ -97,6 +97,17 @@ def _categorize(symbol: str) -> str:
     return "INDICES"
 
 
+def _is_bullish(side: str) -> bool:
+    """Determine market direction from signal side.
+    BUY/BUY_CE/SELL_PE = bullish, SELL/BUY_PE/SELL_CE = bearish."""
+    s = side.upper()
+    if "PE" in s:
+        return "SELL" in s
+    if "CE" in s:
+        return "BUY" in s
+    return "BUY" in s
+
+
 def score_signal(
     symbol: str,
     side: str,
@@ -149,12 +160,12 @@ def score_signal(
             scored.adx_score = max(0, adx_value / adx_threshold * 40)
 
     # 2. VWAP Score (0-100): alignment with VWAP direction
+    bullish = _is_bullish(side)
     if close_price > 0 and vwap_price > 0:
         vwap_dist_pct = abs(close_price - vwap_price) / vwap_price * 100
-        is_buy = "BUY" in side.upper()
         price_above_vwap = close_price > vwap_price
 
-        if (is_buy and price_above_vwap) or (not is_buy and not price_above_vwap):
+        if (bullish and price_above_vwap) or (not bullish and not price_above_vwap):
             if vwap_dist_pct < 0.3:
                 scored.vwap_score = 95
             elif vwap_dist_pct < 0.6:
@@ -168,7 +179,6 @@ def score_signal(
 
     # 3. Risk/Reward Score (0-100): chandelier stop vs ATR target
     if close_price > 0 and chandelier_stop > 0 and atr_value > 0:
-        is_buy = "BUY" in side.upper()
         risk = abs(close_price - chandelier_stop)
         reward = atr_value * 2
         if risk > 0:
@@ -213,8 +223,7 @@ def score_signal(
         scored.volume_score = 55
 
     # 6. RSI Score (0-100): momentum quality
-    is_buy = "BUY" in side.upper()
-    if is_buy:
+    if bullish:
         if 40 <= rsi_value <= 60:
             scored.rsi_score = 90
         elif 30 <= rsi_value < 40:
@@ -284,8 +293,7 @@ def score_signal(
 
     # 12. Momentum Spread Score (0-100): acceleration detection
     if momentum_spread != 0:
-        is_buy = "BUY" in side.upper()
-        if (is_buy and momentum_spread > 0) or (not is_buy and momentum_spread < 0):
+        if (bullish and momentum_spread > 0) or (not bullish and momentum_spread < 0):
             abs_spread = abs(momentum_spread)
             if abs_spread > 0.5:
                 scored.momentum_spread_score = 95
