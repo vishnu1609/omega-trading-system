@@ -387,6 +387,9 @@ class SignalGenerator:
         self._scan_count: int = 0
         self._cycle_lock = Lock()
         self._orb_levels: dict[str, tuple[float, float]] = {}
+        self._prev_day_levels: dict[str, tuple[float, float]] = {}
+        self._signal_repeat_count: dict[str, int] = {}
+        self._volatility_regime: dict[str, str] = {}
         self.guardrails = None  # set externally via set_guardrails()
         self.calendar = None    # set externally via set_calendar()
 
@@ -612,6 +615,60 @@ class SignalGenerator:
             return orb_high, orb_low
         return 0.0, 0.0
 
+    def _compute_prev_day_levels(self, inst_name: str, candles: list[Candle]) -> tuple[float, float]:
+        cached = self._prev_day_levels.get(inst_name)
+        if cached and cached[0] > 0:
+            return cached
+        today = datetime.now(IST).date()
+        pdh, pdl = 0.0, float("inf")
+        for c in candles:
+            ct = c.timestamp
+            if hasattr(ct, "astimezone"):
+                ct = ct.astimezone(IST)
+            if ct.date() < today:
+                pdh = max(pdh, c.high)
+                pdl = min(pdl, c.low)
+        if pdh > 0 and pdl < float("inf"):
+            self._prev_day_levels[inst_name] = (pdh, pdl)
+            return pdh, pdl
+        return 0.0, 0.0
+
+    def _classify_volatility_regime(self, inst_name: str, atr_vals: list[float],
+                                     candles: list[Candle]) -> str:
+        if len(atr_vals) < 50:
+            return "NORMAL"
+        recent_atr = atr_vals[-1]
+        lookback = atr_vals[-50:]
+        sorted_atr = sorted(lookback)
+        pctile = sorted_atr.index(min(sorted_atr, key=lambda x: abs(x - recent_atr))) / len(sorted_atr) * 100
+
+        avg_range = sum(c.high - c.low for c in candles[-20:]) / 20
+        avg_body = sum(abs(c.close - c.open) for c in candles[-20:]) / 20
+        body_ratio = avg_body / avg_range if avg_range > 0 else 0.5
+
+        if pctile > 80:
+            regime = "HIGH_VOL"
+        elif pctile < 20 or body_ratio < 0.3:
+            regime = "CHOPPY"
+        else:
+            regime = "TRENDING" if body_ratio > 0.5 else "NORMAL"
+
+        prev = self._volatility_regime.get(inst_name)
+        if regime != prev:
+            log.info("REGIME: %s shifted to %s (ATR pctile=%.0f, body_ratio=%.2f)",
+                     inst_name, regime, pctile, body_ratio)
+        self._volatility_regime[inst_name] = regime
+        return regime
+
+    def _track_signal_repeat(self, inst_name: str, side: str) -> int:
+        key = f"{inst_name}_{side}"
+        self._signal_repeat_count[key] = self._signal_repeat_count.get(key, 0) + 1
+        return self._signal_repeat_count[key]
+
+    def _reset_signal_repeat(self, inst_name: str, side: str) -> None:
+        key = f"{inst_name}_{side}"
+        self._signal_repeat_count[key] = 0
+
     def generate_signals(self, inst_name: str, candles: list[Candle],
                          asset: str = "options") -> dict | None:
         min_len = max(self.st_period, self.adx_len, self.chand_len,
@@ -684,6 +741,12 @@ class SignalGenerator:
 
         # ── ORB levels ──
         orb_high, orb_low = self._compute_orb(inst_name, candles)
+
+        # ── Previous day high/low ──
+        pdh, pdl = self._compute_prev_day_levels(inst_name, candles)
+
+        # ── Volatility regime ──
+        vol_regime = self._classify_volatility_regime(inst_name, atr_vals, candles)
 
         # ── Confluence factors ──
         st_bullish = st_dir[i] < 0
@@ -833,10 +896,15 @@ class SignalGenerator:
                 signal_hour=sig_hour,
                 signal_minute=sig_minute,
                 momentum_spread=mom_spread,
+                prev_day_high=pdh,
+                prev_day_low=pdl,
+                volatility_regime=vol_regime,
+                signal_repeat_count=self._track_signal_repeat(inst_name, side),
             )
             payload["score"] = round(scored.total_score, 1)
             payload["confidence"] = scored.confidence
             payload["momentum_spread"] = mom_spread
+            payload["volatility_regime"] = vol_regime
             payload["score_details"] = {
                 "adx": round(scored.adx_score, 1),
                 "vwap": round(scored.vwap_score, 1),
@@ -850,6 +918,8 @@ class SignalGenerator:
                 "confluence": round(scored.confluence_score, 1),
                 "time": round(scored.time_score, 1),
                 "momentum": round(scored.momentum_spread_score, 1),
+                "pdhl": round(scored.pdhl_score, 1),
+                "regime": round(scored.regime_score, 1),
             }
             log.info("SIGNAL: %s %s — %s",
                      side, inst_name, format_score_report(scored))
@@ -876,6 +946,7 @@ class SignalGenerator:
         if (trail_exit_long or trail_exit_short) and last != "EXIT":
             self._last_signal[inst_name] = "EXIT"
             self._signal_time[inst_name] = now_ts
+            self._signal_repeat_count.clear()
             log.info("SIGNAL: EXIT %s — trail stop hit", inst_name)
             return {
                 "strategy": strategy,
