@@ -39,7 +39,7 @@ DHAN_ERROR_CODES = {
 }
 
 
-def _build_httpx_client(access_token: str) -> httpx.Client:
+def _build_httpx_client(access_token: str, client_id: str) -> httpx.Client:
     """Create a pooled httpx client (connection reuse across requests)."""
     return httpx.Client(
         base_url=BASE_URL,
@@ -47,6 +47,7 @@ def _build_httpx_client(access_token: str) -> httpx.Client:
             "Content-Type": "application/json",
             "Accept": "application/json",
             "access-token": access_token,
+            "client-id": client_id,
         },
         timeout=10.0,
         limits=httpx.Limits(
@@ -63,7 +64,7 @@ class DhanBroker(BrokerBase):
         self.access_token = access_token or os.environ.get("DHAN_ACCESS_TOKEN", "")
         if not self.client_id or not self.access_token:
             raise BrokerError("DHAN_CLIENT_ID and DHAN_ACCESS_TOKEN must be set")
-        self._client = _build_httpx_client(self.access_token)
+        self._client = _build_httpx_client(self.access_token, self.client_id)
         self._last_request_ts: float = 0
         self._min_interval: float = 0.1
         self._api_lock = threading.Lock()
@@ -211,21 +212,18 @@ class DhanBroker(BrokerBase):
         return self._request("GET", "/fundlimit")
 
     def get_ltp(self, security_id: str, exchange_segment: str) -> float:
-        payload = {
-            "dhanClientId": self.client_id,
-            "securityId": security_id,
-            "exchangeSegment": exchange_segment,
-        }
+        payload = {exchange_segment: [int(security_id)]}
         data = self._request("POST", "/marketfeed/ltp", payload)
-        return float(data.get("data", {}).get("lastPrice", 0))
+        seg_data = data.get("data", {}).get(exchange_segment, {})
+        sid_data = seg_data.get(str(security_id), seg_data.get(security_id, {}))
+        return float(sid_data.get("last_price", 0))
 
     def get_option_chain(self, underlying_id: str, expiry: str,
-                         exchange_segment: str = "NSE_FNO") -> list[dict]:
+                         exchange_segment: str = "IDX_I") -> list[dict]:
         payload = {
-            "dhanClientId": self.client_id,
-            "underlyingSecurityId": underlying_id,
-            "expiryDate": expiry,
-            "exchangeSegment": exchange_segment,
+            "UnderlyingScrip": int(underlying_id),
+            "UnderlyingSeg": exchange_segment,
+            "Expiry": expiry,
         }
         data = self._request("POST", "/optionchain", payload)
         return data.get("data", [])

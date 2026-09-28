@@ -137,6 +137,43 @@ def _build_risk_html(risk: dict) -> str:
         </div>'''
 
 
+def _build_wallet_html(w: dict) -> str:
+    if not w:
+        return ""
+    bal = w.get("balance", 0)
+    avail = w.get("available", 0)
+    in_t = w.get("in_trade", 0)
+    tp = w.get("today_pnl", 0)
+    start_cap = w.get("starting_capital", 200000)
+    total_pnl = bal - start_cap
+    tp_c = "#10b981" if tp >= 0 else "#ef4444"
+    tot_c = "#10b981" if total_pnl >= 0 else "#ef4444"
+    pct = (total_pnl / start_cap * 100) if start_cap > 0 else 0
+    return f'''
+        <div class="wallet-bar">
+            <div class="wallet-item">
+                <div class="wallet-lbl">BALANCE</div>
+                <div class="wallet-val">₹{bal:,.2f}</div>
+            </div>
+            <div class="wallet-item">
+                <div class="wallet-lbl">AVAILABLE</div>
+                <div class="wallet-val" style="color:#a5b4fc">₹{avail:,.2f}</div>
+            </div>
+            <div class="wallet-item">
+                <div class="wallet-lbl">IN TRADE</div>
+                <div class="wallet-val" style="color:#fbbf24">₹{in_t:,.2f}</div>
+            </div>
+            <div class="wallet-item">
+                <div class="wallet-lbl">TODAY P&L</div>
+                <div class="wallet-val" style="color:{tp_c}">₹{tp:+,.2f}</div>
+            </div>
+            <div class="wallet-item">
+                <div class="wallet-lbl">TOTAL P&L</div>
+                <div class="wallet-val" style="color:{tot_c}">₹{total_pnl:+,.2f} <span style="font-size:12px">({pct:+.1f}%)</span></div>
+            </div>
+        </div>'''
+
+
 def _build_system_html(sys_data: dict, sys_name: str, color: str, icon: str) -> str:
     mode = sys_data.get("mode", "paper").upper()
     started = sys_data.get("started_at", "—")
@@ -147,6 +184,7 @@ def _build_system_html(sys_data: dict, sys_name: str, color: str, icon: str) -> 
     signals = sys_data.get("signals", [])
     last_update = sys_data.get("last_update", "—")
     risk = sys_data.get("risk_metrics", {})
+    wallet = sys_data.get("wallet", {})
 
     total_pnl = sum(t.get("pnl", 0) for t in closed)
     total_trades = len(closed)
@@ -238,6 +276,8 @@ def _build_system_html(sys_data: dict, sys_name: str, color: str, icon: str) -> 
     best_html = "".join(lb_row(t, i, medals[i]) for i, t in enumerate(best)) or '<div class="no-data">—</div>'
     worst_html = "".join(lb_row(t, i, "💀" if i == 0 else "") for i, t in enumerate(worst)) or '<div class="no-data">—</div>'
 
+    wallet_html = _build_wallet_html(wallet)
+
     return f'''
     <div class="sys-header" style="border-left:4px solid {color}">
         <div class="sys-meta">
@@ -248,6 +288,8 @@ def _build_system_html(sys_data: dict, sys_name: str, color: str, icon: str) -> 
             <span>Updated: {last_update[11:19] if len(str(last_update)) > 11 else last_update}</span>
         </div>
     </div>
+
+    {wallet_html}
 
     <div class="top-stats">
         <div class="stat-card" style="border-top:3px solid {color}">
@@ -339,10 +381,8 @@ async def dashboard():
     now = datetime.now(IST).strftime("%Y-%m-%d %H:%M:%S IST")
     state = _read_state()
     indices_data = state.get("indices", {})
-    mcx_data = state.get("mcx", {})
 
     indices_html = _build_system_html(indices_data, "INDICES", "#6366f1", "📊")
-    mcx_html = _build_system_html(mcx_data, "MCX", "#f59e0b", "🏭")
 
     html = f'''<!DOCTYPE html>
 <html lang="en">
@@ -378,22 +418,6 @@ body {{
 }}
 .clock {{ color:#64748b; font-size:13px; }}
 
-/* System Toggle */
-.toggle-bar {{
-    display:flex; background:#111827; border-bottom:1px solid #1e293b; padding:0 32px;
-}}
-.toggle-btn {{
-    flex:1; padding:16px 24px; font-size:16px; font-weight:700; color:#64748b;
-    background:none; border:none; cursor:pointer;
-    border-bottom:3px solid transparent; transition:all 0.2s;
-    display:flex; align-items:center; justify-content:center; gap:10px;
-}}
-.toggle-btn:hover {{ color:#94a3b8; background:#0f172a; }}
-.toggle-btn.active {{ border-bottom-color:var(--accent); }}
-.toggle-btn.active.indices {{ color:#a5b4fc; --accent:#6366f1; }}
-.toggle-btn.active.mcx {{ color:#fbbf24; --accent:#f59e0b; }}
-.sys-view {{ display:none; }}
-.sys-view.active {{ display:block; }}
 
 /* System Header */
 .sys-header {{
@@ -461,6 +485,22 @@ body {{
 .lb-rank {{ font-weight:700; min-width:28px; color:#64748b; }}
 .no-data {{ color:#475569; font-size:13px; padding:10px 0; text-align:center; }}
 
+/* Wallet */
+.wallet-bar {{
+    display:flex; gap:0; background:linear-gradient(135deg, #0f172a, #1a1a2e);
+    border-bottom:1px solid #1e293b; padding:0;
+}}
+.wallet-item {{
+    flex:1; padding:14px 20px; text-align:center;
+    border-right:1px solid #1e293b22;
+}}
+.wallet-item:last-child {{ border-right:none; }}
+.wallet-lbl {{
+    font-size:9px; color:#64748b; text-transform:uppercase;
+    letter-spacing:1.5px; margin-bottom:4px;
+}}
+.wallet-val {{ font-size:18px; font-weight:700; color:#e2e8f0; }}
+
 .footer {{ text-align:center; padding:20px; color:#334155; font-size:12px; }}
 
 @media (max-width: 800px) {{
@@ -482,34 +522,9 @@ body {{
     <div class="clock">{now}</div>
 </div>
 
-<div class="toggle-bar">
-    <button class="toggle-btn indices active" onclick="switchSys('indices', this)">
-        📊 INDICES
-    </button>
-    <button class="toggle-btn mcx" onclick="switchSys('mcx', this)">
-        🏭 MCX
-    </button>
-</div>
-
-<div id="sys-indices" class="sys-view active">
-    {indices_html}
-</div>
-
-<div id="sys-mcx" class="sys-view">
-    {mcx_html}
-</div>
+{indices_html}
 
 <div class="footer">Omega Trading System &mdash; Auto-refreshes every 5s</div>
-
-<script>
-function switchSys(id, btn) {{
-    document.querySelectorAll('.sys-view').forEach(v => v.classList.remove('active'));
-    document.querySelectorAll('.toggle-btn').forEach(b => b.classList.remove('active'));
-    document.getElementById('sys-' + id).classList.add('active');
-    btn.classList.add('active');
-    window.scrollTo({{top: 0}});
-}}
-</script>
 </body>
 </html>'''
     return HTMLResponse(content=html)
@@ -518,3 +533,39 @@ function switchSys(id, btn) {{
 @router.get("/api/state")
 async def api_state():
     return _read_state()
+
+
+@router.get("/api/db/dashboard")
+async def api_db_dashboard():
+    from core.database import OmegaDB
+    return OmegaDB.get().get_dashboard_data()
+
+
+@router.get("/api/db/trades")
+async def api_db_trades(limit: int = 50, date: str = ""):
+    from core.database import OmegaDB
+    return OmegaDB.get().get_trades(limit=limit, date=date)
+
+
+@router.get("/api/db/wallet")
+async def api_db_wallet():
+    from core.database import OmegaDB
+    return OmegaDB.get().get_wallet()
+
+
+@router.get("/api/db/positions")
+async def api_db_positions():
+    from core.database import OmegaDB
+    return OmegaDB.get().get_positions()
+
+
+@router.get("/api/db/stats")
+async def api_db_stats(date: str = ""):
+    from core.database import OmegaDB
+    return OmegaDB.get().get_trade_stats(date=date)
+
+
+@router.get("/api/db/daily")
+async def api_db_daily(limit: int = 30):
+    from core.database import OmegaDB
+    return OmegaDB.get().get_daily_stats(limit=limit)

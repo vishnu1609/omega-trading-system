@@ -22,7 +22,7 @@ log = logging.getLogger(__name__)
 
 
 class PaperBroker(BrokerBase):
-    def __init__(self, initial_capital: float = 1_000_000,
+    def __init__(self, initial_capital: float = 200_000,
                  slippage_bps: float = 5.0):
         self._capital = initial_capital
         self._slippage_bps = slippage_bps
@@ -30,6 +30,8 @@ class PaperBroker(BrokerBase):
         self._positions: dict[str, dict] = {}
         self._counter = 0
         self.live_feed = None
+        self.data_broker = None
+        self._ltp_cache: dict[str, float] = {}
 
     def place_order(self, order: Order) -> OrderResponse:
         self._counter += 1
@@ -120,12 +122,28 @@ class PaperBroker(BrokerBase):
         return {"availabelBalance": self._capital}
 
     def get_ltp(self, security_id: str, exchange_segment: str) -> float:
+        cache_key = f"{exchange_segment}:{security_id}"
         if self.live_feed:
             ltp = self.live_feed.get_ltp(security_id, exchange_segment)
             if ltp > 0:
+                self._ltp_cache[cache_key] = ltp
                 return ltp
-        return 0.0
+        if self.data_broker:
+            try:
+                ltp = self.data_broker.get_ltp(security_id, exchange_segment)
+                if ltp > 0:
+                    self._ltp_cache[cache_key] = ltp
+                    return ltp
+            except Exception as e:
+                log.warning("[PAPER] Dhan API LTP failed: %s", e)
+        cached = self._ltp_cache.get(cache_key, 0.0)
+        if cached > 0:
+            log.info("[PAPER] Using cached LTP for %s: %.2f", cache_key, cached)
+        return cached
 
     def get_option_chain(self, underlying_id: str, expiry: str,
                          exchange_segment: str = "NSE_FNO") -> list[dict]:
+        if self.data_broker:
+            return self.data_broker.get_option_chain(
+                underlying_id, expiry, exchange_segment)
         return []

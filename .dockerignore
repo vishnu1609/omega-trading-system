@@ -1,0 +1,16 @@
+.env
+.git
+__pycache__
+*.pyc
+venv/
+.venv/
+logs/
+data/omega.db
+data/*.csv
+data/instruments/
+.idea/
+.vscode/
+*.swp
+tests/
+backtest/
+pinescript/

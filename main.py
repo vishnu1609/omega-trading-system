@@ -33,6 +33,7 @@ from core.live_feed import LiveFeed, EXCHANGE_SEG_MAP
 from core.option_chain import OptionChainResolver
 from core.signal_generator import SignalGenerator
 from core.trade_memory import TradeMemory
+from core.wallet import Wallet
 from webhook.dashboard import update_state
 from strategies.omega_complete import OmegaStrategy
 from utils.logger import setup_logging
@@ -104,6 +105,14 @@ def main() -> None:
     log.info("=" * 60)
 
     broker = create_broker(mode, settings.get("broker", {}))
+    if isinstance(broker, PaperBroker):
+        broker_cfg = settings.get("broker", {})
+        data_broker = DhanBroker(
+            client_id=resolve_env(broker_cfg.get("client_id", "")),
+            access_token=resolve_env(broker_cfg.get("access_token", "")),
+        )
+        broker.data_broker = data_broker
+        log.info("Paper mode: Dhan API wired for real option LTP data")
 
     pm = PositionManager()
     restored = pm.load_state()
@@ -180,18 +189,10 @@ def main() -> None:
     log.info("Option chain resolver initialized (Dhan API)")
 
     live_feed = LiveFeed()
-    idx_instruments = []
-    from dhanhq import MarketFeed as MF
-    idx_map = {"NIFTY": "13", "BANKNIFTY": "25", "SENSEX": "51"}
-    _sg_cfg = settings.get("signal_generator", {})
-    for idx_name in (args.watch or _sg_cfg.get("watch", ["NIFTY", "BANKNIFTY"])):
-        sec = idx_map.get(idx_name.upper())
-        if sec:
-            idx_instruments.append((MF.IDX, sec, MF.Quote))
-    live_feed.start(idx_instruments)
-    if isinstance(broker, PaperBroker):
-        broker.live_feed = live_feed
-    log.info("LiveFeed started — streaming %d indices", len(idx_instruments))
+    log.info("LiveFeed created (WebSocket disabled — using REST API for LTP)")
+
+    wallet = Wallet(starting_capital=200_000.0)
+    log.info("Wallet loaded: balance=₹%.2f available=₹%.2f", wallet.balance, wallet.available)
 
     strategy = OmegaStrategy(
         broker=broker,
@@ -205,6 +206,7 @@ def main() -> None:
         mode=mode,
         guardrails=guardrails,
         trade_memory=memory,
+        wallet=wallet,
     )
     strategy.option_chain = option_chain
     strategy.live_feed = live_feed
@@ -349,7 +351,7 @@ def main() -> None:
                         token = os.environ.get("DHAN_ACCESS_TOKEN", "")
                         cid = os.environ.get("DHAN_CLIENT_ID", "")
                         resp = _req.get("https://api.dhan.co/v2/RenewToken",
-                                        headers={"access-token": token, "dhanClientId": cid},
+                                        headers={"access-token": token, "client-id": cid},
                                         timeout=10)
                         if resp.status_code == 200:
                             new_token = resp.json().get("access_token", "")
@@ -386,7 +388,7 @@ def main() -> None:
                     token = os.environ.get("DHAN_ACCESS_TOKEN", "")
                     cid = os.environ.get("DHAN_CLIENT_ID", "")
                     resp = _req.get("https://api.dhan.co/v2/RenewToken",
-                                    headers={"access-token": token, "dhanClientId": cid},
+                                    headers={"access-token": token, "client-id": cid},
                                     timeout=10)
                     if resp.status_code == 200:
                         new_token = resp.json().get("access_token", "")
@@ -403,7 +405,7 @@ def main() -> None:
     heartbeat_thread.start()
 
     log.info("Entering main loop — waiting for signals...")
-    monitor_interval = 5
+    monitor_interval = 15
     margin_sync_interval = 180  # sync broker margin every 3 minutes
     _last_margin_sync = 0
     signals_log: list[dict] = []
@@ -500,6 +502,7 @@ def main() -> None:
                     capital=guardrails.capital if guardrails else 100000),
                 feed_health=live_feed.get_health_metrics(),
                 broker_metrics=broker.get_broker_metrics() if hasattr(broker, "get_broker_metrics") else {},
+                wallet=wallet.snapshot(),
             )
 
             if re.all_sessions_done():

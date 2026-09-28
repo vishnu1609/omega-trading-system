@@ -168,6 +168,7 @@ class LiveFeed:
         return any(indicator in lower for indicator in [
             "429", "too many requests", "client id is blocked",
             "subscription", "plan",
+            "event loop is already running",
         ])
 
     def _start_health_check(self) -> None:

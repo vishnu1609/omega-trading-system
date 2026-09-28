@@ -1,0 +1,21 @@
+version: "3.8"
+
+services:
+  omega:
+    build: .
+    container_name: omega-trading
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+      - ./config:/app/config
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/dashboard"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
