@@ -1,19 +1,21 @@
 """
-Signal Scoring & Selection Engine — v3 (12-factor)
+Signal Scoring & Selection Engine — v4 (14-factor)
 
 Scores each signal 0-100 based on:
-  1. ADX strength (trend momentum)                    — 12%
-  2. VWAP proximity (entry quality)                   — 8%
-  3. Risk/Reward ratio (Chandelier stop vs potential)  — 12%
-  4. SuperTrend confidence (distance from ST line)     — 8%
-  5. Volume surge (institutional interest)             — 10%
-  6. RSI momentum (not overbought/oversold)            — 8%
-  7. Bollinger Band squeeze (volatility breakout)      — 5%
-  8. EMA alignment (9/21 crossover)                    — 5%
-  9. ORB breakout (opening range)                      — 5%
-  10. Confluence count (how many factors agree)         — 12%
-  11. Time-of-day quality (ML book: minute-of-day)     — 10%
-  12. Momentum spread (acceleration detection)         — 5%
+  1. ADX strength (trend momentum)                    — 10%
+  2. VWAP proximity (entry quality)                   — 7%
+  3. Risk/Reward ratio (Chandelier stop vs potential)  — 10%
+  4. SuperTrend confidence (distance from ST line)     — 7%
+  5. Volume surge (institutional interest)             — 8%
+  6. RSI momentum (not overbought/oversold)            — 7%
+  7. Bollinger Band squeeze (volatility breakout)      — 4%
+  8. EMA alignment (9/21 crossover)                    — 4%
+  9. ORB breakout (opening range)                      — 4%
+  10. Confluence count (how many factors agree)         — 10%
+  11. Time-of-day quality (ML book: minute-of-day)     — 8%
+  12. Momentum spread (acceleration detection)         — 4%
+  13. Previous day H/L breakout (institutional ref)    — 10%
+  14. Volatility regime quality (trending vs choppy)   — 7%
 
 When multiple signals fire, picks the best non-correlated set.
 """
@@ -52,6 +54,8 @@ class ScoredSignal:
     confluence_score: float = 0.0
     time_score: float = 0.0
     momentum_spread_score: float = 0.0
+    pdhl_score: float = 0.0
+    regime_score: float = 0.0
     total_score: float = 0.0
     confidence: str = "LOW"
     category: str = ""
@@ -60,18 +64,20 @@ class ScoredSignal:
 
     def compute_total(self):
         self.total_score = (
-            self.adx_score * 0.12 +
-            self.vwap_score * 0.08 +
-            self.rr_score * 0.12 +
-            self.st_score * 0.08 +
-            self.volume_score * 0.10 +
-            self.rsi_score * 0.08 +
-            self.bb_score * 0.05 +
-            self.ema_score * 0.05 +
-            self.orb_score * 0.05 +
-            self.confluence_score * 0.12 +
-            self.time_score * 0.10 +
-            self.momentum_spread_score * 0.05
+            self.adx_score * 0.10 +
+            self.vwap_score * 0.07 +
+            self.rr_score * 0.10 +
+            self.st_score * 0.07 +
+            self.volume_score * 0.08 +
+            self.rsi_score * 0.07 +
+            self.bb_score * 0.04 +
+            self.ema_score * 0.04 +
+            self.orb_score * 0.04 +
+            self.confluence_score * 0.10 +
+            self.time_score * 0.08 +
+            self.momentum_spread_score * 0.04 +
+            self.pdhl_score * 0.10 +
+            self.regime_score * 0.07
         )
         if self.total_score >= 72:
             self.confidence = "HIGH"
@@ -134,6 +140,10 @@ def score_signal(
     signal_hour: int = -1,
     signal_minute: int = -1,
     momentum_spread: float = 0.0,
+    prev_day_high: float = 0.0,
+    prev_day_low: float = 0.0,
+    volatility_regime: str = "NORMAL",
+    signal_repeat_count: int = 0,
 ) -> ScoredSignal:
 
     scored = ScoredSignal(
@@ -308,6 +318,35 @@ def score_signal(
     else:
         scored.momentum_spread_score = 50
 
+    # 13. Previous Day High/Low Breakout (0-100): institutional reference levels
+    if close_price > 0 and prev_day_high > 0 and prev_day_low > 0:
+        if bullish:
+            if close_price > prev_day_high:
+                scored.pdhl_score = 95
+            elif close_price > (prev_day_high + prev_day_low) / 2:
+                scored.pdhl_score = 65
+            else:
+                scored.pdhl_score = 25
+        else:
+            if close_price < prev_day_low:
+                scored.pdhl_score = 95
+            elif close_price < (prev_day_high + prev_day_low) / 2:
+                scored.pdhl_score = 65
+            else:
+                scored.pdhl_score = 25
+    else:
+        scored.pdhl_score = 50
+
+    # 14. Volatility Regime Quality (0-100): trending markets score higher
+    regime_scores = {"TRENDING": 90, "NORMAL": 60, "HIGH_VOL": 40, "CHOPPY": 15}
+    scored.regime_score = regime_scores.get(volatility_regime, 60)
+
+    # Signal repeat penalty: decay score if same signal fires repeatedly
+    if signal_repeat_count >= 5:
+        scored.regime_score = max(0, scored.regime_score - 30)
+    elif signal_repeat_count >= 3:
+        scored.regime_score = max(0, scored.regime_score - 15)
+
     scored.compute_total()
     return scored
 
@@ -345,6 +384,7 @@ def format_score_report(scored: ScoredSignal) -> str:
         f"Vol={scored.volume_score:.0f} RSI={scored.rsi_score:.0f} "
         f"BB={scored.bb_score:.0f} EMA={scored.ema_score:.0f} "
         f"ORB={scored.orb_score:.0f} Conf={scored.confluence_score:.0f} "
-        f"Time={scored.time_score:.0f} Mom={scored.momentum_spread_score:.0f}) "
+        f"Time={scored.time_score:.0f} Mom={scored.momentum_spread_score:.0f} "
+        f"PDH={scored.pdhl_score:.0f} Reg={scored.regime_score:.0f}) "
         f"[{scored.category}]"
     )
