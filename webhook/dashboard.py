@@ -33,7 +33,9 @@ def _read_state() -> dict:
 
 def _write_state(data: dict):
     STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
-    STATE_FILE.write_text(json.dumps(data, default=str))
+    tmp = STATE_FILE.with_suffix(".tmp")
+    tmp.write_text(json.dumps(data, default=str))
+    tmp.replace(STATE_FILE)
 
 
 def update_state(system: str = "indices", **kwargs):
@@ -389,7 +391,6 @@ async def dashboard():
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta http-equiv="refresh" content="5">
 <title>Omega Dashboard</title>
 <style>
 * {{ margin:0; padding:0; box-sizing:border-box; }}
@@ -524,7 +525,30 @@ body {{
 
 {indices_html}
 
-<div class="footer">Omega Trading System &mdash; Auto-refreshes every 5s</div>
+<div class="footer">Omega Trading System &mdash; Live</div>
+<script>
+(function(){{
+    let t=null;
+    function refresh(){{
+        fetch('/dashboard',{{headers:{{'X-Partial':'1'}}}})
+            .then(r=>r.text())
+            .then(html=>{{
+                const p=new DOMParser();
+                const d=p.parseFromString(html,'text/html');
+                const oldBody=document.body;
+                const newBody=d.body;
+                if(newBody){{
+                    const scrollY=window.scrollY;
+                    oldBody.innerHTML=newBody.innerHTML;
+                    window.scrollTo(0,scrollY);
+                }}
+            }})
+            .catch(()=>{{}})
+            .finally(()=>{{t=setTimeout(refresh,5000)}});
+    }}
+    t=setTimeout(refresh,5000);
+}})();
+</script>
 </body>
 </html>'''
     return HTMLResponse(content=html)
