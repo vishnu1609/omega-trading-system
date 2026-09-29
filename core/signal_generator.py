@@ -1032,11 +1032,29 @@ class SignalGenerator:
                     if entries and self.guardrails:
                         conflict = self.guardrails.check_index_conflict(entries)
                         if not conflict:
-                            entries = [s for s in entries
-                                       if s["symbol"].upper() not in
-                                       {"NIFTY", "BANKNIFTY", "FINNIFTY", "SENSEX", "BANKEX"}]
-                            log.warning("Index entries removed due to conflict — "
-                                        "%d non-index entries remain", len(entries))
+                            idx_names = {"NIFTY", "BANKNIFTY", "FINNIFTY", "SENSEX", "BANKEX"}
+                            bull_entries = []
+                            bear_entries = []
+                            non_idx = []
+                            for s in entries:
+                                sym = s["symbol"].upper()
+                                if sym not in idx_names:
+                                    non_idx.append(s)
+                                    continue
+                                sd = s.get("side", "")
+                                if sd in ("BUY_CE", "SELL_PE", "BUY"):
+                                    bull_entries.append(s)
+                                else:
+                                    bear_entries.append(s)
+                            majority = bull_entries if len(bull_entries) >= len(bear_entries) else bear_entries
+                            if not majority:
+                                majority = bull_entries or bear_entries
+                            entries = non_idx + majority
+                            log.warning("Index conflict resolved — kept %d %s entries "
+                                        "(dropped %d opposing)",
+                                        len(majority),
+                                        "bullish" if majority is bull_entries else "bearish",
+                                        len(bull_entries) + len(bear_entries) - len(majority))
 
                     if entries:
                         scored = []
