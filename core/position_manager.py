@@ -20,6 +20,9 @@ import threading
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
+from zoneinfo import ZoneInfo
+
+_IST = ZoneInfo("Asia/Kolkata")
 
 log = logging.getLogger(__name__)
 
@@ -42,7 +45,7 @@ class Position:
     entry_order_id: str = ""
     sl_order_id: str = ""
     peak_price: float = 0.0
-    entry_time: datetime = field(default_factory=datetime.now)
+    entry_time: datetime = field(default_factory=lambda: datetime.now(_IST))
     strategy: str = ""
     atr_value: float = 0.0
     partial_exit_done: bool = False
@@ -264,7 +267,9 @@ class PositionManager:
                     sl_order_id=data.get("sl_order_id", ""),
                     peak_price=data.get("peak_price", 0),
                     strategy=data.get("strategy", ""),
-                    entry_time=datetime.fromisoformat(data["entry_time"]),
+                    entry_time=datetime.fromisoformat(data["entry_time"]).replace(tzinfo=_IST)
+                        if datetime.fromisoformat(data["entry_time"]).tzinfo is None
+                        else datetime.fromisoformat(data["entry_time"]),
                 )
                 self._open[sid] = pos
                 loaded += 1

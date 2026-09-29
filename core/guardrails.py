@@ -294,25 +294,6 @@ class Guardrails:
                 "time_of_day",
             )
 
-        lunch_start = dt_time(11, 30, tzinfo=IST)
-        lunch_end = dt_time(13, 0, tzinfo=IST)
-        if lunch_start <= t < lunch_end:
-            return GuardrailResult(
-                False,
-                f"Lunch trap filter: {symbol} — 11:30-13:00 has 50% lower volume, "
-                f"choppy low-conviction moves, avoiding new entries",
-                "time_of_day",
-            )
-
-        close_zone = dt_time(14, 50, tzinfo=IST)
-        if t >= close_zone:
-            return GuardrailResult(
-                False,
-                f"Close zone filter: {symbol} — after 14:50, square-off pressure "
-                f"creates erratic moves, no new entries",
-                "time_of_day",
-            )
-
         return PASS
 
     # ── Combined Pre-Signal Check ────────────────────────────────────────
@@ -323,9 +304,7 @@ class Guardrails:
             self.check_time_of_day(symbol),
             self.check_vwap_warmup(symbol),
             self.check_adx_regime(adx_value, symbol),
-            self.check_expiry_day(symbol),
             self.check_session_killswitch(symbol),
-            self.check_event_blackout(),
         ]
         if candle_time:
             checks.append(self.check_candle_freshness(candle_time, symbol))

@@ -127,9 +127,10 @@ class OmegaStrategy:
             self._handle_exit(symbol, strategy)
             return
 
-        if confidence == "LOW" or score < 55:
-            log.info("Signal rejected: %s %s — confidence=%s score=%.0f (need MEDIUM+ and score>=55)",
-                     side, symbol, confidence, score)
+        min_score = 45 if self.mode == "paper" else 55
+        if score < min_score:
+            log.info("Signal rejected: %s %s — confidence=%s score=%.0f (need score>=%.0f, mode=%s)",
+                     side, symbol, confidence, score, min_score, self.mode)
             return
 
         inst_name = self._resolve_instrument(symbol)
