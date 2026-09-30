@@ -258,7 +258,8 @@ class OmegaStrategy:
             now = datetime.now(IST)
             blocked, block_reason = self.memory.should_block(
                 symbol=trade_symbol, side=side,
-                entry_hour=now.hour, entry_day=now.weekday())
+                entry_hour=now.hour, entry_day=now.weekday(),
+                volatility_regime=vol_regime)
             if blocked:
                 log.warning("Trade blocked by memory: %s", block_reason)
                 self.tg.error("MEMORY_BLOCK", Exception(block_reason))
@@ -266,7 +267,8 @@ class OmegaStrategy:
 
             adj, adj_reasons = self.memory.get_score_adjustment(
                 symbol=trade_symbol, side=side,
-                entry_hour=now.hour, entry_day=now.weekday())
+                entry_hour=now.hour, entry_day=now.weekday(),
+                volatility_regime=vol_regime)
             if adj_reasons:
                 log.info("Memory adjustments: %s", "; ".join(adj_reasons))
 
@@ -405,6 +407,7 @@ class OmegaStrategy:
                 "orb_breakout": payload.get("orb_breakout", False),
                 "confluence_count": payload.get("bull_factors", 0) or payload.get("bear_factors", 0),
                 "choppiness": payload.get("choppiness", 50),
+                "volatility_regime": payload.get("volatility_regime", "NORMAL"),
             }
 
         sl_resp = self.om.place_sl_limit(
@@ -769,6 +772,7 @@ class OmegaStrategy:
                 volume_ratio=ctx.get("volume_ratio", 1.0),
                 atr_value=ctx.get("atr_value", 0),
                 strategy=pos.strategy,
+                volatility_regime=ctx.get("volatility_regime", "NORMAL"),
             )
             self.memory.record_trade(trade_ctx)
 
