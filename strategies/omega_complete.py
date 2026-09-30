@@ -256,7 +256,8 @@ class OmegaStrategy:
         confidence_for_risk = payload.get("confidence", "LOW")
         if atr_for_sizing > 0 and entry_price > 0:
             risk_pct = {"HIGH": 3.0, "MEDIUM": 2.0, "LOW": 1.0}.get(confidence_for_risk, 1.0)
-            sl_mult_for_sizing = {"HIGH": 2.0, "MEDIUM": 1.5, "LOW": 1.0}.get(confidence_for_risk, 1.0)
+            sl_pct_for_sizing = {"HIGH": 8.0, "MEDIUM": 6.0, "LOW": 5.0}.get(confidence_for_risk, 5.0)
+            sl_mult_for_sizing = (entry_price * sl_pct_for_sizing / 100) / atr_for_sizing if atr_for_sizing > 0 else 1.5
             cap = self.guardrails.capital if self.guardrails else 100000
             atr_qty = self.re.atr_position_size(
                 capital=cap, risk_pct=risk_pct,
@@ -280,21 +281,21 @@ class OmegaStrategy:
             fill_price = underlying_close if underlying_close > 0 else entry_price
         atr_value = payload.get("atr", 0)
         confidence = payload.get("confidence", "LOW")
-        if confidence == "HIGH":
-            sl_mult, tp_mult = 2.0, 6.0
-        elif confidence == "MEDIUM":
-            sl_mult, tp_mult = 1.5, 4.5
-        else:
-            sl_mult, tp_mult = 1.5, 3.0
 
-        if atr_value > 0:
-            sl_price = self.re.compute_atr_sl(fill_price, direction, atr_value, multiplier=sl_mult)
-            tp_price = self.re.compute_atr_tp(fill_price, direction, atr_value, multiplier=tp_mult)
+        sl_pct_map = {"HIGH": 8.0, "MEDIUM": 6.0, "LOW": 5.0}
+        tp_pct_map = {"HIGH": 12.0, "MEDIUM": 9.0, "LOW": 7.0}
+        sl_pct = sl_pct_map.get(confidence, 5.0)
+        tp_pct = tp_pct_map.get(confidence, 7.0)
+
+        if direction == "LONG":
+            sl_price = round(fill_price * (1 - sl_pct / 100), 2)
+            tp_price = round(fill_price * (1 + tp_pct / 100), 2)
         else:
-            sl_price = self.re.compute_sl_price(fill_price, direction, confluence_score=score)
-            tp_price = self.re.compute_tp_price(fill_price, direction)
-        log.info("Confidence-based SL/TP: %s → SL=%.2f (%.1f×ATR) TP=%.2f (%.1f×ATR)",
-                 confidence, sl_price, sl_mult, tp_price, tp_mult)
+            sl_price = round(fill_price * (1 + sl_pct / 100), 2)
+            tp_price = round(fill_price * (1 - tp_pct / 100), 2)
+
+        log.info("Pct-based SL/TP: %s → SL=%.2f (-%s%%) TP=%.2f (+%s%%)",
+                 confidence, sl_price, sl_pct, tp_price, tp_pct)
 
         position = Position(
             symbol=trade_symbol,
@@ -312,6 +313,7 @@ class OmegaStrategy:
             strategy=strategy,
             atr_value=atr_value if atr_value > 0 else fill_price * 0.02,
             original_quantity=quantity,
+            confidence=confidence,
         )
         self.pm.add_position(position)
         self.re.record_trade_taken()
@@ -477,30 +479,45 @@ class OmegaStrategy:
                          pos.direction, pos.symbol, hold_seconds,
                          pos.atr_value, trail_eval["detail"])
 
-            atr = pos.atr_value if pos.atr_value > 0 else pos.entry_price * 0.02
-            favourable = (ltp - pos.entry_price) if pos.direction == "LONG" else (pos.entry_price - ltp)
+            partial_trigger_pct = {"HIGH": 8.0, "MEDIUM": 6.0, "LOW": 5.0}.get(pos.confidence, 5.0)
+            favourable_pct = ((ltp - pos.entry_price) / pos.entry_price * 100
+                              if pos.is_long else
+                              (pos.entry_price - ltp) / pos.entry_price * 100)
 
-            if not pos.partial_exit_done and favourable >= 2.0 * atr:
+            if not pos.partial_exit_done and favourable_pct >= partial_trigger_pct:
                 lot_size = self._get_lot_size(pos.symbol)
                 half_qty = max(lot_size, (pos.quantity // 2) // lot_size * lot_size)
                 if half_qty < pos.quantity:
-                    log.info("PARTIAL EXIT: %s %s — profit %.1f×ATR, exiting %d of %d @ %.2f",
-                             pos.direction, pos.symbol, favourable / atr,
+                    log.info("PARTIAL EXIT: %s %s — profit=%.1f%% ≥ %.0f%%, exiting %d of %d @ %.2f",
+                             pos.direction, pos.symbol, favourable_pct, partial_trigger_pct,
                              half_qty, pos.quantity, ltp)
                     self._partial_exit(pos, half_qty, ltp)
 
-            decayed_tp = self.re.time_decay_tp(
-                pos.tp_price, pos.entry_price, pos.direction, hold_minutes)
+            profit_pct = ((ltp - pos.entry_price) / pos.entry_price * 100
+                          if pos.is_long else
+                          (pos.entry_price - ltp) / pos.entry_price * 100)
+
+            greed_thresholds = {"HIGH": (15.0, 20.0), "MEDIUM": (10.0, 12.0)}
+            if not pos.tp_extended and pos.confidence in greed_thresholds:
+                check_pct, extend_pct = greed_thresholds[pos.confidence]
+                if profit_pct >= check_pct:
+                    if pos.is_long:
+                        new_tp = round(pos.entry_price * (1 + extend_pct / 100), 2)
+                    else:
+                        new_tp = round(pos.entry_price * (1 - extend_pct / 100), 2)
+                    log.info("GREED EXTEND: %s %s profit=%.1f%% ≥ %.0f%% → TP extended %.2f → %.2f (+%.0f%%)",
+                             pos.confidence, pos.symbol, profit_pct, check_pct, pos.tp_price, new_tp, extend_pct)
+                    pos.tp_price = new_tp
+                    pos.tp_extended = True
 
             if pos.is_sl_hit:
-                log.info("SL HIT: %s %s @ %.2f (SL=%.2f) hold=%.0fs",
-                         pos.direction, pos.symbol, ltp, pos.trail_sl, hold_seconds)
+                log.info("SL HIT: %s %s @ %.2f (SL=%.2f) loss=%.1f%% hold=%.0fs",
+                         pos.direction, pos.symbol, ltp, pos.trail_sl, profit_pct, hold_seconds)
                 self._exit_position(pos, ltp, "TRAIL_SL")
 
-            elif self._check_tp_hit(pos, ltp, decayed_tp):
-                log.info("TP HIT: %s %s @ %.2f (TP=%.2f, decayed from %.2f) hold=%.0fs",
-                         pos.direction, pos.symbol, ltp, decayed_tp,
-                         pos.tp_price, hold_seconds)
+            elif self._check_tp_hit(pos, ltp, pos.tp_price):
+                log.info("TP HIT: %s %s @ %.2f (TP=%.2f) profit=%.1f%% hold=%.0fs",
+                         pos.direction, pos.symbol, ltp, pos.tp_price, profit_pct, hold_seconds)
                 self._exit_position(pos, ltp, "TP")
 
             elif self._is_sl_skipped(pos, ltp):
