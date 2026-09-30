@@ -2,10 +2,9 @@
   "version": "0.0.1",
   "configurations": [
     {
-      "name": "dashboard-preview",
-      "runtimeExecutable": "python3",
-      "runtimeArgs": ["/private/tmp/claude-501/-Users-vishnu-Desktop-pyhton-p/993d96dc-0496-4796-acd5-5836b8c4e578/scratchpad/preview_dashboard.py"],
-      "port": 8001
+      "name": "omega-dashboard",
+      "url": "http://localhost:8000",
+      "port": 8000
     }
   ]
 }

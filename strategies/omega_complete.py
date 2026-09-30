@@ -128,6 +128,25 @@ class OmegaStrategy:
             self._handle_exit(symbol, strategy)
             return
 
+        now_ist = datetime.now(IST)
+        hour, minute = now_ist.hour, now_ist.minute
+        time_minutes = hour * 60 + minute
+        is_sell_entry = side.startswith("SELL")
+        is_buy_option = side in ("BUY_CE", "BUY_PE")
+        if is_sell_entry and time_minutes < 11 * 60 + 30:
+            log.info("THETA FILTER: blocking SELL entry before 11:30 IST "
+                     "(theta decay too slow at %02d:%02d)", hour, minute)
+            return
+        if is_sell_entry and time_minutes >= 12 * 60 + 30:
+            score = payload.get("score", 0) + 5
+            payload["score"] = score
+            log.info("THETA BOOST: +5 score for SELL entry after 12:30 IST (accelerated decay)")
+        if is_buy_option and time_minutes >= 14 * 60 + 30:
+            score = payload.get("score", 0) - 10
+            payload["score"] = score
+            log.info("THETA PENALTY: -10 score for option BUY after 14:30 IST "
+                     "(rapid time decay erodes premium, score now %.0f)", score)
+
         min_score = 45 if self.mode == "paper" else 55
         if self._consecutive_losses >= 2:
             if confidence != "HIGH":
@@ -258,6 +277,15 @@ class OmegaStrategy:
                 signal.quantity = quantity
                 log.info("Position size reduced by memory: %d → %d", original_qty, quantity)
 
+        vol_regime = payload.get("volatility_regime", "NORMAL")
+        regime_size_mult = {"HIGH_VOL": 0.5, "CHOPPY": 0.7, "NORMAL": 1.0, "TRENDING": 1.2}.get(vol_regime, 1.0)
+        if regime_size_mult != 1.0:
+            original_qty = quantity
+            quantity = max(lot_size, int(quantity * regime_size_mult) // lot_size * lot_size)
+            signal.quantity = quantity
+            if quantity != original_qty:
+                log.info("REGIME sizing (%s): %d → %d (×%.1f)", vol_regime, original_qty, quantity, regime_size_mult)
+
         score = payload.get("score", 0)
         atr_for_sizing = payload.get("atr", 0)
         confidence_for_risk = payload.get("confidence", "LOW")
@@ -324,7 +352,7 @@ class OmegaStrategy:
             entry_order_id=resp.order_id,
             peak_price=fill_price,
             strategy=strategy,
-            atr_value=fill_price * 0.02,
+            atr_value=atr_value if atr_value > 0 else fill_price * 0.02,
             original_quantity=quantity,
             confidence=confidence,
         )
@@ -460,8 +488,8 @@ class OmegaStrategy:
                           (pos.entry_price - ltp) / pos.entry_price * 100)
             pos.peak_profit_pct = max(pos.peak_profit_pct, profit_pct)
 
-            # --- Use option-premium ATR (2% of entry) for trailing, not index ATR ---
-            premium_atr = pos.entry_price * 0.02
+            # --- Use stored ATR from signal, fall back to 2% of entry ---
+            premium_atr = pos.atr_value if pos.atr_value > 0 else pos.entry_price * 0.02
 
             trail_eval = self.re.evaluate_trail(
                 current_price=ltp,
