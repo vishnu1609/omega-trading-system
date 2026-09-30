@@ -405,7 +405,7 @@ def main() -> None:
     heartbeat_thread.start()
 
     log.info("Entering main loop — waiting for signals...")
-    monitor_interval = 15
+    monitor_interval = 1
     margin_sync_interval = 180  # sync broker margin every 3 minutes
     _last_margin_sync = 0
     signals_log: list[dict] = []
