@@ -34,7 +34,7 @@ from core.option_chain import OptionChainResolver
 from core.signal_generator import SignalGenerator
 from core.trade_memory import TradeMemory
 from core.wallet import Wallet
-from webhook.dashboard import update_state
+from webhook.dashboard import update_state, register_bot
 from strategies.omega_complete import OmegaStrategy
 from utils.logger import setup_logging
 from utils.imessage_alert import IMessageAlert
@@ -211,6 +211,8 @@ def main() -> None:
     strategy.option_chain = option_chain
     strategy.live_feed = live_feed
 
+    register_bot(strategy=strategy, pm=pm, broker=broker, om=om, wallet=wallet)
+
     if mode == "live" and hasattr(broker, 'validate_token'):
         if not broker.validate_token():
             log.critical("DH-901: Invalid or expired token — refusing to start")
@@ -328,6 +330,7 @@ def main() -> None:
         log.info("Webhook-only mode — waiting for TradingView signals")
 
     _signals_frozen = threading.Event()
+    _sessions_ended = False
 
     def _broker_heartbeat():
         import os, requests as _req
@@ -477,11 +480,14 @@ def main() -> None:
                 system="indices",
                 positions=[{
                     "symbol": p.symbol,
+                    "security_id": p.security_id,
                     "direction": p.direction,
                     "entry": p.entry_price,
                     "current": p.current_price,
                     "pnl": p.unrealised_pnl,
                     "sl": p.trail_sl or p.sl_price,
+                    "tp": p.tp_price,
+                    "confidence": p.confidence,
                 } for p in pm.open_positions],
                 closed_trades=[{
                     "symbol": t.symbol,
@@ -506,31 +512,41 @@ def main() -> None:
             )
 
             if re.all_sessions_done():
-                log.info("All sessions done — closing all positions")
-                strategy.square_off_all()
-                om.cancel_all_open()
+                if not _sessions_ended:
+                    _sessions_ended = True
+                    log.info("All sessions done — closing all positions")
+                    strategy.square_off_all()
+                    om.cancel_all_open()
 
-                wins, losses = pm.get_win_loss_stats()
-                tg.daily_summary(pm.realised_pnl, pm.trade_count_today,
-                                 wins, losses)
-                tg.bot_stopped("All sessions ended")
+                    wins, losses = pm.get_win_loss_stats()
+                    tg.daily_summary(pm.realised_pnl, pm.trade_count_today,
+                                     wins, losses)
+                    tg.bot_stopped("All sessions ended")
 
-                report = generate_daily_report(
-                    pm.closed_trades, signals_log, pm.realised_pnl)
-                save_daily_report(report, pm.closed_trades, signals_log)
-                log.info("\n%s", report)
-                break
+                    report = generate_daily_report(
+                        pm.closed_trades, signals_log, pm.realised_pnl)
+                    save_daily_report(report, pm.closed_trades, signals_log)
+                    log.info("\n%s", report)
+                    log.info("Dashboard still running on port %d",
+                             webhook_cfg.get("port", 8000))
+                shutdown_event.wait(timeout=5)
+                continue
 
             if re.is_daily_loss_breached():
-                log.critical("DAILY LOSS BREACHED — shutting down")
-                strategy.square_off_all()
-                om.cancel_all_open()
-                tg.bot_stopped(f"Daily loss breached: ₹{pm.daily_pnl:,.2f}")
-                report = generate_daily_report(
-                    pm.closed_trades, signals_log, pm.realised_pnl)
-                save_daily_report(report, pm.closed_trades, signals_log)
-                log.info("\n%s", report)
-                break
+                if not _sessions_ended:
+                    _sessions_ended = True
+                    log.critical("DAILY LOSS BREACHED — shutting down trading")
+                    strategy.square_off_all()
+                    om.cancel_all_open()
+                    tg.bot_stopped(f"Daily loss breached: ₹{pm.daily_pnl:,.2f}")
+                    report = generate_daily_report(
+                        pm.closed_trades, signals_log, pm.realised_pnl)
+                    save_daily_report(report, pm.closed_trades, signals_log)
+                    log.info("\n%s", report)
+                    log.info("Dashboard still running on port %d",
+                             webhook_cfg.get("port", 8000))
+                shutdown_event.wait(timeout=5)
+                continue
 
             shutdown_event.wait(timeout=monitor_interval)
 

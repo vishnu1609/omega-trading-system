@@ -241,7 +241,7 @@ class PositionManager:
                         "sl_price": p.sl_price, "trail_sl": p.trail_sl,
                         "tp_price": p.tp_price, "entry_order_id": p.entry_order_id,
                         "sl_order_id": p.sl_order_id, "peak_price": p.peak_price,
-                        "strategy": p.strategy,
+                        "strategy": p.strategy, "atr_value": p.atr_value,
                         "entry_time": p.entry_time.isoformat(),
                         "confidence": p.confidence,
                         "tp_extended": p.tp_extended,
@@ -277,6 +277,7 @@ class PositionManager:
                     sl_order_id=data.get("sl_order_id", ""),
                     peak_price=data.get("peak_price", 0),
                     strategy=data.get("strategy", ""),
+                    atr_value=data.get("atr_value", 0.0),
                     entry_time=datetime.fromisoformat(data["entry_time"]).replace(tzinfo=_IST)
                         if datetime.fromisoformat(data["entry_time"]).tzinfo is None
                         else datetime.fromisoformat(data["entry_time"]),
