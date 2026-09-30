@@ -70,6 +70,7 @@ class TradeContext:
     is_win: bool
     r_multiple: float
     strategy: str = "omega_complete"
+    volatility_regime: str = "NORMAL"
     id: str = ""
 
     def __post_init__(self):
@@ -244,6 +245,7 @@ class TradeMemory:
         adx_value: float = 0, vwap_position: str = "UNKNOWN",
         supertrend_dir: str = "UNKNOWN", volume_ratio: float = 1.0,
         atr_value: float = 0, strategy: str = "omega_complete",
+        volatility_regime: str = "NORMAL",
     ) -> TradeContext:
         risk = abs(entry_price - sl_price) if sl_price > 0 else 1
         hold_mins = (exit_time - entry_time).total_seconds() / 60 if exit_time > entry_time else 0
@@ -263,6 +265,7 @@ class TradeMemory:
             is_win=pnl > 0,
             r_multiple=pnl / risk if risk > 0 else 0,
             strategy=strategy,
+            volatility_regime=volatility_regime,
         )
 
     # ── User-taught lessons ───────────────────────────────────────
@@ -345,6 +348,7 @@ class TradeMemory:
             "entry_hour": {}, "entry_day": {}, "symbol_base": {},
             "adx_zone": {}, "signal_confidence": {},
             "supertrend_dir": {}, "vwap_position": {},
+            "volatility_regime": {}, "exit_reason": {},
         }
         for t in self._trades:
             groups["entry_hour"].setdefault(t.entry_hour, []).append(t)
@@ -361,6 +365,11 @@ class TradeMemory:
                 groups["supertrend_dir"].setdefault(t.supertrend_dir, []).append(t)
             if t.vwap_position:
                 groups["vwap_position"].setdefault(t.vwap_position, []).append(t)
+            regime = getattr(t, "volatility_regime", "NORMAL")
+            if regime:
+                groups["volatility_regime"].setdefault(regime, []).append(t)
+            if t.exit_reason:
+                groups["exit_reason"].setdefault(t.exit_reason, []).append(t)
         return groups
 
     def _detect_multi_factor(self, baseline_wr: float, now: datetime) -> list[AdaptiveRule]:
@@ -476,7 +485,8 @@ class TradeMemory:
                                        adx_value=trade.adx_value,
                                        signal_confidence=trade.signal_confidence,
                                        supertrend_dir=trade.supertrend_dir,
-                                       vwap_position=trade.vwap_position):
+                                       vwap_position=trade.vwap_position,
+                                       volatility_regime=getattr(trade, "volatility_regime", "")):
                 rule.total_predictions += 1
                 predicted_bad = rule.action in ("PENALIZE", "BLOCK", "REDUCE_SIZE")
                 actual_bad = not trade.is_win
@@ -499,6 +509,7 @@ class TradeMemory:
                              entry_hour: int = -1, entry_day: int = -1,
                              adx_value: float = 0, signal_confidence: str = "",
                              supertrend_dir: str = "", vwap_position: str = "",
+                             volatility_regime: str = "",
                              ) -> tuple[float, list[str]]:
         total = 0.0
         reasons: list[str] = []
@@ -510,7 +521,8 @@ class TradeMemory:
             if self._matches_condition(lesson.condition, symbol=symbol, side=side,
                                        entry_hour=entry_hour, entry_day=entry_day,
                                        adx_value=adx_value, signal_confidence=signal_confidence,
-                                       supertrend_dir=supertrend_dir, vwap_position=vwap_position):
+                                       supertrend_dir=supertrend_dir, vwap_position=vwap_position,
+                                       volatility_regime=volatility_regime):
                 total += lesson.score_modifier
                 reasons.append(f"[LESSON] {lesson.rule}: {lesson.score_modifier:+.0f}")
                 lesson.hit_count += 1
@@ -521,7 +533,8 @@ class TradeMemory:
             if self._matches_condition(rule.condition, symbol=symbol, side=side,
                                        entry_hour=entry_hour, entry_day=entry_day,
                                        adx_value=adx_value, signal_confidence=signal_confidence,
-                                       supertrend_dir=supertrend_dir, vwap_position=vwap_position):
+                                       supertrend_dir=supertrend_dir, vwap_position=vwap_position,
+                                       volatility_regime=volatility_regime):
                 age = self._rule_age_days(rule, now)
                 decay = math.exp(-0.693 * age / (DECAY_HALF_LIFE_DAYS * 2))
                 weighted_mod = rule.score_modifier * rule.confidence * decay
@@ -619,7 +632,8 @@ class TradeMemory:
                            entry_day: int = -1, adx_value: float = 0,
                            signal_confidence: str = "",
                            supertrend_dir: str = "",
-                           vwap_position: str = "") -> bool:
+                           vwap_position: str = "",
+                           volatility_regime: str = "") -> bool:
         for key, value in condition.items():
             if key == "symbol" and value.upper() not in symbol.upper():
                 return False
@@ -646,6 +660,8 @@ class TradeMemory:
             if key == "supertrend_dir" and value != supertrend_dir:
                 return False
             if key == "vwap_position" and value != vwap_position:
+                return False
+            if key == "volatility_regime" and value != volatility_regime:
                 return False
             if key == "multi_factor":
                 base = _extract_base(symbol)
