@@ -416,6 +416,8 @@ class OmegaStrategy:
 
     def monitor_positions(self) -> None:
         """Called periodically to check SL/TP/trail on open positions."""
+        if hasattr(self.broker, 'check_pending_sl_orders'):
+            self.broker.check_pending_sl_orders()
         now = datetime.now(IST)
         for pos in self.pm.open_positions:
             try:

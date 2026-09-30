@@ -80,7 +80,12 @@ def calc_atr(candles: list[Candle], period: int) -> list[float]:
             abs(candles[i].low - candles[i - 1].close),
         )
         trs.append(tr)
-    return _ema(trs, period)
+    atr = _ema(trs, period)
+    for i in range(len(atr)):
+        if candles[i].close > 0:
+            floor = candles[i].close * 0.002
+            atr[i] = max(atr[i], floor)
+    return atr
 
 
 def calc_supertrend(candles: list[Candle], period: int = 10,
@@ -724,14 +729,15 @@ class SignalGenerator:
             last = self._last_signal.get(inst_name, "")
             trade_dir = self._trade_dir.get(inst_name, 0)
             if trade_dir != 0 and last != "EXIT":
+                choppy_entry_age = time.time() - self._signal_time.get(inst_name, 0)
                 trail_exit_long = trade_dir == 1 and close < chand_long[i] and chand_long[i] > 0
                 trail_exit_short = trade_dir == -1 and close > chand_short[i] and chand_short[i] > 0
-                if trail_exit_long or trail_exit_short:
+                if (trail_exit_long or trail_exit_short) and choppy_entry_age >= 300:
                     self._trade_dir[inst_name] = 0
                     self._last_signal[inst_name] = "EXIT"
                     self._signal_time[inst_name] = time.time()
                     strategy = "omega_futures" if asset == "futures" else "omega_complete"
-                    log.info("SIGNAL: EXIT %s — trail stop hit (choppy regime)", inst_name)
+                    log.info("SIGNAL: EXIT %s — trail stop hit (choppy regime, held %.0fs)", inst_name, choppy_entry_age)
                     return {
                         "strategy": strategy, "symbol": inst_name, "side": "EXIT",
                         "sl": 0, "asset": asset, "strike": 0,
@@ -943,11 +949,13 @@ class SignalGenerator:
             sl = round(chand_short[i], 2)
             return _build_signal(side, sl, chand_short[i])
 
-        if (trail_exit_long or trail_exit_short) and last != "EXIT":
+        entry_age = now_ts - self._signal_time.get(inst_name, 0)
+        min_hold = 300
+        if (trail_exit_long or trail_exit_short) and last != "EXIT" and entry_age >= min_hold:
             self._last_signal[inst_name] = "EXIT"
             self._signal_time[inst_name] = now_ts
             self._signal_repeat_count.clear()
-            log.info("SIGNAL: EXIT %s — trail stop hit", inst_name)
+            log.info("SIGNAL: EXIT %s — trail stop hit (held %.0fs)", inst_name, entry_age)
             return {
                 "strategy": strategy,
                 "symbol": inst_name,
