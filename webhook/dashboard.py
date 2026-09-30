@@ -3,7 +3,7 @@ Live HTML Dashboard — served at /dashboard
 
 Two-system view: INDICES and MCX, each with its own stats.
 Uses a shared JSON file so both bots can push state independently.
-Auto-refreshes every 5 seconds.
+Auto-refreshes every 1 second.
 """
 from __future__ import annotations
 
@@ -544,9 +544,9 @@ body {{
                 }}
             }})
             .catch(()=>{{}})
-            .finally(()=>{{t=setTimeout(refresh,5000)}});
+            .finally(()=>{{t=setTimeout(refresh,1000)}});
     }}
-    t=setTimeout(refresh,5000);
+    t=setTimeout(refresh,1000);
 }})();
 </script>
 </body>
