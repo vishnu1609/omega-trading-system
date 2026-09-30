@@ -813,12 +813,13 @@ class SignalGenerator:
         buy_signal = bull_entry and (not prev_bull or first_scan)
         sell_signal = bear_entry and (not prev_bear or first_scan)
 
-        if rsi_overbought and buy_signal:
-            log.info("RSI FILTER: %s RSI=%.1f overbought — blocking BUY", inst_name, rsi_vals[i])
-            buy_signal = False
-        if rsi_oversold and sell_signal:
-            log.info("RSI FILTER: %s RSI=%.1f oversold — blocking SELL", inst_name, rsi_vals[i])
-            sell_signal = False
+        if vol_regime in ("CHOPPY", "NORMAL"):
+            if rsi_overbought and buy_signal:
+                log.info("RSI FILTER: %s RSI=%.1f overbought — blocking BUY (regime=%s)", inst_name, rsi_vals[i], vol_regime)
+                buy_signal = False
+            if rsi_oversold and sell_signal:
+                log.info("RSI FILTER: %s RSI=%.1f oversold — blocking SELL (regime=%s)", inst_name, rsi_vals[i], vol_regime)
+                sell_signal = False
 
         trade_dir = self._trade_dir.get(inst_name, 0)
 

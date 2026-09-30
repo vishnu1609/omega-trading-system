@@ -52,6 +52,9 @@ class Position:
     original_quantity: int = 0
     confidence: str = "LOW"
     tp_extended: bool = False
+    breakeven_locked: bool = False
+    tranche_exits: int = 0
+    peak_profit_pct: float = 0.0
 
     @property
     def is_long(self) -> bool:
@@ -242,6 +245,9 @@ class PositionManager:
                         "entry_time": p.entry_time.isoformat(),
                         "confidence": p.confidence,
                         "tp_extended": p.tp_extended,
+                        "breakeven_locked": p.breakeven_locked,
+                        "tranche_exits": p.tranche_exits,
+                        "peak_profit_pct": p.peak_profit_pct,
                     } for sid, p in self._open.items()
                 },
                 "closed_count": len(self._closed),
@@ -276,6 +282,9 @@ class PositionManager:
                         else datetime.fromisoformat(data["entry_time"]),
                     confidence=data.get("confidence", "LOW"),
                     tp_extended=data.get("tp_extended", False),
+                    breakeven_locked=data.get("breakeven_locked", False),
+                    tranche_exits=data.get("tranche_exits", 0),
+                    peak_profit_pct=data.get("peak_profit_pct", 0.0),
                 )
                 self._open[sid] = pos
                 loaded += 1
