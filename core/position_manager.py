@@ -50,6 +50,8 @@ class Position:
     atr_value: float = 0.0
     partial_exit_done: bool = False
     original_quantity: int = 0
+    confidence: str = "LOW"
+    tp_extended: bool = False
 
     @property
     def is_long(self) -> bool:
@@ -238,6 +240,8 @@ class PositionManager:
                         "sl_order_id": p.sl_order_id, "peak_price": p.peak_price,
                         "strategy": p.strategy,
                         "entry_time": p.entry_time.isoformat(),
+                        "confidence": p.confidence,
+                        "tp_extended": p.tp_extended,
                     } for sid, p in self._open.items()
                 },
                 "closed_count": len(self._closed),
@@ -270,6 +274,8 @@ class PositionManager:
                     entry_time=datetime.fromisoformat(data["entry_time"]).replace(tzinfo=_IST)
                         if datetime.fromisoformat(data["entry_time"]).tzinfo is None
                         else datetime.fromisoformat(data["entry_time"]),
+                    confidence=data.get("confidence", "LOW"),
+                    tp_extended=data.get("tp_extended", False),
                 )
                 self._open[sid] = pos
                 loaded += 1
