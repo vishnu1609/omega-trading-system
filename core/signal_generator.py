@@ -459,13 +459,16 @@ class SignalGenerator:
         if ffill_count:
             log.warning("Forward-filled %d ghost candles for %s (flat OHLC)",
                         ffill_count, symbol)
-        recent = cleaned[-20:] if len(cleaned) >= 20 else cleaned
-        recent_ghosts = sum(1 for c in recent if c.open == c.high == c.low == c.close and c.open > 0)
-        ghost_pct = recent_ghosts / len(recent) * 100 if recent else 0
+        today = datetime.now(IST).date()
+        today_candles = [c for c in cleaned
+                         if hasattr(c.timestamp, 'date') and c.timestamp.date() == today]
+        check = today_candles if len(today_candles) >= 10 else cleaned[-75:]
+        total_ghosts = sum(1 for c in check if c.open == c.high == c.low == c.close and c.open > 0)
+        ghost_pct = total_ghosts / len(check) * 100 if check else 0
         self._ghost_pct[symbol] = ghost_pct
         if ghost_pct > 40:
-            log.warning("GHOST DATA: %s has %.0f%% ghost candles in last 20 — indicators unreliable",
-                        symbol, ghost_pct)
+            log.warning("GHOST DATA: %s has %.0f%% ghost candles (%d/%d today) — indicators unreliable",
+                        symbol, ghost_pct, total_ghosts, len(check))
         return cleaned
 
     @staticmethod
@@ -690,7 +693,7 @@ class SignalGenerator:
             return None
 
         ghost_pct = self._ghost_pct.get(inst_name, 0)
-        if ghost_pct > 60:
+        if ghost_pct > 50:
             if self._scan_count <= 1 or self._scan_count % 20 == 0:
                 log.warning("GHOST GUARD: %s has %.0f%% ghost data — skipping signal gen", inst_name, ghost_pct)
             return None
@@ -983,7 +986,12 @@ class SignalGenerator:
             if ghost_pct > 30:
                 stale_penalty += int(ghost_pct / 10)
 
-            final_score = scored.total_score - stale_penalty
+            chop_penalty = 0
+            chop_val = chop_vals[i] if i < len(chop_vals) else 50
+            if chop_val > 45:
+                chop_penalty = int((chop_val - 45) * 0.6)
+
+            final_score = scored.total_score - stale_penalty - chop_penalty
             payload["score"] = round(final_score, 1)
             payload["confidence"] = scored.confidence
             if stale_penalty > 0 and final_score < scored.total_score:
@@ -1011,7 +1019,13 @@ class SignalGenerator:
                 "pdhl": round(scored.pdhl_score, 1),
                 "regime": round(scored.regime_score, 1),
             }
-            penalty_note = f" [data penalty: -{stale_penalty} from {data_src}, ghost={ghost_pct:.0f}%]" if stale_penalty > 0 else ""
+            total_penalty = stale_penalty + chop_penalty
+            parts = []
+            if stale_penalty > 0:
+                parts.append(f"data:-{stale_penalty}")
+            if chop_penalty > 0:
+                parts.append(f"chop:-{chop_penalty}")
+            penalty_note = f" [penalties: {', '.join(parts)} | src={data_src}, ghost={ghost_pct:.0f}%, chop={chop_val:.0f}]" if total_penalty > 0 else ""
             log.info("SIGNAL: %s %s — %s%s",
                      side, inst_name, format_score_report(scored), penalty_note)
             return payload
