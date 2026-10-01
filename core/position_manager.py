@@ -102,7 +102,7 @@ class ClosedTrade:
     exit_price: float
     pnl: float
     entry_time: datetime
-    exit_time: datetime = field(default_factory=datetime.now)
+    exit_time: datetime = field(default_factory=lambda: datetime.now(_IST))
     exit_reason: str = ""
 
 
