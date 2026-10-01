@@ -42,7 +42,11 @@ from core.signal_generator import YAHOO_SYMBOLS
 from core.trade_memory import TradeMemory
 from core.database import OmegaDB
 from core.wallet import Wallet
-from utils.imessage_alert import IMessageAlert
+try:
+    from utils.imessage_alert import IMessageAlert
+except ImportError:
+    IMessageAlert = None
+from utils.telegram_alert import TelegramAlert
 
 log = logging.getLogger(__name__)
 
@@ -59,7 +63,7 @@ class OmegaStrategy:
         position_manager: PositionManager,
         risk_engine: RiskEngine,
         instrument_selector: InstrumentSelector,
-        telegram: IMessageAlert,
+        telegram: IMessageAlert | TelegramAlert,
         instruments_config: dict,
         default_qty_lots: int = 1,
         mode: str = "paper",

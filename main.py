@@ -37,7 +37,11 @@ from core.wallet import Wallet
 from webhook.dashboard import update_state, register_bot
 from strategies.omega_complete import OmegaStrategy
 from utils.logger import setup_logging
-from utils.imessage_alert import IMessageAlert
+import platform as _platform
+if _platform.system() == "Darwin":
+    from utils.imessage_alert import IMessageAlert as _AlertClass
+else:
+    from utils.telegram_alert import TelegramAlert as _AlertClass
 from utils.market_calendar import MarketCalendar
 from webhook.tv_receiver import app, signal_queue
 
@@ -148,11 +152,19 @@ def main() -> None:
                 continue
             re.register_instrument_session(name, cfg["session_start"], cfg["square_off"])
 
-    im_cfg = settings.get("imessage", {})
-    tg = IMessageAlert(
-        recipient=im_cfg.get("recipient", ""),
-        enabled=im_cfg.get("enabled", True),
-    )
+    if _platform.system() == "Darwin":
+        im_cfg = settings.get("imessage", {})
+        tg = _AlertClass(
+            recipient=im_cfg.get("recipient", ""),
+            enabled=im_cfg.get("enabled", True),
+        )
+    else:
+        tg_cfg = settings.get("telegram", {})
+        tg = _AlertClass(
+            bot_token=tg_cfg.get("bot_token", ""),
+            chat_id=tg_cfg.get("chat_id", ""),
+            enabled=tg_cfg.get("enabled", True),
+        )
 
     om = OrderManager(broker=broker, slippage_pct=0.5, telegram=tg)
     ins_sel = InstrumentSelector(instruments)
