@@ -219,8 +219,37 @@ async def close_position(request: Request):
 
     fill = resp.fill_price if resp.fill_price > 0 else ltp
     trade = pm.close_position(security_id, fill, reason)
-    if trade and wallet:
-        wallet.record_trade(trade.pnl, trade.entry_price * trade.quantity)
+    if trade:
+        margin = trade.entry_price * trade.quantity
+        if wallet:
+            wallet.release_margin(margin, trade.pnl, pos.symbol, reason)
+        guardrails = _bot.get("guardrails")
+        if guardrails:
+            try:
+                guardrails.release_allocation(pos.symbol, margin)
+            except Exception:
+                pass
+        try:
+            from core.database import OmegaDB
+            db = OmegaDB.get()
+            db.record_trade(
+                symbol=trade.symbol, direction=trade.direction,
+                option_type=trade.option_type, quantity=trade.quantity,
+                entry_price=trade.entry_price, exit_price=trade.exit_price,
+                pnl=trade.pnl,
+                entry_time=trade.entry_time.isoformat(),
+                exit_time=trade.exit_time.isoformat(),
+                exit_reason=reason, strategy=pos.strategy,
+                balance_after=wallet.balance if wallet else 0,
+            )
+            db.delete_position(pos.security_id)
+        except Exception as e:
+            log.warning("DB trade record failed: %s", e)
+        if strategy and hasattr(strategy, "_consecutive_losses"):
+            if trade.pnl >= 0:
+                strategy._consecutive_losses = 0
+            else:
+                strategy._consecutive_losses += 1
 
     log.info("MANUAL CLOSE from dashboard: %s %s @ %.2f reason=%s pnl=%.2f",
              pos.direction, pos.symbol, fill, reason,
@@ -279,8 +308,26 @@ async def close_all(request: Request):
                 pass
 
         trade = pm.close_position(sid, ltp, "MANUAL_SQUARE_OFF")
-        if trade and wallet:
-            wallet.record_trade(trade.pnl, trade.entry_price * trade.quantity)
+        if trade:
+            margin = trade.entry_price * trade.quantity
+            if wallet:
+                wallet.release_margin(margin, trade.pnl, pos.symbol, "MANUAL_SQUARE_OFF")
+            try:
+                from core.database import OmegaDB
+                db = OmegaDB.get()
+                db.record_trade(
+                    symbol=trade.symbol, direction=trade.direction,
+                    option_type=trade.option_type, quantity=trade.quantity,
+                    entry_price=trade.entry_price, exit_price=trade.exit_price,
+                    pnl=trade.pnl,
+                    entry_time=trade.entry_time.isoformat(),
+                    exit_time=trade.exit_time.isoformat(),
+                    exit_reason="MANUAL_SQUARE_OFF", strategy=pos.strategy,
+                    balance_after=wallet.balance if wallet else 0,
+                )
+                db.delete_position(pos.security_id)
+            except Exception as e:
+                log.warning("DB trade record failed: %s", e)
         results.append({
             "symbol": pos.symbol,
             "pnl": trade.pnl if trade else 0,
