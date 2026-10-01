@@ -34,6 +34,7 @@ class PaperBroker(BrokerBase):
         self.data_broker = None
         self._ltp_cache: dict[str, float] = {}
         self._ltp_ts: dict[str, float] = {}
+        self._rate_limited_until: float = 0
 
     def place_order(self, order: Order) -> OrderResponse:
         self._counter += 1
@@ -220,8 +221,9 @@ class PaperBroker(BrokerBase):
     def get_ltp(self, security_id: str, exchange_segment: str) -> float:
         cache_key = f"{exchange_segment}:{security_id}"
         now = time.time()
+        cache_ttl = 30 if now < self._rate_limited_until else 5
         cache_age = now - self._ltp_ts.get(cache_key, 0)
-        if cache_age < 3 and cache_key in self._ltp_cache:
+        if cache_age < cache_ttl and cache_key in self._ltp_cache:
             return self._ltp_cache[cache_key]
         if self.live_feed:
             ltp = self.live_feed.get_ltp(security_id, exchange_segment)
@@ -229,6 +231,8 @@ class PaperBroker(BrokerBase):
                 self._ltp_cache[cache_key] = ltp
                 self._ltp_ts[cache_key] = now
                 return ltp
+        if now < self._rate_limited_until:
+            return self._ltp_cache.get(cache_key, 0.0)
         if self.data_broker:
             try:
                 ltp = self.data_broker.get_ltp(security_id, exchange_segment)
@@ -237,7 +241,12 @@ class PaperBroker(BrokerBase):
                     self._ltp_ts[cache_key] = now
                     return ltp
             except Exception as e:
-                log.warning("[PAPER] Dhan API LTP failed: %s", e)
+                err_str = str(e)
+                if "rate limit" in err_str.lower() or "DH-904" in err_str:
+                    self._rate_limited_until = now + 60
+                    log.warning("[PAPER] Dhan API rate limited — backing off 60s")
+                else:
+                    log.warning("[PAPER] Dhan API LTP failed: %s", e)
                 self._ltp_ts[cache_key] = now
         return self._ltp_cache.get(cache_key, 0.0)
 

@@ -1,14 +1,8 @@
 """
-Dhan WebSocket Live Market Feed
+Dhan REST Live Market Feed
 
-Uses the official dhanhq MarketFeed for real-time tick data.
-Maintains a thread-safe LTP cache keyed by (exchange_segment, security_id).
-
-Resilience patterns adapted from OpenAlgo's DhanWebSocket:
-- Data stall watchdog (detects silent TCP-alive but data-dead connections)
-- Exponential backoff reconnect (5s base, 60s cap, 10 attempts)
-- Fatal error detection (429 / expired subscription → stop reconnecting)
-- Tick rate metrics for self-learning feedback
+Polls Dhan REST /v2/marketfeed/ltp for real-time LTP data every 2 seconds.
+Maintains a thread-safe LTP cache keyed by "segment:security_id".
 """
 from __future__ import annotations
 
@@ -54,11 +48,7 @@ MAX_RECONNECT_DELAY = 60
 
 
 class LiveFeed:
-    """Thread-safe wrapper around DhanHQ MarketFeed WebSocket.
-
-    Adds resilience: data-stall watchdog, auto-reconnect with exponential
-    backoff, fatal error detection, and tick-rate metrics.
-    """
+    """Thread-safe REST-polling LTP feed from Dhan API."""
 
     def __init__(self, client_id: str = "", access_token: str = ""):
         self._client_id = client_id or os.environ.get("DHAN_CLIENT_ID", "")
@@ -92,61 +82,79 @@ class LiveFeed:
         self._subscribed = set(initial)
         self._running = True
 
-        self._thread = threading.Thread(
-            target=self._connect_loop, daemon=True, name="dhan-ws-connect")
-        self._thread.start()
-        log.info("LiveFeed started with %d instruments", len(initial))
+        self._rest_thread = threading.Thread(
+            target=self._rest_poll_loop, daemon=True, name="dhan-rest-ltp")
+        self._rest_thread.start()
+        log.info("LiveFeed started (REST polling) with %d instruments", len(initial))
 
-    def _connect_loop(self) -> None:
-        """Connect with exponential backoff on failure."""
-        while self._running and not self._fatal_error:
-            try:
-                from dhanhq import DhanContext, MarketFeed
-            except ImportError:
-                log.error("dhanhq not installed — pip install dhanhq")
-                self._running = False
-                return
+    def _rest_poll_loop(self) -> None:
+        """Poll Dhan REST LTP API every second for subscribed instruments."""
+        import requests
+        session = requests.Session()
+        session.headers.update({
+            "Content-Type": "application/json",
+            "access-token": self._token,
+            "client-id": self._client_id,
+        })
+        LTP_URL = "https://api.dhan.co/v2/marketfeed/ltp"
 
-            ctx = DhanContext(self._client_id, self._token)
-            try:
-                self._feed = MarketFeed(ctx, list(self._subscribed), "v2")
-            except Exception as e:
-                log.error("MarketFeed init failed: %s", e)
-                if self._is_fatal_error(str(e)):
-                    self._fatal_error = True
-                    self._fatal_reason = str(e)
-                    log.critical("Fatal feed error — stopping: %s", e)
-                    self._running = False
-                    return
-                self._backoff_sleep()
+        seg_map = {0: "IDX_I", 1: "NSE_EQ", 2: "NSE_FNO", 4: "BSE_EQ", 5: "MCX_COMM", 8: "BSE_FNO"}
+        fail_streak = 0
+        poll_interval = 2
+        rate_limit_backoff = 0
+
+        while self._running:
+            if not self._subscribed:
+                time.sleep(poll_interval)
                 continue
 
-            self._connected = True
-            self._last_tick_time = time.time()
-            self._reconnect_count = 0
+            by_seg: dict[str, list[int]] = defaultdict(list)
+            for seg_int, sec_id, _ in self._subscribed:
+                seg_str = seg_map.get(seg_int, str(seg_int))
+                by_seg[seg_str].append(int(sec_id))
 
-            self._reader_thread = threading.Thread(
-                target=self._read_loop, daemon=True, name="dhan-ws-reader")
-            self._reader_thread.start()
-
-            self._start_health_check()
+            payload = dict(by_seg)
 
             try:
-                self._feed.run_forever()
+                resp = session.post(LTP_URL, json=payload, timeout=3)
+                if resp.status_code == 200:
+                    data = resp.json()
+                    now = time.time()
+                    self._connected = True
+                    self._last_tick_time = now
+                    fail_streak = 0
+                    rate_limit_backoff = 0
+
+                    container = data.get("data", data)
+                    if isinstance(container, dict):
+                        for seg_str, instruments in container.items():
+                            if isinstance(instruments, dict):
+                                for sec_id, info in instruments.items():
+                                    ltp = info.get("last_price", 0) if isinstance(info, dict) else 0
+                                    if ltp > 0:
+                                        key = f"{seg_str}:{sec_id}"
+                                        with self._lock:
+                                            self._ltp[key] = float(ltp)
+                                        self._tick_count += 1
+                                        self._tick_count_1m += 1
+                elif resp.status_code == 429:
+                    rate_limit_backoff = min(rate_limit_backoff + 1, 6)
+                    wait = 10 * (2 ** rate_limit_backoff)
+                    if rate_limit_backoff <= 1:
+                        log.warning("LiveFeed rate limited — backing off %ds", wait)
+                    time.sleep(wait)
+                    continue
+                else:
+                    fail_streak += 1
+                    if fail_streak == 1 or fail_streak % 30 == 0:
+                        log.warning("LiveFeed REST LTP failed: HTTP %d", resp.status_code)
             except Exception as e:
-                log.error("WebSocket loop exited: %s", e)
-                if self._is_fatal_error(str(e)):
-                    self._fatal_error = True
-                    self._fatal_reason = str(e)
-                    log.critical("Fatal feed error — stopping: %s", e)
-                    self._running = False
-                    return
+                fail_streak += 1
+                if fail_streak == 1 or fail_streak % 30 == 0:
+                    log.warning("LiveFeed REST error: %s", e)
+                self._connected = False
 
-            self._connected = False
-            if not self._running:
-                break
-
-            self._backoff_sleep()
+            time.sleep(poll_interval)
 
     def _backoff_sleep(self) -> None:
         self._reconnect_count += 1
@@ -198,19 +206,6 @@ class LiveFeed:
                         pass
                 break
 
-    def _read_loop(self) -> None:
-        while self._running and self._connected:
-            try:
-                data = self._feed.get_data()
-                if data:
-                    self._last_tick_time = time.time()
-                    self._tick_count += 1
-                    self._tick_count_1m += 1
-                    self._process_tick(data)
-            except Exception:
-                pass
-            time.sleep(0.05)
-
     def _process_tick(self, data: dict) -> None:
         sec_id = str(data.get("security_id", data.get("securityId", "")))
         if not sec_id:
@@ -258,27 +253,25 @@ class LiveFeed:
         return {}
 
     def subscribe(self, instruments: list[tuple[int, str, int]]) -> None:
-        if not self._feed or not self._running:
+        if not self._running:
             return
         new = [i for i in instruments if i not in self._subscribed]
         if not new:
             return
-        try:
-            self._feed.subscribe_symbols(new)
-            self._subscribed.update(new)
-            log.info("Subscribed %d new instruments (total: %d)",
-                     len(new), len(self._subscribed))
-        except Exception as e:
-            log.error("Subscribe failed: %s", e)
+        self._subscribed.update(new)
+        log.info("Subscribed %d new instruments (total: %d)",
+                 len(new), len(self._subscribed))
 
     def unsubscribe(self, instruments: list[tuple[int, str, int]]) -> None:
-        if not self._feed or not self._running:
+        if not self._running:
             return
-        try:
-            self._feed.unsubscribe_symbols(instruments)
-            self._subscribed -= set(instruments)
-        except Exception as e:
-            log.error("Unsubscribe failed: %s", e)
+        self._subscribed -= set(instruments)
+        for seg_int, sec_id, _ in instruments:
+            seg_str = SEG_INT_TO_STR.get(seg_int, str(seg_int))
+            key = f"{seg_str}:{sec_id}"
+            with self._lock:
+                self._ltp.pop(key, None)
+                self._quotes.pop(key, None)
 
     def update_token(self, token: str) -> None:
         self._token = token
@@ -287,11 +280,6 @@ class LiveFeed:
     def stop(self) -> None:
         self._running = False
         self._connected = False
-        if self._feed:
-            try:
-                self._feed.close_connection()
-            except Exception:
-                pass
         log.info("LiveFeed stopped")
 
     def get_health_metrics(self) -> dict:
