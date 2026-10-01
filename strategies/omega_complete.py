@@ -382,16 +382,12 @@ class OmegaStrategy:
             log.warning("DB position upsert failed: %s", e)
 
         if self.live_feed and contract and contract.security_id.isdigit():
-            try:
-                from dhanhq import MarketFeed as MF
-                seg_int = {"NSE_FNO": MF.NSE_FNO, "BSE_FNO": MF.BSE_FNO}.get(
-                    exchange_seg, MF.NSE_FNO)
-                self.live_feed.subscribe(
-                    [(seg_int, contract.security_id, MF.Quote)])
-                log.info("LiveFeed subscribed: %s sid=%s",
-                         trade_symbol, contract.security_id)
-            except Exception as e:
-                log.warning("LiveFeed subscribe failed: %s", e)
+            from core.live_feed import EXCHANGE_SEG_MAP
+            seg_int = EXCHANGE_SEG_MAP.get(exchange_seg, 2)
+            self.live_feed.subscribe(
+                [(seg_int, contract.security_id, 15)])
+            log.info("LiveFeed subscribed: %s sid=%s",
+                     trade_symbol, contract.security_id)
 
         if self.memory:
             self._signal_context[trade_symbol] = {
@@ -476,7 +472,11 @@ class OmegaStrategy:
         now = datetime.now(IST)
         for pos in self.pm.open_positions:
             try:
-                ltp = self.broker.get_ltp(pos.security_id, pos.exchange_segment)
+                ltp = 0.0
+                if self.live_feed:
+                    ltp = self.live_feed.get_ltp(pos.security_id, pos.exchange_segment)
+                if ltp <= 0:
+                    ltp = self.broker.get_ltp(pos.security_id, pos.exchange_segment)
                 if ltp <= 0:
                     continue
                 self.pm.update_price(pos.security_id, ltp)

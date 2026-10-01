@@ -168,6 +168,7 @@ async def api_state():
         "server_time": datetime.now(IST).isoformat(),
         "token_expiry": _token_expiry(),
         "trade_notes": notes,
+        "index_prices": idx.get("index_prices", {}),
     }
 
 
@@ -470,6 +471,19 @@ body::after{content:'';position:fixed;inset:0;z-index:0;pointer-events:none;opac
 .sbar span{white-space:nowrap}
 .sbar b{color:var(--text-2)}
 
+/* INDEX TICKER */
+.idx-ticker{display:flex;align-items:center;justify-content:center;gap:32px;padding:10px 28px;
+  background:linear-gradient(180deg,rgba(10,14,28,.7),rgba(6,10,20,.9));
+  border-bottom:1px solid rgba(201,168,76,.08);font-size:12px}
+.idx-t{display:flex;align-items:center;gap:8px;white-space:nowrap}
+.idx-name{color:var(--text-3);font-size:10px;text-transform:uppercase;letter-spacing:1.5px;font-weight:600}
+.idx-price{color:var(--accent-g);font-family:var(--mono);font-size:16px;font-weight:700;letter-spacing:.5px}
+.idx-price.stale{color:var(--text-3);opacity:.5}
+.idx-dot{width:5px;height:5px;border-radius:50%;background:var(--profit);
+  box-shadow:0 0 4px var(--profit);animation:pulse 2s infinite}
+.idx-dot.off{background:var(--text-3);box-shadow:none;animation:none}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+
 /* WALLET */
 .wlt{display:flex;background:linear-gradient(180deg,rgba(12,18,34,.85),rgba(6,8,16,.95));
   border-bottom:1px solid rgba(201,168,76,.06);overflow-x:auto;position:relative;padding:4px 0}
@@ -771,6 +785,7 @@ main{padding:24px;max-width:1440px;margin:0 auto;position:relative;z-index:1}
 </header>
 
 <div class="sbar" id="sbar"></div>
+<div class="idx-ticker" id="idx-ticker"></div>
 <div class="wlt" id="wallet"></div>
 
 <nav class="tabs">
@@ -827,6 +842,7 @@ document.querySelectorAll('.tab').forEach(b=>{
 function render(){
   if(!S)return;
   renderHdr();
+  renderIdx();
   renderWlt();
   renderTab();
 }
@@ -858,6 +874,21 @@ function renderHdr(){
     '<span>Started: '+saT+'</span>'+
     '<span>Updated: '+luT+'</span>'+
     '<span>Market: <b style="color:'+(ms==='OPEN'?'var(--profit)':ms==='CLOSING'?'#f97316':'var(--text-3)')+'">'+ms+'</b></span>';
+}
+
+function renderIdx(){
+  const ip=S.index_prices||{};
+  const el=document.getElementById('idx-ticker');
+  let h='';
+  for(const [name,price] of Object.entries(ip)){
+    const live=price>0;
+    const cls=live?'':'stale';
+    const dot=live?'idx-dot':'idx-dot off';
+    const pStr=live?String.fromCharCode(8377)+price.toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2}):'--';
+    h+='<div class="idx-t"><span class="'+dot+'"></span><span class="idx-name">'+name+'</span><span class="idx-price '+cls+' mono">'+pStr+'</span></div>';
+  }
+  if(!h) h='<span style="color:var(--text-3);font-size:10px;letter-spacing:1px">INDEX FEED CONNECTING...</span>';
+  el.innerHTML=h;
 }
 
 function renderWlt(){

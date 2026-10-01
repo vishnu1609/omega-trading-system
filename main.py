@@ -189,7 +189,13 @@ def main() -> None:
     log.info("Option chain resolver initialized (Dhan API)")
 
     live_feed = LiveFeed()
-    log.info("LiveFeed created (WebSocket disabled — using REST API for LTP)")
+    index_instruments = [
+        (0, "13", 15),   # NIFTY 50 — LTP
+        (0, "25", 15),   # BANKNIFTY — LTP
+        (0, "51", 15),   # SENSEX — LTP
+    ]
+    live_feed.start(index_instruments)
+    log.info("LiveFeed started — WebSocket subscribed to %d index instruments", len(index_instruments))
 
     wallet = Wallet(starting_capital=200_000.0)
     log.info("Wallet loaded: balance=₹%.2f available=₹%.2f", wallet.balance, wallet.available)
@@ -476,8 +482,15 @@ def main() -> None:
                 except Exception:
                     pass
 
+            index_ltps = {
+                "NIFTY": live_feed.get_ltp("13", "IDX_I"),
+                "BANKNIFTY": live_feed.get_ltp("25", "IDX_I"),
+                "SENSEX": live_feed.get_ltp("51", "IDX_I"),
+            }
+
             update_state(
                 system="indices",
+                index_prices=index_ltps,
                 positions=[{
                     "symbol": p.symbol,
                     "security_id": p.security_id,
