@@ -217,7 +217,7 @@ def main() -> None:
     strategy.option_chain = option_chain
     strategy.live_feed = live_feed
 
-    register_bot(strategy=strategy, pm=pm, broker=broker, om=om, wallet=wallet)
+    register_bot(strategy=strategy, pm=pm, broker=broker, om=om, wallet=wallet, guardrails=guardrails)
 
     if mode == "live" and hasattr(broker, 'validate_token'):
         if not broker.validate_token():
