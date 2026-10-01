@@ -148,12 +148,14 @@ class OmegaStrategy:
                      "(rapid time decay erodes premium, score now %.0f)", score)
 
         min_score = 45 if self.mode == "paper" else 55
+        if self._consecutive_losses >= 1:
+            min_score = max(min_score, 55)
         if self._consecutive_losses >= 2:
             if confidence != "HIGH":
                 log.info("LOSS RECOVERY: rejecting %s %s — only HIGH confidence allowed (%d consecutive losses)",
                          side, symbol, self._consecutive_losses)
                 return
-            min_score = max(min_score, 60)
+            min_score = max(min_score, 65)
         if score < min_score:
             log.info("Signal rejected: %s %s — confidence=%s score=%.0f (need score>=%.0f, mode=%s)",
                      side, symbol, confidence, score, min_score, self.mode)
@@ -494,6 +496,9 @@ class OmegaStrategy:
 
             # --- Use stored ATR from signal, fall back to 2% of entry ---
             premium_atr = pos.atr_value if pos.atr_value > 0 else pos.entry_price * 0.02
+            is_bought_option = pos.direction == "LONG" and ("CE" in pos.symbol or "PE" in pos.symbol)
+            if is_bought_option:
+                premium_atr *= 1.5
 
             trail_eval = self.re.evaluate_trail(
                 current_price=ltp,
