@@ -238,6 +238,8 @@ class OmegaStrategy:
                 log.warning("Trade blocked by guardrail: %s", risk_check.reason)
                 return
 
+        vol_regime = payload.get("volatility_regime", "NORMAL")
+
         if self.memory:
             exp = self.memory.get_expectancy(trade_symbol)
             if exp.get("enough_data") and exp.get("win_rate", 0) > 0:
@@ -279,7 +281,6 @@ class OmegaStrategy:
                 signal.quantity = quantity
                 log.info("Position size reduced by memory: %d → %d", original_qty, quantity)
 
-        vol_regime = payload.get("volatility_regime", "NORMAL")
         regime_size_mult = {"HIGH_VOL": 0.5, "CHOPPY": 0.7, "NORMAL": 1.0, "TRENDING": 1.2}.get(vol_regime, 1.0)
         if regime_size_mult != 1.0:
             original_qty = quantity
