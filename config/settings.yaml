@@ -35,6 +35,11 @@ imessage:
   enabled: true
   recipient: "tvishnuteja16@gmail.com"
 
+telegram:
+  enabled: true
+  bot_token: "${TELEGRAM_BOT_TOKEN}"
+  chat_id: "${TELEGRAM_CHAT_ID}"
+
 signal_generator:
   watch: ["NIFTY", "BANKNIFTY", "SENSEX"]
   poll_interval: 30               # seconds between scans (30s balances signal freshness vs API rate limits)
