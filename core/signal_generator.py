@@ -395,6 +395,8 @@ class SignalGenerator:
         self._prev_day_levels: dict[str, tuple[float, float]] = {}
         self._signal_repeat_count: dict[str, int] = {}
         self._volatility_regime: dict[str, str] = {}
+        self._ghost_pct: dict[str, float] = {}
+        self._data_source: dict[str, str] = {}
         self.guardrails = None  # set externally via set_guardrails()
         self.calendar = None    # set externally via set_calendar()
 
@@ -418,11 +420,13 @@ class SignalGenerator:
             if raw:
                 raw = self._filter_ghost_candles(raw, inst_name)
                 raw = self._sanitize_outliers(raw, inst_name)
+                self._data_source[inst_name] = "DHAN"
                 return raw[-500:] if len(raw) > 500 else raw
             log.warning("Dhan fetch empty for %s — falling back to Yahoo (15-20 min delayed!)", inst_name)
 
         candles = self._fetch_yahoo(inst_name)
         if candles:
+            self._data_source[inst_name] = "YAHOO"
             candles = self._filter_ghost_candles(candles, inst_name)
             candles = self._sanitize_outliers(candles, inst_name)
             now = datetime.now(IST)
@@ -434,8 +438,7 @@ class SignalGenerator:
 
         return []
 
-    @staticmethod
-    def _filter_ghost_candles(candles: list[Candle], symbol: str) -> list[Candle]:
+    def _filter_ghost_candles(self, candles: list[Candle], symbol: str) -> list[Candle]:
         if not candles:
             return candles
         cleaned: list[Candle] = []
@@ -457,8 +460,9 @@ class SignalGenerator:
             log.warning("Forward-filled %d ghost candles for %s (flat OHLC)",
                         ffill_count, symbol)
         recent = cleaned[-20:] if len(cleaned) >= 20 else cleaned
-        recent_ghosts = sum(1 for c in recent if c.volume > 0 and c.volume < 1)
+        recent_ghosts = sum(1 for c in recent if c.open == c.high == c.low == c.close and c.open > 0)
         ghost_pct = recent_ghosts / len(recent) * 100 if recent else 0
+        self._ghost_pct[symbol] = ghost_pct
         if ghost_pct > 40:
             log.warning("GHOST DATA: %s has %.0f%% ghost candles in last 20 — indicators unreliable",
                         symbol, ghost_pct)
@@ -685,6 +689,12 @@ class SignalGenerator:
             log.warning("Freak tick on %s — skipping signal generation", inst_name)
             return None
 
+        ghost_pct = self._ghost_pct.get(inst_name, 0)
+        if ghost_pct > 60:
+            if self._scan_count <= 1 or self._scan_count % 20 == 0:
+                log.warning("GHOST GUARD: %s has %.0f%% ghost data — skipping signal gen", inst_name, ghost_pct)
+            return None
+
         if self.guardrails:
             freshness = self.guardrails.check_candle_freshness(
                 candles[-1].timestamp, inst_name)
@@ -720,12 +730,9 @@ class SignalGenerator:
             if not gr:
                 return None
 
-        # ── Market regime: kill signals in choppy markets ──
+        # ── Market regime: mean reversion in choppy markets ──
         is_choppy = chop_vals[i] > self.chop_threshold
         if is_choppy:
-            if self._scan_count <= 1 or self._scan_count % 20 == 0:
-                log.info("CHOP FILTER: %s choppiness=%.1f > %.1f — suppressing signals",
-                         inst_name, chop_vals[i], self.chop_threshold)
             last = self._last_signal.get(inst_name, "")
             trade_dir = self._trade_dir.get(inst_name, 0)
             if trade_dir != 0 and last != "EXIT":
@@ -743,6 +750,67 @@ class SignalGenerator:
                         "sl": 0, "asset": asset, "strike": 0,
                         "score": 100, "confidence": "HIGH",
                     }
+
+            bb_mid, bb_upper, bb_lower = calc_bollinger(candles, self.bb_period, self.bb_std)
+            rsi_vals = calc_rsi(candles, self.rsi_period)
+            atr_vals_local = calc_atr(candles, self.st_period)
+            bb_lower_touch = close <= bb_lower[i] * 1.005 and bb_lower[i] > 0
+            bb_upper_touch = close >= bb_upper[i] * 0.995 and bb_upper[i] > 0
+            rsi_rev_buy = rsi_vals[i] < 35
+            rsi_rev_sell = rsi_vals[i] > 65
+
+            now_ts = time.time()
+            last_sig_ts = self._signal_time.get(inst_name, 0)
+            in_cooldown = (now_ts - last_sig_ts) < self.signal_cooldown_sec
+
+            if bb_lower_touch and rsi_rev_buy and last != "BUY" and not in_cooldown:
+                self._last_signal[inst_name] = "BUY"
+                self._signal_time[inst_name] = now_ts
+                self._trade_dir[inst_name] = 1
+                sl = round(bb_lower[i] - atr_vals_local[i], 2)
+                strategy = "omega_futures" if asset == "futures" else "omega_complete"
+                side = "BUY" if asset == "futures" else "BUY_CE"
+                log.info("MEAN REVERSION BUY: %s RSI=%.1f, price at BB lower (chop=%.1f)",
+                         inst_name, rsi_vals[i], chop_vals[i])
+                vol_regime = self._classify_volatility_regime(inst_name, atr_vals_local, candles)
+                return {
+                    "strategy": strategy, "symbol": inst_name, "side": side,
+                    "sl": sl, "close": close, "asset": asset, "strike": 0,
+                    "atr": round(atr_vals_local[i], 2),
+                    "adx": round(calc_adx(candles, self.adx_len)[i], 2),
+                    "rsi": round(rsi_vals[i], 1),
+                    "score": 55, "confidence": "MEDIUM",
+                    "volatility_regime": vol_regime,
+                    "signal_type": "MEAN_REVERSION",
+                    "bb_squeeze": False, "choppiness": round(chop_vals[i], 1),
+                }
+
+            if bb_upper_touch and rsi_rev_sell and last != "SELL" and not in_cooldown:
+                self._last_signal[inst_name] = "SELL"
+                self._signal_time[inst_name] = now_ts
+                self._trade_dir[inst_name] = -1
+                sl = round(bb_upper[i] + atr_vals_local[i], 2)
+                strategy = "omega_futures" if asset == "futures" else "omega_complete"
+                side = "SELL" if asset == "futures" else "BUY_PE"
+                log.info("MEAN REVERSION SELL: %s RSI=%.1f, price at BB upper (chop=%.1f)",
+                         inst_name, rsi_vals[i], chop_vals[i])
+                vol_regime = self._classify_volatility_regime(inst_name, atr_vals_local, candles)
+                return {
+                    "strategy": strategy, "symbol": inst_name, "side": side,
+                    "sl": sl, "close": close, "asset": asset, "strike": 0,
+                    "atr": round(atr_vals_local[i], 2),
+                    "adx": round(calc_adx(candles, self.adx_len)[i], 2),
+                    "rsi": round(rsi_vals[i], 1),
+                    "score": 55, "confidence": "MEDIUM",
+                    "volatility_regime": vol_regime,
+                    "signal_type": "MEAN_REVERSION",
+                    "bb_squeeze": False, "choppiness": round(chop_vals[i], 1),
+                }
+
+            if self._scan_count <= 1 or self._scan_count % 20 == 0:
+                log.info("CHOP: %s choppiness=%.1f — no mean reversion setup (RSI=%.1f, BB pos=%.2f%%)",
+                         inst_name, chop_vals[i], rsi_vals[i],
+                         (close - bb_lower[i]) / (bb_upper[i] - bb_lower[i]) * 100 if bb_upper[i] > bb_lower[i] else 50)
             return None
 
         # ── ORB levels ──
@@ -908,10 +976,25 @@ class SignalGenerator:
                 volatility_regime=vol_regime,
                 signal_repeat_count=self._track_signal_repeat(inst_name, side),
             )
-            payload["score"] = round(scored.total_score, 1)
+            data_src = self._data_source.get(inst_name, "UNKNOWN")
+            stale_penalty = 0
+            if data_src == "YAHOO":
+                stale_penalty = 10
+            if ghost_pct > 30:
+                stale_penalty += int(ghost_pct / 10)
+
+            final_score = scored.total_score - stale_penalty
+            payload["score"] = round(final_score, 1)
             payload["confidence"] = scored.confidence
+            if stale_penalty > 0 and final_score < scored.total_score:
+                if scored.confidence == "HIGH" and final_score < 65:
+                    payload["confidence"] = "MEDIUM"
+                elif scored.confidence == "MEDIUM" and final_score < 50:
+                    payload["confidence"] = "LOW"
             payload["momentum_spread"] = mom_spread
             payload["volatility_regime"] = vol_regime
+            payload["data_source"] = data_src
+            payload["ghost_pct"] = round(ghost_pct, 1)
             payload["score_details"] = {
                 "adx": round(scored.adx_score, 1),
                 "vwap": round(scored.vwap_score, 1),
@@ -928,8 +1011,9 @@ class SignalGenerator:
                 "pdhl": round(scored.pdhl_score, 1),
                 "regime": round(scored.regime_score, 1),
             }
-            log.info("SIGNAL: %s %s — %s",
-                     side, inst_name, format_score_report(scored))
+            penalty_note = f" [data penalty: -{stale_penalty} from {data_src}, ghost={ghost_pct:.0f}%]" if stale_penalty > 0 else ""
+            log.info("SIGNAL: %s %s — %s%s",
+                     side, inst_name, format_score_report(scored), penalty_note)
             return payload
 
         now_ts = time.time()
