@@ -389,6 +389,9 @@ class SignalGenerator:
         self._last_signal: dict[str, str] = {}
         self._signal_time: dict[str, float] = {}
         self._trade_dir: dict[str, int] = {}
+        self._exit_dir: dict[str, int] = {}
+        self._exit_time: dict[str, float] = {}
+        self.flip_cooldown_sec = 1800
         self._scan_count: int = 0
         self._cycle_lock = Lock()
         self._orb_levels: dict[str, tuple[float, float]] = {}
@@ -743,6 +746,8 @@ class SignalGenerator:
                 trail_exit_long = trade_dir == 1 and close < chand_long[i] and chand_long[i] > 0
                 trail_exit_short = trade_dir == -1 and close > chand_short[i] and chand_short[i] > 0
                 if (trail_exit_long or trail_exit_short) and choppy_entry_age >= 300:
+                    self._exit_dir[inst_name] = trade_dir
+                    self._exit_time[inst_name] = time.time()
                     self._trade_dir[inst_name] = 0
                     self._last_signal[inst_name] = "EXIT"
                     self._signal_time[inst_name] = time.time()
@@ -1034,14 +1039,26 @@ class SignalGenerator:
         last_sig_ts = self._signal_time.get(inst_name, 0)
         in_cooldown = (now_ts - last_sig_ts) < self.signal_cooldown_sec
 
-        if buy_signal and last != "BUY" and not in_cooldown:
+        prev_exit_dir = self._exit_dir.get(inst_name, 0)
+        prev_exit_ts = self._exit_time.get(inst_name, 0)
+        flip_blocked = False
+        if prev_exit_dir != 0 and (now_ts - prev_exit_ts) < self.flip_cooldown_sec:
+            is_flip = (buy_signal and prev_exit_dir == 1) or (sell_signal and prev_exit_dir == -1)
+            if is_flip:
+                remaining = int(self.flip_cooldown_sec - (now_ts - prev_exit_ts))
+                if self._scan_count <= 1 or self._scan_count % 20 == 0:
+                    log.info("FLIP GUARD: %s — blocking opposite entry for %ds after exit",
+                             inst_name, remaining)
+                flip_blocked = True
+
+        if buy_signal and last != "BUY" and not in_cooldown and not flip_blocked:
             self._last_signal[inst_name] = "BUY"
             self._signal_time[inst_name] = now_ts
             side = "BUY" if asset == "futures" else "BUY_CE"
             sl = round(chand_long[i], 2)
             return _build_signal(side, sl, chand_long[i])
 
-        if sell_signal and last != "SELL" and not in_cooldown:
+        if sell_signal and last != "SELL" and not in_cooldown and not flip_blocked:
             self._last_signal[inst_name] = "SELL"
             self._signal_time[inst_name] = now_ts
             side = "SELL" if asset == "futures" else "BUY_PE"
@@ -1051,6 +1068,8 @@ class SignalGenerator:
         entry_age = now_ts - self._signal_time.get(inst_name, 0)
         min_hold = 300
         if (trail_exit_long or trail_exit_short) and last != "EXIT" and entry_age >= min_hold:
+            self._exit_dir[inst_name] = self._trade_dir.get(inst_name, 0)
+            self._exit_time[inst_name] = now_ts
             self._last_signal[inst_name] = "EXIT"
             self._signal_time[inst_name] = now_ts
             self._signal_repeat_count.clear()
