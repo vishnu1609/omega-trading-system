@@ -154,15 +154,7 @@ class RiskEngine:
             self.last_reason = f"Max concurrent positions ({self.max_concurrent}) reached"
             return False
 
-        # Gate 5b: Max daily trades (prevent overtrading)
-        if self._daily_trade_count >= self.max_daily_trades:
-            self.last_reason = (
-                f"Max daily trades ({self.max_daily_trades}) reached — "
-                f"quality over quantity, done for the day"
-            )
-            return False
-
-        # Gate 5c: Progressive loss reduction — halve after 50% daily loss used
+        # Gate 5b: Progressive loss reduction — halve after 50% daily loss used
         half_loss = self.max_daily_loss / 2
         if self.pm.daily_pnl <= -half_loss and self.pm.daily_pnl > -self.max_daily_loss:
             if self.pm.open_count >= 1:
@@ -350,7 +342,7 @@ class RiskEngine:
             "daily_loss_used_pct": round(loss_used_pct, 1),
             "drawdown_recovery_pct": round(drawdown_recovery_needed, 2),
             "trades_today": self._daily_trade_count,
-            "trades_remaining": max(0, self.max_daily_trades - self._daily_trade_count),
+            "trades_today": self._daily_trade_count,
             "consecutive_losses": self.pm.consecutive_losses,
             "risk_zone": risk_of_ruin_zone,
             "bot_killed": self._bot_killed,
@@ -413,11 +405,21 @@ class RiskEngine:
         return lots * lot_size
 
     def time_decay_tp(self, original_tp: float, entry_price: float,
-                      direction: str, hold_minutes: float) -> float:
+                      direction: str, hold_minutes: float,
+                      days_to_expiry: int = -1) -> float:
         """Reduce TP target as hold time increases (Freqtrade ROI table pattern).
 
         Options lose value over time due to theta, so waiting for
         a large TP becomes increasingly unlikely.
+
+        Expiry-aware enhancement: theta decay accelerates near expiry.
+        On expiry day (DTE=0) options lose value fastest — reduce TP
+        aggressively. On DTE=1 the curve steepens too. For DTE>3 the
+        standard hold-time decay is enough.
+
+        NSE 2026 expiry calendar:
+          - Nifty weekly: Tuesday
+          - BankNifty monthly: last Tuesday
         """
         if hold_minutes < 15 or original_tp <= 0 or entry_price <= 0:
             return original_tp
@@ -433,24 +435,80 @@ class RiskEngine:
         else:
             decay = 0.10
 
+        if days_to_expiry == 0:
+            decay *= 0.50
+        elif days_to_expiry == 1:
+            decay *= 0.70
+        elif days_to_expiry == 2:
+            decay *= 0.85
+
         reduced_distance = tp_distance * decay
         if direction == "LONG":
             return round(entry_price + reduced_distance, 2)
         return round(max(entry_price - reduced_distance, 0.05), 2)
+
+    def check_partial_exit(self, current_price: float, entry_price: float,
+                           direction: str, atr_value: float,
+                           quantity: int, already_scaled: bool = False,
+                           lot_size: int = 75) -> dict:
+        """Check if position qualifies for partial profit booking.
+
+        Scale out 50% at 1.5× ATR profit. This locks in gains while
+        letting the remaining position ride for larger moves — the
+        single biggest edge improvement for option buyers (Ernest Chan,
+        "Quantitative Trading": partial exits reduce variance without
+        sacrificing expected value).
+        """
+        result = {"should_scale": False, "exit_qty": 0, "reason": ""}
+
+        if already_scaled or quantity <= lot_size:
+            return result
+
+        if not _is_valid_price(current_price) or not _is_valid_price(entry_price):
+            return result
+        if atr_value <= 0:
+            atr_value = entry_price * 0.015
+
+        is_long = direction == "LONG"
+        pnl_per_unit = (current_price - entry_price) if is_long else (entry_price - current_price)
+        atr_multiples = pnl_per_unit / atr_value if atr_value > 0 else 0
+
+        if atr_multiples >= 1.5:
+            exit_lots = max(1, quantity // (2 * lot_size))
+            exit_qty = exit_lots * lot_size
+            if exit_qty >= quantity:
+                exit_qty = max(lot_size, quantity - lot_size)
+            result["should_scale"] = True
+            result["exit_qty"] = exit_qty
+            result["reason"] = (
+                f"Partial exit: {exit_qty}/{quantity} units at "
+                f"{atr_multiples:.1f}× ATR profit (₹{pnl_per_unit * exit_qty:,.0f})"
+            )
+            log.info("SCALE OUT: %s %s — %s", direction,
+                     f"₹{current_price:.2f}", result["reason"])
+
+        return result
 
     def evaluate_trail(self, current_price: float, entry_price: float,
                        existing_sl: float, direction: str,
                        peak_price: float = 0.0,
                        trail_step: float = 0.0,
                        trail_trigger: float = 1.0,
-                       atr_value: float = 0.0) -> dict:
-        """ATR-based trailing stop with phased progression.
+                       atr_value: float = 0.0,
+                       hold_seconds: float = 0.0) -> dict:
+        """ATR-based trailing stop with time-aware phased progression.
 
-        Phases (based on profit in ATR multiples):
-          < 1.0× ATR: no trail change (let trade develop)
-          1.0× ATR: move SL to breakeven
-          2.0× ATR: lock 1.0× ATR profit
-          3.0× ATR+: tight trail at 1.5× ATR from peak
+        Time phases (options need room to breathe):
+          < 10 min: wide trail at 3.0× ATR from peak (let trade develop)
+          10-30 min: medium trail at 2.5× ATR from peak
+          30-60 min: tighter trail at 2.0× ATR from peak
+          60+ min: tight trail at 1.5× ATR (theta eating, lock profits)
+
+        Profit phases (ATR multiples from entry):
+          < 1.0× ATR: no trail tightening
+          1.5× ATR: move SL to breakeven
+          3.0× ATR: apply time-based trail from peak
+          5.0× ATR+: override to tight 1.5× ATR regardless of time
         """
         if not _is_valid_price(current_price) or not _is_valid_price(entry_price):
             return {"sl": existing_sl, "peak": peak_price,
@@ -471,21 +529,31 @@ class RiskEngine:
         sl = existing_sl
         detail = ""
 
-        if atr_multiples >= 3.0:
+        if hold_seconds < 600:
+            trail_width = 3.0
+        elif hold_seconds < 1800:
+            trail_width = 2.5
+        elif hold_seconds < 3600:
+            trail_width = 2.0
+        else:
+            trail_width = 1.5
+
+        if atr_multiples >= 5.0:
+            trail_width = min(trail_width, 1.5)
             if is_long:
-                candidate = peak - (1.5 * atr)
+                candidate = peak - (trail_width * atr)
             else:
-                candidate = peak + (1.5 * atr)
-            detail = f"tight trail (3×ATR): {sl:.2f} → {candidate:.2f}"
-        elif atr_multiples >= 2.0:
+                candidate = peak + (trail_width * atr)
+            detail = f"strong trail (5×ATR, {trail_width}×w): {sl:.2f} → {candidate:.2f}"
+        elif atr_multiples >= 3.0:
             if is_long:
-                candidate = entry_price + (1.0 * atr)
+                candidate = peak - (trail_width * atr)
             else:
-                candidate = entry_price - (1.0 * atr)
-            detail = f"lock profit (2×ATR): {sl:.2f} → {candidate:.2f}"
-        elif atr_multiples >= 1.0:
+                candidate = peak + (trail_width * atr)
+            detail = f"trail ({atr_multiples:.1f}×ATR, {trail_width}×w): {sl:.2f} → {candidate:.2f}"
+        elif atr_multiples >= 1.5:
             candidate = entry_price
-            detail = f"breakeven (1×ATR): {sl:.2f} → {candidate:.2f}"
+            detail = f"breakeven (1.5×ATR): {sl:.2f} → {candidate:.2f}"
         else:
             candidate = sl
 

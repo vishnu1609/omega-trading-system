@@ -1,21 +1,22 @@
 """
-Signal Scoring & Selection Engine — v4 (14-factor)
+Signal Scoring & Selection Engine — v5 (15-factor)
 
 Scores each signal 0-100 based on:
-  1. ADX strength (trend momentum)                    — 10%
-  2. VWAP proximity (entry quality)                   — 7%
-  3. Risk/Reward ratio (Chandelier stop vs potential)  — 10%
-  4. SuperTrend confidence (distance from ST line)     — 7%
+  1. ADX strength (trend momentum)                    — 9%
+  2. VWAP proximity (entry quality)                   — 6%
+  3. Risk/Reward ratio (Chandelier stop vs potential)  — 9%
+  4. SuperTrend confidence (distance from ST line)     — 6%
   5. Volume surge (institutional interest)             — 8%
   6. RSI momentum (not overbought/oversold)            — 7%
   7. Bollinger Band squeeze (volatility breakout)      — 4%
   8. EMA alignment (9/21 crossover)                    — 4%
   9. ORB breakout (opening range)                      — 4%
-  10. Confluence count (how many factors agree)         — 10%
+  10. Confluence count (how many factors agree)         — 9%
   11. Time-of-day quality (ML book: minute-of-day)     — 8%
   12. Momentum spread (acceleration detection)         — 4%
-  13. Previous day H/L breakout (institutional ref)    — 10%
-  14. Volatility regime quality (trending vs choppy)   — 7%
+  13. Previous day H/L breakout (institutional ref)    — 9%
+  14. Volatility regime quality (trending vs choppy)   — 6%
+  15. VWAP band entry quality (institutional levels)   — 7%
 
 When multiple signals fire, picks the best non-correlated set.
 """
@@ -56,6 +57,7 @@ class ScoredSignal:
     momentum_spread_score: float = 0.0
     pdhl_score: float = 0.0
     regime_score: float = 0.0
+    vwap_band_score: float = 0.0
     total_score: float = 0.0
     confidence: str = "LOW"
     category: str = ""
@@ -64,20 +66,21 @@ class ScoredSignal:
 
     def compute_total(self):
         self.total_score = (
-            self.adx_score * 0.10 +
-            self.vwap_score * 0.07 +
-            self.rr_score * 0.10 +
-            self.st_score * 0.07 +
+            self.adx_score * 0.09 +
+            self.vwap_score * 0.06 +
+            self.rr_score * 0.09 +
+            self.st_score * 0.06 +
             self.volume_score * 0.08 +
             self.rsi_score * 0.07 +
             self.bb_score * 0.04 +
             self.ema_score * 0.04 +
             self.orb_score * 0.04 +
-            self.confluence_score * 0.10 +
+            self.confluence_score * 0.09 +
             self.time_score * 0.08 +
             self.momentum_spread_score * 0.04 +
-            self.pdhl_score * 0.10 +
-            self.regime_score * 0.07
+            self.pdhl_score * 0.09 +
+            self.regime_score * 0.06 +
+            self.vwap_band_score * 0.07
         )
         if self.total_score >= 72:
             self.confidence = "HIGH"
@@ -144,6 +147,7 @@ def score_signal(
     prev_day_low: float = 0.0,
     volatility_regime: str = "NORMAL",
     signal_repeat_count: int = 0,
+    vwap_band_position: float = 50.0,
 ) -> ScoredSignal:
 
     scored = ScoredSignal(
@@ -341,6 +345,32 @@ def score_signal(
     regime_scores = {"TRENDING": 90, "NORMAL": 60, "HIGH_VOL": 40, "CHOPPY": 15}
     scored.regime_score = regime_scores.get(volatility_regime, 60)
 
+    # 15. VWAP Band Entry Quality (0-100): where price sits within VWAP bands
+    # For buys: price near the lower VWAP band = institutional pullback entry
+    # For sells: price near the upper VWAP band = institutional rejection entry
+    if bullish:
+        if vwap_band_position <= 20:
+            scored.vwap_band_score = 95
+        elif vwap_band_position <= 40:
+            scored.vwap_band_score = 80
+        elif vwap_band_position <= 60:
+            scored.vwap_band_score = 60
+        elif vwap_band_position <= 80:
+            scored.vwap_band_score = 40
+        else:
+            scored.vwap_band_score = 20
+    else:
+        if vwap_band_position >= 80:
+            scored.vwap_band_score = 95
+        elif vwap_band_position >= 60:
+            scored.vwap_band_score = 80
+        elif vwap_band_position >= 40:
+            scored.vwap_band_score = 60
+        elif vwap_band_position >= 20:
+            scored.vwap_band_score = 40
+        else:
+            scored.vwap_band_score = 20
+
     # Signal repeat penalty: decay score if same signal fires repeatedly
     if signal_repeat_count >= 5:
         scored.regime_score = max(0, scored.regime_score - 30)
@@ -385,6 +415,7 @@ def format_score_report(scored: ScoredSignal) -> str:
         f"BB={scored.bb_score:.0f} EMA={scored.ema_score:.0f} "
         f"ORB={scored.orb_score:.0f} Conf={scored.confluence_score:.0f} "
         f"Time={scored.time_score:.0f} Mom={scored.momentum_spread_score:.0f} "
-        f"PDH={scored.pdhl_score:.0f} Reg={scored.regime_score:.0f}) "
+        f"PDH={scored.pdhl_score:.0f} Reg={scored.regime_score:.0f} "
+        f"VB={scored.vwap_band_score:.0f}) "
         f"[{scored.category}]"
     )

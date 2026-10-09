@@ -185,6 +185,47 @@ def calc_vwap(candles: list[Candle]) -> list[float]:
     return result
 
 
+def calc_vwap_bands(candles: list[Candle],
+                    num_std: float = 2.0) -> tuple[list[float], list[float], list[float]]:
+    """VWAP with standard deviation bands (institutional-grade levels).
+
+    Unlike Bollinger Bands which use SMA, VWAP bands are volume-weighted
+    and reset daily — they track where institutions actually traded.
+    Price touching the lower band in an uptrend = high-quality pullback entry.
+    Price touching the upper band in a downtrend = high-quality short entry.
+    """
+    n = len(candles)
+    vwap = [0.0] * n
+    upper = [0.0] * n
+    lower = [0.0] * n
+    cum_vol = 0.0
+    cum_tp_vol = 0.0
+    cum_tp2_vol = 0.0
+    current_date = None
+
+    for i, c in enumerate(candles):
+        day = c.timestamp.date()
+        if day != current_date:
+            cum_vol = 0.0
+            cum_tp_vol = 0.0
+            cum_tp2_vol = 0.0
+            current_date = day
+
+        tp = (c.high + c.low + c.close) / 3
+        vol = c.volume if c.volume > 0 else 1
+        cum_vol += vol
+        cum_tp_vol += tp * vol
+        cum_tp2_vol += tp * tp * vol
+
+        vwap[i] = cum_tp_vol / cum_vol if cum_vol > 0 else tp
+        variance = (cum_tp2_vol / cum_vol) - (vwap[i] ** 2) if cum_vol > 0 else 0
+        std = variance ** 0.5 if variance > 0 else 0
+        upper[i] = vwap[i] + num_std * std
+        lower[i] = vwap[i] - num_std * std
+
+    return vwap, upper, lower
+
+
 def calc_rsi(candles: list[Candle], period: int = 14) -> list[float]:
     n = len(candles)
     if n < period + 1:
@@ -400,6 +441,7 @@ class SignalGenerator:
         self._volatility_regime: dict[str, str] = {}
         self._ghost_pct: dict[str, float] = {}
         self._data_source: dict[str, str] = {}
+        self._vix_cache: tuple[float, float] = (0.0, 0.0)
         self.guardrails = None  # set externally via set_guardrails()
         self.calendar = None    # set externally via set_calendar()
 
@@ -675,6 +717,32 @@ class SignalGenerator:
         self._volatility_regime[inst_name] = regime
         return regime
 
+    def _fetch_india_vix(self) -> float:
+        now = time.time()
+        cached_val, cached_time = self._vix_cache
+        if cached_val > 0 and now - cached_time < 120:
+            return cached_val
+        try:
+            df = yf.download("^INDIAVIX", period="1d", interval="5m", progress=False)
+            if not df.empty:
+                val = float(df["Close"].iloc[-1].iloc[0]) if hasattr(df["Close"].iloc[-1], "iloc") else float(df["Close"].iloc[-1])
+                if val > 0:
+                    self._vix_cache = (val, now)
+                    return val
+        except Exception:
+            pass
+        return cached_val
+
+    @staticmethod
+    def _calc_ibs(candles: list, lookback: int = 1) -> float:
+        if len(candles) < lookback:
+            return 0.5
+        c = candles[-lookback]
+        rng = c.high - c.low
+        if rng <= 0:
+            return 0.5
+        return (c.close - c.low) / rng
+
     def _track_signal_repeat(self, inst_name: str, side: str) -> int:
         key = f"{inst_name}_{side}"
         self._signal_repeat_count[key] = self._signal_repeat_count.get(key, 0) + 1
@@ -711,6 +779,7 @@ class SignalGenerator:
         st_val, st_dir = calc_supertrend(candles, self.st_period, self.st_mult)
         adx_vals = calc_adx(candles, self.adx_len)
         vwap_vals = calc_vwap(candles)
+        vwap_band_mid, vwap_band_upper, vwap_band_lower = calc_vwap_bands(candles)
         chand_long, chand_short = calc_chandelier(
             candles, self.chand_len, self.chand_mult)
         atr_vals = calc_atr(candles, self.st_period)
@@ -897,6 +966,38 @@ class SignalGenerator:
                 log.info("RSI FILTER: %s RSI=%.1f oversold — blocking SELL (regime=%s)", inst_name, rsi_vals[i], vol_regime)
                 sell_signal = False
 
+        india_vix = self._fetch_india_vix()
+        ibs_val = self._calc_ibs(candles)
+
+        if india_vix > 0 and (buy_signal or sell_signal):
+            if india_vix > 25 and buy_signal:
+                log.info("VIX GATE: %s VIX=%.1f > 25 — blocking BUY (premiums expensive, whipsaw risk)", inst_name, india_vix)
+                buy_signal = False
+            if india_vix < 12 and sell_signal:
+                log.info("VIX GATE: %s VIX=%.1f < 12 — low premium environment, SELL size will be reduced", inst_name, india_vix)
+
+        if buy_signal and ibs_val > 0.8:
+            log.info("IBS FILTER: %s IBS=%.2f > 0.8 — overbought intraday, blocking BUY", inst_name, ibs_val)
+            buy_signal = False
+        if sell_signal and ibs_val < 0.2:
+            log.info("IBS FILTER: %s IBS=%.2f < 0.2 — oversold intraday, blocking SELL", inst_name, ibs_val)
+            sell_signal = False
+
+        if buy_signal or sell_signal:
+            _avg_v = sum(c.volume for c in candles[max(0, i-19):i+1]) / min(20, i+1) if i >= 0 else 1
+            _cur_v = candles[i].volume if candles[i].volume > 0 else 0
+            _vol_r = _cur_v / _avg_v if _avg_v > 0 else 0
+            if _vol_r < 0.4:
+                log.info("VOLUME FILTER: %s vol_ratio=%.2f < 0.4 — low volume, blocking signal", inst_name, _vol_r)
+                buy_signal = False
+                sell_signal = False
+
+            vwap_dist_pct = abs(close - vwap_vals[i]) / vwap_vals[i] * 100 if vwap_vals[i] > 0 else 0
+            if vwap_dist_pct < 0.03:
+                log.info("VWAP DISTANCE: %s price too close to VWAP (%.3f%%) — weak conviction, blocking signal", inst_name, vwap_dist_pct)
+                buy_signal = False
+                sell_signal = False
+
         trade_dir = self._trade_dir.get(inst_name, 0)
 
         if buy_signal:
@@ -962,7 +1063,17 @@ class SignalGenerator:
                 "bull_factors": bull_factors,
                 "bear_factors": bear_factors,
                 "rsi_divergence": bull_div if "BUY" in side.upper() else bear_div,
+                "india_vix": round(india_vix, 1),
+                "ibs": round(ibs_val, 2),
+                "vwap_distance_pct": round(abs(close - vwap_vals[i]) / vwap_vals[i] * 100, 3) if vwap_vals[i] > 0 else 0,
+                "vwap_band_position": round(
+                    (close - vwap_band_lower[i]) / (vwap_band_upper[i] - vwap_band_lower[i]) * 100, 1
+                ) if vwap_band_upper[i] > vwap_band_lower[i] else 50.0,
             }
+            vwap_bp = (
+                (close - vwap_band_lower[i]) / (vwap_band_upper[i] - vwap_band_lower[i]) * 100
+            ) if vwap_band_upper[i] > vwap_band_lower[i] else 50.0
+
             scored = score_signal(
                 symbol=inst_name, side=side, strategy=strategy, asset=asset,
                 raw_signal=payload,
@@ -983,6 +1094,7 @@ class SignalGenerator:
                 prev_day_low=pdl,
                 volatility_regime=vol_regime,
                 signal_repeat_count=self._track_signal_repeat(inst_name, side),
+                vwap_band_position=vwap_bp,
             )
             data_src = self._data_source.get(inst_name, "UNKNOWN")
             stale_penalty = 0
@@ -1023,6 +1135,7 @@ class SignalGenerator:
                 "momentum": round(scored.momentum_spread_score, 1),
                 "pdhl": round(scored.pdhl_score, 1),
                 "regime": round(scored.regime_score, 1),
+                "vwap_band": round(scored.vwap_band_score, 1),
             }
             total_penalty = stale_penalty + chop_penalty
             parts = []
