@@ -42,7 +42,7 @@ def _get_webhook_secret() -> str:
     return os.environ.get("TV_WEBHOOK_SECRET", "")
 
 VALID_SIDES = {"BUY_CE", "BUY_PE", "SELL_CE", "SELL_PE", "BUY", "SELL", "EXIT"}
-VALID_STRATEGIES = {"omega_complete", "omega_futures"}
+VALID_STRATEGIES = {"omega_complete", "omega_futures", "omega_v10"}
 
 MAX_QUEUE_SIZE = 20
 MAX_REQUESTS_PER_MINUTE = 30

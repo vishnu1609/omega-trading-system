@@ -52,6 +52,50 @@ log = logging.getLogger(__name__)
 
 IST = ZoneInfo("Asia/Kolkata")
 
+DYNAMIC_SLTP_LEVELS = {
+    "LOW": [
+        {"level": 1, "sl_pct": 6.0, "tp_pct": 7.0},
+        {"level": 2, "sl_pct": 7.0, "tp_pct": 10.0},
+        {"level": 3, "sl_pct": 10.0, "tp_pct": 12.5},
+        {"level": 4, "sl_pct": 12.5, "tp_pct": 15.0},
+    ],
+    "MEDIUM": [
+        {"level": 1, "sl_pct": 6.0, "tp_pct": 9.0},
+        {"level": 2, "sl_pct": 9.0, "tp_pct": 13.0},
+        {"level": 3, "sl_pct": 13.0, "tp_pct": 17.0},
+        {"level": 4, "sl_pct": 17.0, "tp_pct": 22.0},
+    ],
+    "HIGH": [
+        {"level": 1, "sl_pct": 8.0, "tp_pct": 15.0},
+        {"level": 2, "sl_pct": 15.0, "tp_pct": 20.0},
+        {"level": 3, "sl_pct": 20.0, "tp_pct": 26.0},
+        {"level": 4, "sl_pct": 26.0, "tp_pct": 33.0},
+    ],
+}
+
+SHORT_DYNAMIC_SLTP_LEVELS = {
+    "LOW": [
+        {"level": 1, "sl_pct": 12.0, "tp_pct": 5.0},
+        {"level": 2, "sl_pct": 5.0, "tp_pct": 8.0},
+        {"level": 3, "sl_pct": 8.0, "tp_pct": 12.0},
+        {"level": 4, "sl_pct": 12.0, "tp_pct": 15.0},
+    ],
+    "MEDIUM": [
+        {"level": 1, "sl_pct": 15.0, "tp_pct": 7.0},
+        {"level": 2, "sl_pct": 7.0, "tp_pct": 11.0},
+        {"level": 3, "sl_pct": 11.0, "tp_pct": 15.0},
+        {"level": 4, "sl_pct": 15.0, "tp_pct": 20.0},
+    ],
+    "HIGH": [
+        {"level": 1, "sl_pct": 18.0, "tp_pct": 10.0},
+        {"level": 2, "sl_pct": 10.0, "tp_pct": 15.0},
+        {"level": 3, "sl_pct": 15.0, "tp_pct": 20.0},
+        {"level": 4, "sl_pct": 20.0, "tp_pct": 25.0},
+    ],
+}
+
+SL_GRACE_SECONDS = 90
+
 
 class OmegaStrategy:
     """Processes webhook signals and routes through risk → order → broker."""
@@ -88,6 +132,7 @@ class OmegaStrategy:
         self._signal_context: dict[str, dict] = {}
         self._underlying_cache: dict[str, tuple[float, float]] = {}
         self._consecutive_losses: int = 0
+        self._last_loss_time: float = 0.0
 
     def _get_underlying_ltp(self, symbol: str) -> float:
         """Extract underlying name from option symbol and fetch its price."""
@@ -137,6 +182,12 @@ class OmegaStrategy:
         time_minutes = hour * 60 + minute
         is_sell_entry = side.startswith("SELL")
         is_buy_option = side in ("BUY_CE", "BUY_PE")
+
+        if time_minutes < 9 * 60 + 20:
+            log.info("OPENING RANGE FILTER: blocking %s %s before 09:20 IST — first 5 min too choppy (%02d:%02d)",
+                     side, symbol, hour, minute)
+            return
+
         if is_sell_entry and time_minutes < 11 * 60 + 30:
             log.info("THETA FILTER: blocking SELL entry before 11:30 IST "
                      "(theta decay too slow at %02d:%02d)", hour, minute)
@@ -151,15 +202,29 @@ class OmegaStrategy:
             log.info("THETA PENALTY: -10 score for option BUY after 14:30 IST "
                      "(rapid time decay erodes premium, score now %.0f)", score)
 
+        if "CE" in side:
+            score = payload.get("score", 0) + 3
+            payload["score"] = score
+            log.info("CE BOOST: +3 score for CE trade (CE historically outperforms PE, score=%.0f)", score)
+
         min_score = 45 if self.mode == "paper" else 55
-        if self._consecutive_losses >= 1:
-            min_score = max(min_score, 55)
         if self._consecutive_losses >= 2:
-            if confidence != "HIGH":
-                log.info("LOSS RECOVERY: rejecting %s %s — only HIGH confidence allowed (%d consecutive losses)",
-                         side, symbol, self._consecutive_losses)
+            elapsed = time.time() - self._last_loss_time
+            if elapsed < 900:
+                remaining = int((900 - elapsed) / 60)
+                log.info("LOSS COOLDOWN: %d consecutive losses — %d min cooldown remaining, blocking %s %s",
+                         self._consecutive_losses, remaining, side, symbol)
                 return
-            min_score = max(min_score, 65)
+            if confidence == "LOW":
+                log.info("LOSS FILTER: %d consecutive losses — skipping LOW confidence %s %s (only MEDIUM/HIGH allowed)",
+                         self._consecutive_losses, side, symbol)
+                return
+            min_score = max(min_score, 55)
+        if self._consecutive_losses >= 4:
+            min_score = max(min_score, 60)
+        if "BANKNIFTY" in symbol:
+            min_score += 10
+            log.info("BANKNIFTY GATE: +10 min_score (net loser historically, need higher conviction, min_score=%d)", min_score)
         if score < min_score:
             log.info("Signal rejected: %s %s — confidence=%s score=%.0f (need score>=%.0f, mode=%s)",
                      side, symbol, confidence, score, min_score, self.mode)
@@ -217,16 +282,26 @@ class OmegaStrategy:
 
         correlated = {"NIFTY", "BANKNIFTY", "FINNIFTY", "SENSEX", "BANKEX"}
         if inst_name and inst_name.upper() in correlated:
+            same_index = False
+            corr_count = 0
             for pos in self.pm.open_positions:
                 pos_base = None
                 for c in correlated:
                     if c in pos.symbol.upper():
                         pos_base = c
                         break
-                if pos_base and pos_base != inst_name.upper() and pos.direction == direction:
-                    log.warning("Correlated position blocked: %s %s already open with %s %s",
-                                direction, inst_name, pos.direction, pos.symbol)
-                    return
+                if pos_base:
+                    if pos_base == inst_name.upper() and pos.direction == direction:
+                        same_index = True
+                    if pos.direction == direction:
+                        corr_count += 1
+            if same_index:
+                log.warning("Same-index position blocked: %s %s already open", direction, inst_name)
+                return
+            if corr_count >= 2:
+                log.warning("Max 2 correlated positions: %s %s blocked (%d already open)",
+                            direction, inst_name, corr_count)
+                return
 
         if self.guardrails and entry_price > 0:
             premium_sl = entry_price * 0.50
@@ -326,16 +401,34 @@ class OmegaStrategy:
         atr_value = payload.get("atr", 0)
         confidence = payload.get("confidence", "LOW")
 
-        sl_pct_map = {"HIGH": 8.0, "MEDIUM": 6.0, "LOW": 5.0}
-        tp_pct_map = {"HIGH": 12.0, "MEDIUM": 9.0, "LOW": 7.0}
-        sl_pct = sl_pct_map.get(confidence, 5.0)
-        tp_pct = tp_pct_map.get(confidence, 7.0)
+        level_table = SHORT_DYNAMIC_SLTP_LEVELS if direction == "SHORT" else DYNAMIC_SLTP_LEVELS
+        levels = level_table.get(confidence, level_table["LOW"])
+        sl_pct = levels[0]["sl_pct"]
+        tp_pct = levels[0]["tp_pct"]
 
-        if self._consecutive_losses >= 2:
+        if self._consecutive_losses >= 4:
+            quantity = max(lot_size, (quantity // 3) // lot_size * lot_size)
+            signal.quantity = quantity
+            sl_pct = max(sl_pct - 2.0, 3.0)
+            log.info("LOSS RECOVERY SEVERE: %d losses — qty to 1/3 (%d), SL tightened to %.1f%%",
+                     self._consecutive_losses, quantity, sl_pct)
+        elif self._consecutive_losses >= 3:
             quantity = max(lot_size, (quantity // 2) // lot_size * lot_size)
             signal.quantity = quantity
             sl_pct = max(sl_pct - 1.0, 3.0)
-            log.info("LOSS RECOVERY: qty halved to %d, SL tightened to %.0f%%", quantity, sl_pct)
+            log.info("LOSS RECOVERY: %d losses — qty halved to %d, SL tightened to %.1f%%",
+                     self._consecutive_losses, quantity, sl_pct)
+
+        india_vix = payload.get("india_vix", 0)
+        if india_vix > 0 and india_vix < 12 and direction == "SHORT":
+            quantity = max(lot_size, (quantity * 7 // 10) // lot_size * lot_size)
+            signal.quantity = quantity
+            log.info("LOW VIX SIZING: VIX=%.1f < 12, SELL qty reduced to %d (low premium)", india_vix, quantity)
+
+        if "PE" in side:
+            quantity = max(lot_size, (quantity * 8 // 10) // lot_size * lot_size)
+            signal.quantity = quantity
+            log.info("PE SIZE REDUCTION: PE qty reduced to %d (PE historically underperforms CE)", quantity)
 
         if direction == "LONG":
             sl_price = round(fill_price * (1 - sl_pct / 100), 2)
@@ -383,6 +476,7 @@ class OmegaStrategy:
                 tp_price=position.tp_price, peak_price=fill_price,
                 entry_order_id=resp.order_id, strategy=strategy,
                 entry_time=position.entry_time.isoformat(),
+                dynamic_level=1,
             )
         except Exception as e:
             log.warning("DB position upsert failed: %s", e)
@@ -443,8 +537,20 @@ class OmegaStrategy:
 
     def _handle_exit(self, symbol: str, strategy: str) -> None:
         closed = []
+        now = datetime.now(IST)
         for pos in self.pm.open_positions:
             if symbol in pos.symbol or pos.strategy == strategy:
+                hold_minutes = (now - pos.entry_time).total_seconds() / 60
+                if hold_minutes < 10:
+                    log.info("SIGNAL_EXIT blocked for %s — held only %.0f min (need 10 min minimum hold)",
+                             pos.symbol, hold_minutes)
+                    continue
+
+                if pos.dynamic_level >= 2:
+                    log.info("SIGNAL_EXIT blocked for %s — at L%d with locked profit, letting levels manage",
+                             pos.symbol, pos.dynamic_level)
+                    continue
+
                 ltp = self.broker.get_ltp(pos.security_id, pos.exchange_segment)
                 if ltp <= 0:
                     ltp = pos.current_price
@@ -454,6 +560,12 @@ class OmegaStrategy:
                 if cur_pnl_pct > 0:
                     log.info("SIGNAL_EXIT skipped for %s — in profit %.1f%%, letting trail manage",
                              pos.symbol, cur_pnl_pct)
+                    continue
+
+                unrealized_loss = abs(ltp - pos.entry_price) * pos.quantity
+                if unrealized_loss < 200:
+                    log.info("SIGNAL_EXIT skipped for %s — loss Rs %.0f < Rs 200 threshold, letting SL handle",
+                             pos.symbol, unrealized_loss)
                     continue
 
                 exit_price = pos.current_price if pos.current_price > 0 else pos.entry_price
@@ -504,6 +616,10 @@ class OmegaStrategy:
             if is_bought_option:
                 premium_atr *= 1.5
 
+            level_table = SHORT_DYNAMIC_SLTP_LEVELS if pos.direction == "SHORT" else DYNAMIC_SLTP_LEVELS
+            levels = level_table.get(pos.confidence, level_table["LOW"])
+            past_all_levels = pos.max_dynamic_level > 0
+
             trail_eval = self.re.evaluate_trail(
                 current_price=ltp,
                 entry_price=pos.entry_price,
@@ -511,15 +627,24 @@ class OmegaStrategy:
                 direction=pos.direction,
                 peak_price=pos.peak_price,
                 atr_value=premium_atr,
+                hold_seconds=hold_seconds,
             )
             pos.peak_price = trail_eval["peak"]
 
             new_trail = trail_eval["sl"]
             old_trail = pos.trail_sl
 
-            if new_trail != old_trail and hold_seconds < 180:
-                if profit_pct < 3.0:
-                    new_trail = old_trail
+            if past_all_levels:
+                tight_width = 1.5
+                peak = pos.peak_price
+                if pos.is_long:
+                    atr_trail = round(peak - (tight_width * premium_atr), 2)
+                    if atr_trail > new_trail:
+                        new_trail = atr_trail
+                else:
+                    atr_trail = round(peak + (tight_width * premium_atr), 2)
+                    if new_trail <= 0 or atr_trail < new_trail:
+                        new_trail = atr_trail
 
             # --- 1. BREAKEVEN LOCKDOWN: at 3% profit, SL moves to entry ---
             if not pos.breakeven_locked and profit_pct >= 3.0:
@@ -583,16 +708,24 @@ class OmegaStrategy:
 
             # --- 3. TIME-DECAY TARGETS (theta awareness) ---
             effective_tp = pos.tp_price
-            if hold_minutes > 120:
-                effective_tp = pos.entry_price + (pos.tp_price - pos.entry_price) * 0.50 if pos.is_long else \
-                    pos.entry_price - (pos.entry_price - pos.tp_price) * 0.50
-            elif hold_minutes > 60:
-                effective_tp = pos.entry_price + (pos.tp_price - pos.entry_price) * 0.75 if pos.is_long else \
-                    pos.entry_price - (pos.entry_price - pos.tp_price) * 0.75
+            if pos.tp_price > 0 and hold_minutes > 60:
+                if hold_minutes > 120:
+                    decay_tp = pos.entry_price + (pos.tp_price - pos.entry_price) * 0.50 if pos.is_long else \
+                        pos.entry_price - (pos.entry_price - pos.tp_price) * 0.50
+                else:
+                    decay_tp = pos.entry_price + (pos.tp_price - pos.entry_price) * 0.75 if pos.is_long else \
+                        pos.entry_price - (pos.entry_price - pos.tp_price) * 0.75
+                active_sl = pos.trail_sl if pos.trail_sl > 0 else pos.sl_price
+                if pos.is_long:
+                    min_tp = active_sl + premium_atr * 0.5
+                    effective_tp = max(decay_tp, min_tp)
+                else:
+                    max_tp = active_sl - premium_atr * 0.5
+                    effective_tp = min(decay_tp, max_tp) if max_tp > 0 else decay_tp
 
-            # --- GREED EXTENSION (overrides decay if momentum is strong) ---
-            greed_thresholds = {"HIGH": (15.0, 20.0), "MEDIUM": (10.0, 12.0)}
-            if not pos.tp_extended and pos.confidence in greed_thresholds:
+            # --- GREED EXTENSION: disabled when dynamic levels handle escalation ---
+            if past_all_levels and not pos.tp_extended and pos.confidence in ("HIGH", "MEDIUM"):
+                greed_thresholds = {"HIGH": (15.0, 20.0), "MEDIUM": (10.0, 12.0)}
                 check_pct, extend_pct = greed_thresholds[pos.confidence]
                 if profit_pct >= check_pct:
                     if pos.is_long:
@@ -605,26 +738,93 @@ class OmegaStrategy:
                     effective_tp = new_tp
                     pos.tp_extended = True
 
-            # --- 4. MOMENTUM HOLD: delay TP exit if price is still accelerating ---
+            # --- 4. MOMENTUM HOLD: only in ATR trail mode, not during level-ups ---
             tp_hit = self._check_tp_hit(pos, ltp, effective_tp)
-            if tp_hit and profit_pct < pos.peak_profit_pct + 0.5:
-                tp_hit = True
-            elif tp_hit and profit_pct > pos.peak_profit_pct - 0.3:
+            if tp_hit and past_all_levels and profit_pct > pos.peak_profit_pct - 0.3:
                 if hold_minutes < 120:
                     log.info("MOMENTUM HOLD: %s %s profit=%.1f%% (peak=%.1f%%) — still climbing, delaying TP",
                              pos.direction, pos.symbol, profit_pct, pos.peak_profit_pct)
                     tp_hit = False
 
             # --- EXIT CHECKS ---
-            if pos.is_sl_hit:
-                log.info("SL HIT: %s %s @ %.2f (SL=%.2f) pnl=%.1f%% hold=%.0fs",
-                         pos.direction, pos.symbol, ltp, pos.trail_sl, profit_pct, hold_seconds)
+            if pos.is_sl_hit and hold_seconds >= SL_GRACE_SECONDS:
+                log.info("SL HIT: %s %s @ %.2f (SL=%.2f) pnl=%.1f%% hold=%.0fs level=L%d",
+                         pos.direction, pos.symbol, ltp, pos.trail_sl, profit_pct, hold_seconds, pos.dynamic_level)
                 self._exit_position(pos, ltp, "TRAIL_SL")
+            elif pos.is_sl_hit and hold_seconds < SL_GRACE_SECONDS:
+                log.info("SL GRACE: %s %s SL hit at %.2f but hold=%.0fs < %ds grace — holding",
+                         pos.direction, pos.symbol, ltp, hold_seconds, SL_GRACE_SECONDS)
 
             elif tp_hit:
-                log.info("TP HIT: %s %s @ %.2f (TP=%.2f) profit=%.1f%% hold=%.0fs",
-                         pos.direction, pos.symbol, ltp, effective_tp, profit_pct, hold_seconds)
-                self._exit_position(pos, ltp, "TP")
+                level_table = SHORT_DYNAMIC_SLTP_LEVELS if pos.direction == "SHORT" else DYNAMIC_SLTP_LEVELS
+                levels = level_table.get(pos.confidence, level_table["LOW"])
+                start_level = pos.dynamic_level
+                jumped = False
+                while pos.dynamic_level < len(levels):
+                    next_level = levels[pos.dynamic_level]
+                    new_tp_pct = next_level["tp_pct"]
+                    if pos.is_long:
+                        candidate_tp = round(pos.entry_price * (1 + new_tp_pct / 100), 2)
+                    else:
+                        candidate_tp = round(pos.entry_price * (1 - new_tp_pct / 100), 2)
+                    past_this = (ltp >= candidate_tp) if pos.is_long else (ltp <= candidate_tp)
+                    new_sl = pos.tp_price
+                    pos.sl_price = new_sl
+                    pos.trail_sl = new_sl
+                    pos.tp_price = candidate_tp
+                    pos.dynamic_level += 1
+                    jumped = True
+                    if not past_this:
+                        break
+
+                if jumped:
+                    self.pm.update_trail_sl(pos.security_id, pos.trail_sl)
+                    sl_pct_actual = abs(pos.trail_sl - pos.entry_price) / pos.entry_price * 100
+                    tp_pct_actual = abs(pos.tp_price - pos.entry_price) / pos.entry_price * 100
+                    if pos.dynamic_level - start_level > 1:
+                        log.info("MULTI-LEVEL JUMP: %s %s L%d→L%d profit=%.1f%% | SL=%.2f (%.1f%%) TP=%.2f (%.1f%%)",
+                                 pos.direction, pos.symbol, start_level, pos.dynamic_level,
+                                 profit_pct, pos.trail_sl, sl_pct_actual, pos.tp_price, tp_pct_actual)
+                    else:
+                        log.info("LEVEL UP: %s %s L%d→L%d profit=%.1f%% | SL=%.2f (%.1f%%) TP=%.2f (%.1f%%)",
+                                 pos.direction, pos.symbol, start_level, pos.dynamic_level,
+                                 profit_pct, pos.trail_sl, sl_pct_actual, pos.tp_price, tp_pct_actual)
+                    if pos.sl_order_id:
+                        try:
+                            self.broker.cancel_order(pos.sl_order_id)
+                            sl_resp = self.om.place_sl_limit(
+                                security_id=pos.security_id,
+                                exchange_segment=pos.exchange_segment,
+                                direction=pos.direction,
+                                quantity=pos.quantity,
+                                trigger_price=pos.trail_sl,
+                                buffer_pct=2.0,
+                            )
+                            if sl_resp and sl_resp.order_id:
+                                pos.sl_order_id = sl_resp.order_id
+                        except Exception as e:
+                            log.error("Level-up SL order sync failed: %s", e)
+                    self.tg.sl_hit(pos.symbol, 0, reason=f"LEVEL_UP_L{pos.dynamic_level}",
+                                   entry=pos.entry_price, exit_price=ltp,
+                                   duration=f"L{start_level}→L{pos.dynamic_level} SL={sl_pct_actual:.1f}% TP={tp_pct_actual:.1f}%")
+                    try:
+                        db = OmegaDB.get()
+                        db.upsert_position(
+                            security_id=pos.security_id,
+                            sl_price=pos.sl_price, trail_sl=pos.trail_sl,
+                            tp_price=pos.tp_price, dynamic_level=pos.dynamic_level,
+                        )
+                    except Exception as e:
+                        log.warning("DB level-up update failed: %s", e)
+
+                if pos.dynamic_level >= len(levels) and self._check_tp_hit(pos, ltp, pos.tp_price):
+                    pos.tp_price = 0
+                    pos.max_dynamic_level = pos.dynamic_level
+                    log.info("ATR TRAIL MODE: %s %s passed L%d (profit=%.1f%%) — no more levels, ATR 1.5x trailing",
+                             pos.direction, pos.symbol, pos.dynamic_level, profit_pct)
+                    self.tg.sl_hit(pos.symbol, 0, reason="ATR_TRAIL_MODE",
+                                   entry=pos.entry_price, exit_price=ltp,
+                                   duration=f"Past L{pos.dynamic_level}, ATR trailing")
 
             elif self._is_sl_skipped(pos, ltp):
                 log.critical("SL-SKIP FREEFALL: %s %s LTP=%.2f fell past SL=%.2f — "
@@ -716,8 +916,12 @@ class OmegaStrategy:
                 self._consecutive_losses = 0
             else:
                 self._consecutive_losses += 1
-                if self._consecutive_losses >= 2:
-                    log.warning("LOSS RECOVERY MODE: %d consecutive losses — next trade: 50%% size, HIGH only, tighter SL",
+                self._last_loss_time = time.time()
+                if self._consecutive_losses >= 4:
+                    log.warning("LOSS RECOVERY SEVERE: %d consecutive losses — next: 1/3 size, score>=60, 15-min cooldown, MEDIUM/HIGH only",
+                                self._consecutive_losses)
+                elif self._consecutive_losses >= 2:
+                    log.warning("LOSS RECOVERY: %d consecutive losses — 15-min cooldown, MEDIUM/HIGH only, score>=55",
                                 self._consecutive_losses)
             if reason in ("TRAIL_SL", "SL_SKIP_EMERGENCY") and trade.pnl < 0:
                 self.re.record_symbol_sl(pos.symbol)

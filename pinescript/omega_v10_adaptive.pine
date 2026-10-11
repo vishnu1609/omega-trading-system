@@ -39,7 +39,7 @@ sess_end     = input.int(1515,  "Session End (HHMM)",               group="Sessi
 
 // Webhook
 use_webhook  = input.bool(false, "Enable Webhooks",                  group="Webhook")
-strategy_id  = input.string("omega_v10", "Strategy ID",              group="Webhook")
+strategy_id  = input.string("omega_complete", "Strategy ID",         group="Webhook")
 
 // ─── CORE CALCULATIONS ─────────────────────────────────────────────────────
 
@@ -64,6 +64,16 @@ vwap_val = ta.vwap(hlc3)
 // ATR + Chandelier trailing stop
 atr_val = ta.atr(chand_len)
 
+// RSI (for sell signal confluence + scoring)
+rsi_val = ta.rsi(close, 14)
+
+// Bollinger Bands (for sell signal — are we near the band edge?)
+[bb_upper, bb_mid, bb_lower] = ta.bb(close, 20, 2.0)
+
+// Volume ratio (current vs 20-bar average)
+vol_avg   = ta.sma(volume, 20)
+vol_ratio = vol_avg > 0 ? volume / vol_avg : 1.0
+
 // Volatility regime: current ATR vs recent median
 atr_median = ta.percentile_nearest_rank(atr_val, vol_lookback, 50)
 vol_high   = atr_val > atr_median
@@ -73,38 +83,27 @@ current_hhmm = hour * 100 + minute
 in_session   = current_hhmm >= sess_start and current_hhmm <= sess_end
 
 // ─── REGIME DETECTION ───────────────────────────────────────────────────────
-// This is the "brain" — it reads the market and decides buy vs sell
 
 // Trend structure: are ALL indicators aligned?
 bullish_aligned = close > tema and close > ema200 and close > vwap_val
 bearish_aligned = close < tema and close < ema200 and close < vwap_val
 
 // Market mode
-is_trend_mode = adx_val > adx_buy              // strong trend = BUY options
-is_range_mode = adx_val < adx_sell              // sideways = SELL options
+is_trend_mode = adx_val > adx_buy
+is_range_mode = adx_val < adx_sell
 is_wait_mode  = not is_trend_mode and not is_range_mode
-
-// Recommendation score: positive = buy, negative = sell
-// ADX is the primary driver, volatility is secondary
-regime_score = is_trend_mode ? 2.0 : is_range_mode ? -2.0 : 0.0
-vol_score    = vol_high ? 1.0 : -1.0
-total_score  = regime_score + vol_score
-
-recommend_buy  = total_score > 0
-recommend_sell = total_score < 0
 
 // ─── SIGNAL LOGIC ───────────────────────────────────────────────────────────
 
 // === BUY SIGNALS (trending market — 5-factor confluence) ===
-// All 5 must agree: SuperTrend + TEMA + EMA200 + VWAP + ADX
 buy_ce_cond = is_trend_mode and st_dir < 0 and bullish_aligned and in_session
 buy_pe_cond = is_trend_mode and st_dir > 0 and bearish_aligned and in_session
 
-// === SELL SIGNALS (ranging market — fade the range) ===
-// Sell CE when: ranging + price below EMA200 (bearish bias = safe to sell calls)
-// Sell PE when: ranging + price above EMA200 (bullish bias = safe to sell puts)
-sell_ce_cond = is_range_mode and close < ema200 and st_dir > 0 and in_session
-sell_pe_cond = is_range_mode and close > ema200 and st_dir < 0 and in_session
+// === SELL SIGNALS (ranging market — 5-factor confluence) ===
+// Sell CE: ranging + bearish bias (below EMA200) + bearish SuperTrend + RSI not oversold + near upper BB
+sell_ce_cond = is_range_mode and close < ema200 and st_dir > 0 and rsi_val > 40 and close < bb_upper and in_session
+// Sell PE: ranging + bullish bias (above EMA200) + bullish SuperTrend + RSI not overbought + near lower BB
+sell_pe_cond = is_range_mode and close > ema200 and st_dir < 0 and rsi_val < 60 and close > bb_lower and in_session
 
 // First-bar triggers only (no repeated signals)
 buy_ce_sig  = buy_ce_cond and not buy_ce_cond[1]
@@ -112,12 +111,95 @@ buy_pe_sig  = buy_pe_cond and not buy_pe_cond[1]
 sell_ce_sig = sell_ce_cond and not sell_ce_cond[1]
 sell_pe_sig = sell_pe_cond and not sell_pe_cond[1]
 
+// ─── SIGNAL SCORING ────────────────────────────────────────────────────────
+// Matches Python's 15-factor scoring: HIGH ≥72, MEDIUM ≥55, LOW <55
+
+calc_buy_score() =>
+    float s = 0.0
+    // 1. SuperTrend direction (10 pts)
+    s += st_dir < 0 ? 10.0 : (st_dir > 0 ? -5.0 : 0.0)
+    // 2. TEMA momentum (10 pts)
+    s += close > tema ? 10.0 : -5.0
+    // 3. EMA 200 trend (10 pts)
+    s += close > ema200 ? 10.0 : -5.0
+    // 4. VWAP position (8 pts)
+    s += close > vwap_val ? 8.0 : -3.0
+    // 5. ADX strength (12 pts scaled)
+    s += adx_val > 30 ? 12.0 : (adx_val > 25 ? 8.0 : (adx_val > 20 ? 4.0 : 0.0))
+    // 6. Volume confirmation (8 pts)
+    s += vol_ratio > 1.2 ? 8.0 : (vol_ratio > 0.8 ? 4.0 : 0.0)
+    // 7. RSI momentum (7 pts)
+    s += rsi_val > 50 and rsi_val < 75 ? 7.0 : (rsi_val >= 75 ? 2.0 : 0.0)
+    // 8. Volatility regime (5 pts)
+    s += vol_high ? 5.0 : 2.0
+    // 9. DI+ vs DI- spread (7 pts)
+    s += di_plus > di_minus ? 7.0 : -3.0
+    // 10. Price vs Bollinger mid (5 pts)
+    s += close > bb_mid ? 5.0 : 0.0
+    s
+
+calc_sell_score() =>
+    float s = 0.0
+    // 1. Range mode confirmation (12 pts)
+    s += adx_val < 20 ? 12.0 : (adx_val < 25 ? 6.0 : 0.0)
+    // 2. Low volatility (10 pts — better for selling)
+    s += not vol_high ? 10.0 : 3.0
+    // 3. EMA 200 bias (10 pts)
+    s += 10.0
+    // 4. SuperTrend alignment (8 pts)
+    s += 8.0
+    // 5. RSI neutral zone (8 pts — not extreme = theta wins)
+    s += rsi_val > 35 and rsi_val < 65 ? 8.0 : 3.0
+    // 6. Bollinger width narrow (7 pts — tighter range = better for selling)
+    bb_width = (bb_upper - bb_lower) / bb_mid * 100
+    s += bb_width < 3.0 ? 7.0 : (bb_width < 5.0 ? 4.0 : 1.0)
+    // 7. Volume quiet (7 pts — low volume = range continuation)
+    s += vol_ratio < 1.0 ? 7.0 : (vol_ratio < 1.3 ? 4.0 : 0.0)
+    // 8. ADX declining (5 pts — trend weakening)
+    s += adx_val < adx_val[3] ? 5.0 : 0.0
+    // 9. DI spread narrow (5 pts — no directional conviction)
+    s += math.abs(di_plus - di_minus) < 10 ? 5.0 : 2.0
+    // 10. ATR contracting (5 pts)
+    s += atr_val < atr_val[5] ? 5.0 : 0.0
+    s
+
+calc_buy_pe_score() =>
+    float s = 0.0
+    s += st_dir > 0 ? 10.0 : -5.0
+    s += close < tema ? 10.0 : -5.0
+    s += close < ema200 ? 10.0 : -5.0
+    s += close < vwap_val ? 8.0 : -3.0
+    s += adx_val > 30 ? 12.0 : (adx_val > 25 ? 8.0 : (adx_val > 20 ? 4.0 : 0.0))
+    s += vol_ratio > 1.2 ? 8.0 : (vol_ratio > 0.8 ? 4.0 : 0.0)
+    s += rsi_val < 50 and rsi_val > 25 ? 7.0 : (rsi_val <= 25 ? 2.0 : 0.0)
+    s += vol_high ? 5.0 : 2.0
+    s += di_minus > di_plus ? 7.0 : -3.0
+    s += close < bb_mid ? 5.0 : 0.0
+    s
+
+// Calculate scores for active signals
+var float signal_score = 0.0
+var string signal_conf = "LOW"
+
+if buy_ce_sig
+    signal_score := calc_buy_score()
+if buy_pe_sig
+    signal_score := calc_buy_pe_score()
+if sell_ce_sig
+    signal_score := calc_sell_score()
+if sell_pe_sig
+    signal_score := calc_sell_score()
+
+signal_conf := signal_score >= 72 ? "HIGH" : (signal_score >= 55 ? "MEDIUM" : "LOW")
+
 // ─── TRADE TRACKING + EXITS ────────────────────────────────────────────────
 
 // trade_state: 0=flat, 1=long CE, -1=long PE, 2=short CE, -2=short PE
 var int trade_state = 0
 var float trail_long  = na
 var float trail_short = na
+var float sell_trail_ce = na
+var float sell_trail_pe = na
 
 // Entries set state + reset trailing stop
 if buy_ce_sig and trade_state == 0
@@ -129,10 +211,12 @@ if buy_pe_sig and trade_state == 0
     trail_short := ta.highest(high, chand_len) + chand_mult * atr_val
 
 if sell_ce_sig and trade_state == 0
-    trade_state := 2
+    trade_state   := 2
+    sell_trail_ce := ta.highest(high, chand_len) + chand_mult * atr_val * 1.5
 
 if sell_pe_sig and trade_state == 0
-    trade_state := -2
+    trade_state   := -2
+    sell_trail_pe := ta.lowest(low, chand_len) - chand_mult * atr_val * 1.5
 
 // Trailing stop ratcheting (for BUY positions)
 if trade_state == 1
@@ -143,29 +227,38 @@ if trade_state == -1
     new_trail   = ta.lowest(low, chand_len) + chand_mult * atr_val
     trail_short := math.min(nz(trail_short, new_trail), new_trail)
 
+// Trailing stop ratcheting (for SELL positions — wider, ratchets DOWN for CE / UP for PE)
+if trade_state == 2
+    new_sell_trail = ta.highest(high, chand_len) + chand_mult * atr_val * 1.5
+    sell_trail_ce := math.min(nz(sell_trail_ce, new_sell_trail), new_sell_trail)
+
+if trade_state == -2
+    new_sell_trail = ta.lowest(low, chand_len) - chand_mult * atr_val * 1.5
+    sell_trail_pe := math.max(nz(sell_trail_pe, new_sell_trail), new_sell_trail)
+
 // EXIT conditions
 // Buy exits: trailing stop hit
 exit_long_ce = trade_state == 1  and close < trail_long
 exit_long_pe = trade_state == -1 and close > trail_short
 
-// Sell exits: regime shifts to trending AGAINST your short
-// If you sold CE and market turns strongly bullish → get out
-// If you sold PE and market turns strongly bearish → get out
-exit_short_ce = trade_state == 2  and is_trend_mode and st_dir < 0 and bullish_aligned
-exit_short_pe = trade_state == -2 and is_trend_mode and st_dir > 0 and bearish_aligned
+// Sell exits: regime shifts to trending AGAINST your short, OR trailing stop hit
+exit_short_ce = trade_state == 2  and (is_trend_mode and st_dir < 0 and bullish_aligned or close > sell_trail_ce)
+exit_short_pe = trade_state == -2 and (is_trend_mode and st_dir > 0 and bearish_aligned or close < sell_trail_pe)
 
 any_exit = exit_long_ce or exit_long_pe or exit_short_ce or exit_short_pe
 
 if any_exit
-    trade_state := 0
-    trail_long  := na
-    trail_short := na
+    trade_state   := 0
+    trail_long    := na
+    trail_short   := na
+    sell_trail_ce := na
+    sell_trail_pe := na
 
 // ─── STRIKES ────────────────────────────────────────────────────────────────
 
 atm = math.round(close / strike_step) * strike_step
-otm_ce_strike = atm + otm_steps * strike_step   // OTM call (for selling)
-otm_pe_strike = atm - otm_steps * strike_step   // OTM put (for selling)
+otm_ce_strike = atm + otm_steps * strike_step
+otm_pe_strike = atm - otm_steps * strike_step
 
 // ─── VISUALS ────────────────────────────────────────────────────────────────
 
@@ -183,11 +276,17 @@ plot(ema200, "EMA 200", color=color.orange, linewidth=2)
 plot(vwap_val, "VWAP",
      color=color.new(color.yellow, 30), linewidth=1, style=plot.style_circles)
 
-// Trailing stop (only when in a BUY trade)
-plot(trade_state == 1 ? trail_long : na, "Trail SL",
+// Trailing stop (for BUY trades)
+plot(trade_state == 1 ? trail_long : na, "Trail SL Long",
      color=color.purple, linewidth=2, style=plot.style_linebr)
-plot(trade_state == -1 ? trail_short : na, "Trail SL",
+plot(trade_state == -1 ? trail_short : na, "Trail SL Short",
      color=color.purple, linewidth=2, style=plot.style_linebr)
+
+// Trailing stop (for SELL trades)
+plot(trade_state == 2 ? sell_trail_ce : na, "Sell Trail CE",
+     color=color.fuchsia, linewidth=1, style=plot.style_linebr)
+plot(trade_state == -2 ? sell_trail_pe : na, "Sell Trail PE",
+     color=color.fuchsia, linewidth=1, style=plot.style_linebr)
 
 // BUY signals
 plotshape(buy_ce_sig, "BUY CE", shape.triangleup,
@@ -207,7 +306,7 @@ plotshape(exit_long_ce or exit_short_ce, "EXIT",
 plotshape(exit_long_pe or exit_short_pe, "EXIT",
      shape.xcross, location.belowbar, color.purple, text="EXIT", size=size.tiny)
 
-// Bar color: green=buy zone, red=sell zone, orange=short zone, gray=wait
+// Bar color
 bar_col = buy_ce_cond ? color.lime :
      buy_pe_cond ? color.red :
      sell_ce_cond ? color.orange :
@@ -217,7 +316,7 @@ barcolor(color.new(bar_col, 40))
 
 // ─── DASHBOARD ──────────────────────────────────────────────────────────────
 
-var table hud = table.new(position.top_right, 2, 8, border_width=1)
+var table hud = table.new(position.top_right, 2, 9, border_width=1)
 
 if barstate.islast
     // Row 0: Header
@@ -226,7 +325,7 @@ if barstate.islast
     table.cell(hud, 1, 0, syminfo.ticker,
          bgcolor=color.black, text_color=color.yellow, text_size=size.small)
 
-    // Row 1: MODE — the brain's recommendation
+    // Row 1: MODE
     mode_txt = is_trend_mode ? "TREND → BUY" :
          is_range_mode ? "RANGE → SELL" : "TRANSITION"
     mode_bg  = is_trend_mode ? color.green :
@@ -236,7 +335,7 @@ if barstate.islast
     table.cell(hud, 1, 1, mode_txt,
          bgcolor=mode_bg, text_color=color.white, text_size=size.small)
 
-    // Row 2: ACTION — what to do right now
+    // Row 2: ACTION
     action_txt = ""
     action_bg  = color.gray
     if any_exit
@@ -278,15 +377,17 @@ if barstate.islast
     table.cell(hud, 1, 3, strike_txt,
          bgcolor=color.black, text_color=color.yellow, text_size=size.small)
 
-    // Row 4: TRAIL SL (for buy positions)
+    // Row 4: TRAIL SL
     sl_txt = trade_state == 1 ? str.tostring(math.round(trail_long)) :
-         trade_state == -1 ? str.tostring(math.round(trail_short)) : "—"
+         trade_state == -1 ? str.tostring(math.round(trail_short)) :
+         trade_state == 2 ? str.tostring(math.round(sell_trail_ce)) :
+         trade_state == -2 ? str.tostring(math.round(sell_trail_pe)) : "—"
     table.cell(hud, 0, 4, "TRAIL SL",
          bgcolor=color.new(color.gray, 50), text_color=color.white, text_size=size.small)
     table.cell(hud, 1, 4, sl_txt,
          bgcolor=color.black, text_color=color.purple, text_size=size.small)
 
-    // Row 5: MACRO TREND (EMA 200 position)
+    // Row 5: MACRO TREND
     trend_txt = close > ema200 ? "BULLISH (>200)" : "BEARISH (<200)"
     trend_col = close > ema200 ? color.green : color.red
     table.cell(hud, 0, 5, "MACRO",
@@ -310,23 +411,44 @@ if barstate.islast
     table.cell(hud, 1, 7, str.tostring(vwap_dist) + " pts",
          bgcolor=color.black, text_color=vwap_col, text_size=size.small)
 
+    // Row 8: SCORE + CONFIDENCE (last signal)
+    score_col = signal_conf == "HIGH" ? color.green :
+         signal_conf == "MEDIUM" ? color.yellow : color.red
+    table.cell(hud, 0, 8, "SIGNAL",
+         bgcolor=color.new(color.gray, 50), text_color=color.white, text_size=size.small)
+    table.cell(hud, 1, 8, str.tostring(math.round(signal_score)) + " (" + signal_conf + ")",
+         bgcolor=color.black, text_color=score_col, text_size=size.small)
+
 // ─── WEBHOOK ALERTS ─────────────────────────────────────────────────────────
 
-make_payload(side, strike) =>
+make_payload(side, strike, score, conf) =>
+    vwap_pos = close > vwap_val ? "ABOVE" : "BELOW"
+    st_direction = st_dir < 0 ? "BULLISH" : "BEARISH"
+    vol_regime = vol_high ? "HIGH" : "NORMAL"
+
     '{"strategy":"' + strategy_id +
     '","symbol":"' + syminfo.ticker +
     '","side":"' + side +
     '","strike":' + str.tostring(strike) +
-    ',"ts":' + str.tostring(time) + '}'
+    ',"close":' + str.tostring(close) +
+    ',"atr":' + str.tostring(math.round(atr_val * 100) / 100) +
+    ',"adx":' + str.tostring(math.round(adx_val)) +
+    ',"score":' + str.tostring(math.round(score)) +
+    ',"confidence":"' + conf +
+    '","vwap_position":"' + vwap_pos +
+    '","supertrend_dir":"' + st_direction +
+    '","volatility_regime":"' + vol_regime +
+    '","volume_ratio":' + str.tostring(math.round(vol_ratio * 100) / 100) +
+    ',"rsi":' + str.tostring(math.round(rsi_val)) + '}'
 
 if use_webhook
     if buy_ce_sig
-        alert(make_payload("BUY_CE", atm), alert.freq_once_per_bar_close)
+        alert(make_payload("BUY_CE", atm, calc_buy_score(), signal_conf), alert.freq_once_per_bar_close)
     if buy_pe_sig
-        alert(make_payload("BUY_PE", atm), alert.freq_once_per_bar_close)
+        alert(make_payload("BUY_PE", atm, calc_buy_pe_score(), signal_conf), alert.freq_once_per_bar_close)
     if sell_ce_sig
-        alert(make_payload("SELL_CE", otm_ce_strike), alert.freq_once_per_bar_close)
+        alert(make_payload("SELL_CE", otm_ce_strike, calc_sell_score(), signal_conf), alert.freq_once_per_bar_close)
     if sell_pe_sig
-        alert(make_payload("SELL_PE", otm_pe_strike), alert.freq_once_per_bar_close)
+        alert(make_payload("SELL_PE", otm_pe_strike, calc_sell_score(), signal_conf), alert.freq_once_per_bar_close)
     if any_exit
-        alert(make_payload("EXIT", atm), alert.freq_once_per_bar_close)
+        alert(make_payload("EXIT", atm, 0, "LOW"), alert.freq_once_per_bar_close)
