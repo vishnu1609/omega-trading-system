@@ -342,7 +342,7 @@ class RiskEngine:
             "daily_loss_used_pct": round(loss_used_pct, 1),
             "drawdown_recovery_pct": round(drawdown_recovery_needed, 2),
             "trades_today": self._daily_trade_count,
-            "trades_today": self._daily_trade_count,
+            "max_daily_trades": self.max_daily_trades,
             "consecutive_losses": self.pm.consecutive_losses,
             "risk_zone": risk_of_ruin_zone,
             "bot_killed": self._bot_killed,

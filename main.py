@@ -123,6 +123,32 @@ def main() -> None:
     if restored:
         log.info("Restored %d paper position(s) from previous session", restored)
 
+    try:
+        from core.database import OmegaDB
+        from core.position_manager import ClosedTrade
+        db = OmegaDB.get()
+        today_str = datetime.now(IST).strftime("%Y-%m-%d")
+        db_trades = db.get_trades(limit=200, date=today_str)
+        for t in reversed(db_trades):
+            ct = ClosedTrade(
+                symbol=t["symbol"], option_type=t.get("option_type", ""),
+                direction=t["direction"], quantity=t["quantity"],
+                entry_price=t["entry_price"], exit_price=t["exit_price"],
+                pnl=t["pnl"],
+                entry_time=datetime.fromisoformat(t["entry_time"]).replace(tzinfo=IST)
+                    if datetime.fromisoformat(t["entry_time"]).tzinfo is None
+                    else datetime.fromisoformat(t["entry_time"]),
+                exit_time=datetime.fromisoformat(t["exit_time"]).replace(tzinfo=IST)
+                    if datetime.fromisoformat(t["exit_time"]).tzinfo is None
+                    else datetime.fromisoformat(t["exit_time"]),
+                exit_reason=t.get("exit_reason", ""),
+            )
+            pm._closed.append(ct)
+        if pm._closed:
+            log.info("Loaded %d closed trade(s) from DB for today", len(pm._closed))
+    except Exception as e:
+        log.warning("Could not load closed trades from DB: %s", e)
+
     risk_cfg = settings.get("risk", {})
     session_cfg = settings.get("session", {})
     category_cfg = settings.get("category_toggle", {})
@@ -229,7 +255,7 @@ def main() -> None:
     strategy.option_chain = option_chain
     strategy.live_feed = live_feed
 
-    register_bot(strategy=strategy, pm=pm, broker=broker, om=om, wallet=wallet, guardrails=guardrails)
+    register_bot(strategy=strategy, pm=pm, broker=broker, om=om, wallet=wallet, guardrails=guardrails, live_feed=live_feed)
 
     if mode == "live" and hasattr(broker, 'validate_token'):
         if not broker.validate_token():
@@ -513,6 +539,11 @@ def main() -> None:
                     "sl": p.trail_sl or p.sl_price,
                     "tp": p.tp_price,
                     "confidence": p.confidence,
+                    "dynamic_level": p.dynamic_level,
+                    "max_dynamic_level": p.max_dynamic_level,
+                    "entry_time": p.entry_time.isoformat(),
+                    "tranche_exits": p.tranche_exits,
+                    "option_type": p.option_type,
                 } for p in pm.open_positions],
                 closed_trades=[{
                     "symbol": t.symbol,
@@ -521,6 +552,10 @@ def main() -> None:
                     "exit": t.exit_price,
                     "pnl": t.pnl,
                     "reason": t.exit_reason,
+                    "entry_time": t.entry_time.isoformat(),
+                    "exit_time": t.exit_time.isoformat(),
+                    "option_type": t.option_type,
+                    "quantity": t.quantity,
                 } for t in pm.closed_trades],
                 signals=signals_log[-50:],
                 scan_count=sig_gen._scan_count if sig_gen else 0,
@@ -534,6 +569,8 @@ def main() -> None:
                 feed_health=live_feed.get_health_metrics(),
                 broker_metrics=broker.get_broker_metrics() if hasattr(broker, "get_broker_metrics") else {},
                 wallet=wallet.snapshot(),
+                consecutive_losses=getattr(strategy, "_consecutive_losses", 0),
+                loss_cooldown_remaining=max(0, 900 - (time.time() - getattr(strategy, "_last_loss_time", 0))) if getattr(strategy, "_consecutive_losses", 0) >= 3 else 0,
             )
 
             if re.all_sessions_done():

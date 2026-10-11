@@ -55,6 +55,8 @@ class Position:
     breakeven_locked: bool = False
     tranche_exits: int = 0
     peak_profit_pct: float = 0.0
+    dynamic_level: int = 1
+    max_dynamic_level: int = 0
 
     @property
     def is_long(self) -> bool:
@@ -248,6 +250,8 @@ class PositionManager:
                         "breakeven_locked": p.breakeven_locked,
                         "tranche_exits": p.tranche_exits,
                         "peak_profit_pct": p.peak_profit_pct,
+                    "dynamic_level": p.dynamic_level,
+                    "max_dynamic_level": p.max_dynamic_level,
                     } for sid, p in self._open.items()
                 },
                 "closed_count": len(self._closed),
@@ -286,6 +290,8 @@ class PositionManager:
                     breakeven_locked=data.get("breakeven_locked", False),
                     tranche_exits=data.get("tranche_exits", 0),
                     peak_profit_pct=data.get("peak_profit_pct", 0.0),
+                    dynamic_level=data.get("dynamic_level", 1),
+                    max_dynamic_level=data.get("max_dynamic_level", 0),
                 )
                 self._open[sid] = pos
                 loaded += 1

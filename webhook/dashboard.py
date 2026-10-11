@@ -85,7 +85,7 @@ def _stats(closed: list[dict]) -> dict:
         else:
             worst_s = max(worst_s, run)
 
-    return {"sharpe": round(sharpe, 2), "max_dd": round(dd), "max_dd_pct": round(dd / 1000, 1),
+    return {"sharpe": round(sharpe, 2), "max_dd": round(dd), "max_dd_pct": round(dd / 2000 * 100, 1),
             "avg_win": round(avg_win), "avg_loss": round(avg_loss), "rr_ratio": round(rr, 2),
             "best_streak": best_s, "worst_streak": worst_s, "current_streak": run,
             "streak_type": last or "", "profit_factor": round(pf, 2), "expectancy": round(mean)}
@@ -169,6 +169,9 @@ async def api_state():
         "token_expiry": _token_expiry(),
         "trade_notes": notes,
         "index_prices": idx.get("index_prices", {}),
+        "feed_health": idx.get("feed_health", {}),
+        "consecutive_losses": idx.get("consecutive_losses", 0),
+        "loss_cooldown_remaining": idx.get("loss_cooldown_remaining", 0),
     }
 
 
@@ -193,7 +196,12 @@ async def close_position(request: Request):
     if not pos:
         return {"ok": False, "error": "Position not found"}
 
-    ltp = broker.get_ltp(pos.security_id, pos.exchange_segment)
+    live_feed = _bot.get("live_feed")
+    ltp = 0
+    if live_feed:
+        ltp = live_feed.get_ltp(pos.security_id, pos.exchange_segment)
+    if ltp <= 0:
+        ltp = broker.get_ltp(pos.security_id, pos.exchange_segment)
     if ltp <= 0:
         ltp = pos.current_price if pos.current_price > 0 else pos.entry_price
 
@@ -251,6 +259,16 @@ async def close_position(request: Request):
             else:
                 strategy._consecutive_losses += 1
 
+        tg = getattr(strategy, "tg", None) if strategy else None
+        if tg:
+            try:
+                hold = (trade.exit_time - trade.entry_time).total_seconds()
+                tg.sl_hit(pos.symbol, round(trade.pnl, 2), reason=reason,
+                          entry=trade.entry_price, exit_price=fill,
+                          duration=f"{int(hold // 60)}m (dashboard)")
+            except Exception:
+                pass
+
     log.info("MANUAL CLOSE from dashboard: %s %s @ %.2f reason=%s pnl=%.2f",
              pos.direction, pos.symbol, fill, reason,
              trade.pnl if trade else 0)
@@ -277,13 +295,18 @@ async def close_all(request: Request):
     if not pm or not broker:
         return {"ok": False, "error": "Bot not connected"}
 
+    live_feed = _bot.get("live_feed")
     results = []
     for sid in list(pm._open.keys()):
         pos = pm._open.get(sid)
         if not pos:
             continue
 
-        ltp = broker.get_ltp(pos.security_id, pos.exchange_segment)
+        ltp = 0
+        if live_feed:
+            ltp = live_feed.get_ltp(pos.security_id, pos.exchange_segment)
+        if ltp <= 0:
+            ltp = broker.get_ltp(pos.security_id, pos.exchange_segment)
         if ltp <= 0:
             ltp = pos.current_price if pos.current_price > 0 else pos.entry_price
 
@@ -328,6 +351,21 @@ async def close_all(request: Request):
                 db.delete_position(pos.security_id)
             except Exception as e:
                 log.warning("DB trade record failed: %s", e)
+            strategy = _bot.get("strategy")
+            if strategy and hasattr(strategy, "_consecutive_losses"):
+                if trade.pnl >= 0:
+                    strategy._consecutive_losses = 0
+                else:
+                    strategy._consecutive_losses += 1
+            tg = getattr(strategy, "tg", None) if strategy else None
+            if tg:
+                try:
+                    hold = (trade.exit_time - trade.entry_time).total_seconds()
+                    tg.sl_hit(pos.symbol, round(trade.pnl, 2), reason="MANUAL_SQUARE_OFF",
+                              entry=trade.entry_price, exit_price=ltp,
+                              duration=f"{int(hold // 60)}m (dashboard)")
+                except Exception:
+                    pass
         results.append({
             "symbol": pos.symbol,
             "pnl": trade.pnl if trade else 0,
@@ -422,14 +460,16 @@ async def export_csv():
     state = _read_state()
     idx = state.get("indices", {})
     closed = idx.get("closed_trades", [])
-    lines = ["Symbol,Direction,Entry,Exit,P&L,P&L%,Reason,Time"]
+    lines = ["Symbol,Direction,Option,Qty,Entry,Exit,P&L,P&L%,Reason,Entry Time,Exit Time"]
     for t in closed:
         e = t.get("entry", 0)
         x = t.get("exit", 0)
         pct = ((x - e) / e * 100) if e > 0 else 0
         if t.get("direction") == "SHORT":
             pct = -pct
-        lines.append(f"{t.get('symbol','')},{t.get('direction','')},{e},{x},{t.get('pnl',0):.2f},{pct:.1f},{t.get('reason','')},{t.get('exit_time','')}")
+        et = t.get("entry_time", "")
+        xt = t.get("exit_time", "")
+        lines.append(f"{t.get('symbol','')},{t.get('direction','')},{t.get('option_type','')},{t.get('quantity','')},{e},{x},{t.get('pnl',0):.2f},{pct:.1f},{t.get('reason','')},{et},{xt}")
     csv_text = "\n".join(lines)
     return Response(content=csv_text, media_type="text/csv",
                     headers={"Content-Disposition": "attachment; filename=omega_trades.csv"})
@@ -554,8 +594,7 @@ body::after{content:'';position:fixed;inset:0;z-index:0;pointer-events:none;opac
 
 /* MAIN */
 main{padding:24px;max-width:1440px;margin:0 auto;position:relative;z-index:1}
-.tp{display:none}.tp.on{display:block;animation:fadeUp .3s ease}
-@keyframes fadeUp{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+.tp{display:none}.tp.on{display:block}
 
 /* STATS GRID */
 .sg{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px;margin-bottom:28px}
@@ -788,6 +827,35 @@ main{padding:24px;max-width:1440px;margin:0 auto;position:relative;z-index:1}
 .loading::after{content:'';width:22px;height:22px;border:2px solid rgba(201,168,76,.15);
   border-top-color:var(--gold);border-radius:50%;animation:spin .8s linear infinite}
 @keyframes spin{to{transform:rotate(360deg)}}
+@keyframes confirmBlink{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.6;transform:scale(1.05)}}
+
+/* FEED INDICATOR */
+.feed-dot{width:6px;height:6px;border-radius:50%;display:inline-block;margin-right:4px}
+.feed-ws{background:var(--profit);box-shadow:0 0 6px var(--profit);animation:pulse 2s infinite}
+.feed-rest{background:var(--warn);box-shadow:0 0 4px var(--warn)}
+.feed-off{background:var(--loss);box-shadow:0 0 4px var(--loss)}
+
+/* ANALYTICS */
+.ana-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px}
+.ana-bar-row{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--border-dim)}
+.ana-bar-row:last-child{border-bottom:none}
+.ana-lbl{min-width:90px;font-size:12px;font-weight:600;color:var(--text-2)}
+.ana-bar{flex:1;height:24px;background:var(--bg-3);border-radius:6px;overflow:hidden;position:relative;
+  box-shadow:inset 0 1px 3px rgba(0,0,0,.2)}
+.ana-bar-fill{height:100%;border-radius:6px;transition:width .5s ease;position:relative;min-width:2px}
+.ana-bar-fill::after{content:attr(data-val);position:absolute;right:8px;top:50%;transform:translateY(-50%);
+  font-size:10px;font-weight:700;color:rgba(255,255,255,.9);text-shadow:0 1px 2px rgba(0,0,0,.5)}
+.ana-stats{display:flex;gap:16px;font-size:11px;color:var(--text-3);min-width:140px;justify-content:flex-end}
+.ana-stats b{color:var(--text-2)}
+.ana-vs{display:flex;align-items:center;gap:16px;padding:20px 0}
+.ana-vs-side{flex:1;text-align:center}
+.ana-vs-val{font-size:32px;font-weight:800;line-height:1.2}
+.ana-vs-lbl{font-size:10px;color:var(--text-3);text-transform:uppercase;letter-spacing:1.5px;margin-top:4px}
+.ana-vs-sub{font-size:12px;color:var(--text-2);margin-top:4px}
+.ana-vs-div{width:1px;height:80px;background:linear-gradient(180deg,transparent,var(--border),transparent)}
+.ana-vs-badge{padding:4px 12px;border-radius:20px;font-size:10px;font-weight:700;letter-spacing:.5px;
+  display:inline-block;margin-top:6px}
+.donut-w{width:120px;height:120px;margin:0 auto 8px}
 
 /* RESPONSIVE */
 @media(max-width:768px){
@@ -802,6 +870,9 @@ main{padding:24px;max-width:1440px;margin:0 auto;position:relative;z-index:1}
   .tabs{padding:0 16px}
   .tab{padding:11px 18px;font-size:12px}
   .xd{grid-template-columns:1fr}
+  .ana-grid{grid-template-columns:1fr}
+  .ana-stats{min-width:auto;gap:10px}
+  .ana-lbl{min-width:70px;font-size:11px}
   .pc-p{flex-direction:column;gap:4px}
   .hero{padding:28px 0 8px}
   .hero-val{font-size:40px}
@@ -882,7 +953,6 @@ document.querySelectorAll('.tab').forEach(b=>{
     b.classList.add('on');
     document.querySelectorAll('.tp').forEach(x=>x.classList.remove('on'));
     document.getElementById('tp-'+tab).classList.add('on');
-    if(S)renderTab();
   };
 });
 
@@ -891,7 +961,7 @@ function render(){
   renderHdr();
   renderIdx();
   renderWlt();
-  renderTab();
+  rDash();rPos();rTrades();rSigs();
 }
 
 function renderHdr(){
@@ -915,12 +985,25 @@ function renderHdr(){
   const lu=S.last_update||'';
   const luT=lu.length>11?lu.substring(11,19):'';
   const saT=sa.length>11?sa.substring(11,19):(sa||'--');
+  const fh=S.feed_health||{};
+  const fMode=fh.mode||'unknown';
+  const fWs=fh.ws_connected;
+  const fTpm=fh.ticks_per_minute||0;
+  const fColor=fWs?'var(--profit)':fMode==='rest_only'?'var(--loss)':'var(--warn)';
+  const fLabel=fWs?'WS Live':fMode==='rest_only'?'REST Only':fMode==='rest_fallback'?'REST Fallback':fMode;
+  const closs=S.consecutive_losses||0;
+  const clossHtml=closs>=2?'<span>Recovery: <b style="color:var(--loss)">'+closs+' losses</b></span>':'';
+  const cooldown=S.loss_cooldown_remaining||0;
+  const coolHtml=cooldown>0?'<span style="color:var(--loss)">Cooldown: <b>'+Math.ceil(cooldown/60)+'m</b></span>':'';
+
   document.getElementById('sbar').innerHTML=
     '<span>Watching: <b>'+w.join(', ')+'</b></span>'+
     '<span>Scans: <b>'+sc+'</b></span>'+
     '<span>Started: '+saT+'</span>'+
     '<span>Updated: '+luT+'</span>'+
-    '<span>Market: <b style="color:'+(ms==='OPEN'?'var(--profit)':ms==='CLOSING'?'#f97316':'var(--text-3)')+'">'+ms+'</b></span>';
+    '<span>Feed: <b style="color:'+fColor+'">'+fLabel+'</b>'+(fTpm>0?' <span style="color:var(--text-3)">('+fTpm.toFixed(0)+' ticks/m)</span>':'')+'</span>'+
+    '<span>Market: <b style="color:'+(ms==='OPEN'?'var(--profit)':ms==='CLOSING'?'#f97316':'var(--text-3)')+'">'+ms+'</b></span>'+
+    clossHtml+coolHtml;
 }
 
 function renderIdx(){
@@ -1022,7 +1105,7 @@ function rDash(){
       '<span class="mono" style="color:'+pc(p.pnl||0)+';font-weight:600">'+fpnl(p.pnl||0)+'</span>'+
       '<span style="color:'+pc(p.pnl||0)+';font-size:11px">'+(pct>=0?'+':'')+pct.toFixed(1)+'%</span>'+
       (sid?'<button class="abtn '+((p.pnl||0)>=0?'abtn-profit':'abtn-loss')+'" style="margin-left:auto;padding:3px 10px;font-size:10px" '+
-      'onclick="doAction(\\'/api/close_position\\',{security_id:\\''+sid+'\\',reason:\\''+reason+'\\'},\\'Close '+(p.symbol||'')+'?\\')">Close</button>':'')+
+      'onclick="doAction(\\'/api/close_position\\',{security_id:\\''+sid+'\\',reason:\\''+reason+'\\'},null,this)">Close</button>':'')+
       '</div>';
   });
   h+='</div><div class="cd"><div class="ct">Recent Signals</div>';
@@ -1041,6 +1124,10 @@ function rDash(){
   });
   h+='</div></div>';
 
+  if(closed.length>=3){
+    h+=renderAnalytics(closed);
+  }
+
   if(risk&&Object.keys(risk).length){
     const z=risk.risk_zone||'SAFE';
     const zc={SAFE:'var(--profit)',ELEVATED:'var(--warn)',WARNING:'#f97316',CRITICAL:'var(--loss)'}[z]||'var(--text-3)';
@@ -1049,21 +1136,20 @@ function rDash(){
     const bw=Math.min(lp,100);
     const bc=lp<30?'var(--profit)':lp<50?'var(--warn)':lp<80?'#f97316':'var(--loss)';
     const cl=risk.consecutive_losses||0;
-    const mt=(risk.trades_today||0)+(risk.trades_remaining||6);
     const killed=risk.bot_killed?' &mdash; BOT KILLED':'';
 
     h+='<div class="cd rp" style="border-left-color:'+zc+'"><div class="ct">Risk Monitor</div>'+
       '<div style="display:flex;align-items:center;gap:12px;margin-bottom:12px;flex-wrap:wrap">'+
       '<span class="rzb" style="background:'+zc+'22;color:'+zc+';border:1px solid '+zc+'44">'+z+killed+'</span>'+
       '<span class="mono" style="color:'+pc(rP)+';font-weight:700;font-size:16px">'+fpnl(rP)+'</span>'+
-      '<span style="color:var(--text-3);font-size:12px">('+(risk.daily_pnl_pct||0>=0?'+':'')+
+      '<span style="color:var(--text-3);font-size:12px">('+((risk.daily_pnl_pct||0)>=0?'+':'')+
       (risk.daily_pnl_pct||0).toFixed(2)+'%)</span></div>'+
       '<div class="rg">'+
       '<div><div class="ril">Daily Loss Used</div>'+
       '<div class="pgb"><div class="pgf" style="width:'+bw+'%;background:'+bc+'"></div></div>'+
       '<div class="mono" style="font-size:12px;font-weight:600;margin-top:2px">'+lp.toFixed(0)+'%</div></div>'+
       '<div><div class="ril">Trades Today</div><div class="riv mono">'+(risk.trades_today||0)+
-      ' <span style="color:var(--text-3);font-size:12px">/ '+mt+'</span></div></div>'+
+      ((risk.max_daily_trades||999)<100?' <span style="color:var(--text-3);font-size:12px">/ '+(risk.max_daily_trades||999)+'</span>':'')+'</div></div>'+
       '<div><div class="ril">Consecutive Losses</div><div class="riv mono" style="color:'+(cl>=2?'var(--loss)':'var(--text-1)')+'">'+cl+'</div></div>'+
       '<div><div class="ril">Recovery Needed</div><div class="riv mono" style="color:'+
       ((risk.drawdown_recovery_pct||0)>5?'var(--loss)':'var(--text-1)')+'">'+(risk.drawdown_recovery_pct||0).toFixed(1)+'%</div></div>'+
@@ -1073,6 +1159,86 @@ function rDash(){
   document.getElementById('tp-dash').innerHTML=h;
   if(closed.length>0)drawEq(closed);
 }
+function renderAnalytics(closed){
+  const R=String.fromCharCode(8377);
+  let h='';
+
+  const byIdx={};
+  closed.forEach(t=>{
+    let idx='Other';
+    const sym=(t.symbol||'').toUpperCase();
+    if(sym.includes('BANKNIFTY'))idx='BANKNIFTY';
+    else if(sym.includes('NIFTY'))idx='NIFTY';
+    else if(sym.includes('SENSEX'))idx='SENSEX';
+    if(!byIdx[idx])byIdx[idx]={pnl:0,trades:0,wins:0};
+    byIdx[idx].pnl+=t.pnl||0;
+    byIdx[idx].trades++;
+    if((t.pnl||0)>=0)byIdx[idx].wins++;
+  });
+  const maxIdxPnl=Math.max(...Object.values(byIdx).map(v=>Math.abs(v.pnl)),1);
+
+  const byCE={pnl:0,trades:0,wins:0},byPE={pnl:0,trades:0,wins:0};
+  closed.forEach(t=>{
+    const sym=(t.symbol||'').toUpperCase();
+    if(sym.includes('CE')){byCE.pnl+=t.pnl||0;byCE.trades++;if((t.pnl||0)>=0)byCE.wins++;}
+    if(sym.includes('PE')){byPE.pnl+=t.pnl||0;byPE.trades++;if((t.pnl||0)>=0)byPE.wins++;}
+  });
+
+  const byReason={};
+  closed.forEach(t=>{
+    const r=t.reason||'UNKNOWN';
+    if(!byReason[r])byReason[r]={pnl:0,trades:0,wins:0};
+    byReason[r].pnl+=t.pnl||0;
+    byReason[r].trades++;
+    if((t.pnl||0)>=0)byReason[r].wins++;
+  });
+  const maxReasonPnl=Math.max(...Object.values(byReason).map(v=>Math.abs(v.pnl)),1);
+
+  h+='<div class="ana-grid">';
+
+  h+='<div class="cd"><div class="ct">Performance by Index</div>';
+  Object.entries(byIdx).sort((a,b)=>b[1].pnl-a[1].pnl).forEach(([name,d])=>{
+    const wr=d.trades>0?(d.wins/d.trades*100):0;
+    const barW=Math.abs(d.pnl)/maxIdxPnl*100;
+    const barC=d.pnl>=0?'var(--profit)':'var(--loss)';
+    h+='<div class="ana-bar-row"><span class="ana-lbl">'+name+'</span>'+
+      '<div class="ana-bar"><div class="ana-bar-fill" style="width:'+barW+'%;background:'+barC+'" data-val="'+fpnl(d.pnl)+'"></div></div>'+
+      '<div class="ana-stats"><span>'+d.trades+'t</span><span><b>'+wr.toFixed(0)+'%</b> WR</span></div></div>';
+  });
+  h+='</div>';
+
+  h+='<div class="cd"><div class="ct">CE vs PE</div><div class="ana-vs">';
+  const ceWr=byCE.trades>0?(byCE.wins/byCE.trades*100):0;
+  const peWr=byPE.trades>0?(byPE.wins/byPE.trades*100):0;
+  const ceWin=byCE.pnl>byPE.pnl;
+  h+='<div class="ana-vs-side"><div class="ana-vs-val mono" style="color:'+(byCE.pnl>=0?'var(--profit)':'var(--loss)')+'">'+fpnl(byCE.pnl)+'</div>'+
+    '<div class="ana-vs-lbl">Call Options (CE)</div>'+
+    '<div class="ana-vs-sub">'+byCE.trades+' trades &middot; '+ceWr.toFixed(0)+'% WR</div>'+
+    '<span class="ana-vs-badge" style="background:'+(ceWin?'var(--profit-bg)':'var(--loss-bg)')+';color:'+(ceWin?'var(--profit)':'var(--loss)')+';border:1px solid '+(ceWin?'rgba(0,230,138,.2)':'rgba(255,77,94,.2)')+'">'+(ceWin?'OUTPERFORMING':'UNDERPERFORMING')+'</span></div>';
+  h+='<div class="ana-vs-div"></div>';
+  h+='<div class="ana-vs-side"><div class="ana-vs-val mono" style="color:'+(byPE.pnl>=0?'var(--profit)':'var(--loss)')+'">'+fpnl(byPE.pnl)+'</div>'+
+    '<div class="ana-vs-lbl">Put Options (PE)</div>'+
+    '<div class="ana-vs-sub">'+byPE.trades+' trades &middot; '+peWr.toFixed(0)+'% WR</div>'+
+    '<span class="ana-vs-badge" style="background:'+(!ceWin?'var(--profit-bg)':'var(--loss-bg)')+';color:'+(!ceWin?'var(--profit)':'var(--loss)')+';border:1px solid '+(!ceWin?'rgba(0,230,138,.2)':'rgba(255,77,94,.2)')+'">'+(!ceWin?'OUTPERFORMING':'UNDERPERFORMING')+'</span></div>';
+  h+='</div></div>';
+
+  h+='</div>';
+
+  h+='<div class="cd"><div class="ct">Exit Reason Analysis</div>';
+  Object.entries(byReason).sort((a,b)=>b[1].trades-a[1].trades).forEach(([reason,d])=>{
+    const wr=d.trades>0?(d.wins/d.trades*100):0;
+    const barW=Math.abs(d.pnl)/maxReasonPnl*100;
+    const barC=d.pnl>=0?'var(--profit)':'var(--loss)';
+    const label=reason.replace(/_/g,' ');
+    h+='<div class="ana-bar-row"><span class="ana-lbl">'+label+'</span>'+
+      '<div class="ana-bar"><div class="ana-bar-fill" style="width:'+barW+'%;background:'+barC+'" data-val="'+fpnl(d.pnl)+'"></div></div>'+
+      '<div class="ana-stats"><span>'+d.trades+'t</span><span><b>'+wr.toFixed(0)+'%</b> WR</span></div></div>';
+  });
+  h+='</div>';
+
+  return h;
+}
+
 function sc2(v,l,c,st,sub,cls){
   return '<div class="sc'+(cls?' '+cls:'')+'"'+(st?' style="'+st+'"':'')+'>'+
     '<div class="sv mono"'+(c?' style="color:'+c+'"':'')+'>'+v+'</div>'+
@@ -1081,17 +1247,34 @@ function sc2(v,l,c,st,sub,cls){
 
 /* ── ACTIONS ── */
 let _acting=false;
-async function doAction(url,body,confirmMsg){
+const _confirmTimers={};
+async function doAction(url,body,confirmMsg,btnEl){
   if(_acting)return;
-  if(!confirm(confirmMsg))return;
+  if(btnEl){
+    const key=url+JSON.stringify(body);
+    if(!_confirmTimers[key]){
+      const origText=btnEl.textContent;
+      const origClass=btnEl.className;
+      btnEl.textContent='TAP AGAIN';
+      btnEl.style.cssText+='animation:confirmBlink .5s ease 3;';
+      _confirmTimers[key]=setTimeout(()=>{btnEl.textContent=origText;btnEl.className=origClass;btnEl.style.animation='';delete _confirmTimers[key]},2500);
+      return;
+    }
+    clearTimeout(_confirmTimers[key]);delete _confirmTimers[key];
+    btnEl.textContent='Closing...';btnEl.disabled=true;
+  }
   _acting=true;
   try{
-    const r=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    const ac=new AbortController();
+    const tm=setTimeout(()=>ac.abort(),8000);
+    const r=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body),signal:ac.signal});
+    clearTimeout(tm);
     const d=await r.json();
-    if(d.ok){showToast(d.symbol?(d.symbol+' closed: '+fpnl(d.pnl||0)):('Closed '+d.closed?.length+' positions'),'ok')}
+    if(d.ok){showToast(d.symbol?(d.symbol+' closed @ '+String.fromCharCode(8377)+(d.fill_price||0).toFixed(2)+' ('+fpnl(d.pnl||0)+')'):('Closed '+d.closed?.length+' positions'),'ok')}
     else{showToast('Error: '+(d.error||'unknown'),'err')}
-  }catch(e){showToast('Network error','err')}
+  }catch(e){showToast(e.name==='AbortError'?'Timeout — check positions':'Network error','err')}
   _acting=false;
+  if(btnEl){btnEl.disabled=false;}
 }
 function showToast(msg,type){
   let t=document.getElementById('toast');
@@ -1116,7 +1299,7 @@ function rPos(){
   }
   let h='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">'+
     '<span style="font-size:14px;font-weight:600;color:var(--text-2)">'+pos.length+' Open Position'+(pos.length>1?'s':'')+'</span>'+
-    '<button class="abtn abtn-danger" onclick="doAction(\\'/api/close_all\\',{},\\'Close ALL '+pos.length+' position(s)? This cannot be undone.\\')">'+
+    '<button class="abtn abtn-danger" onclick="doAction(\\'/api/close_all\\',{},null,this)">'+
     'Close All Positions</button></div>';
 
   pos.forEach(p=>{
@@ -1137,14 +1320,20 @@ function rPos(){
     const pnlVal=p.pnl||0;
     const reason=pnlVal>=0?'BOOK_PROFIT':'BOOK_LOSS';
 
+    const dl=p.dynamic_level||1;
+    const ot=p.option_type||'';
+    let holdStr='';
+    if(p.entry_time){try{const et=new Date(p.entry_time);const diff=Date.now()-et.getTime();const hm=Math.floor(diff/60000);holdStr=hm>=60?Math.floor(hm/60)+'h '+hm%60+'m':hm+'m';}catch(e){}}
+
     h+='<div class="pc"><div class="pc-h"><div style="display:flex;align-items:center;gap:10px">'+
-      '<span class="db '+(p.direction==='LONG'?'db-l':'db-s')+'">'+(p.direction||'')+'</span>'+
+      '<span class="db '+(p.direction==='LONG'?'db-l':'db-s')+'">'+(p.direction||'')+' '+(ot||'')+'</span>'+
       '<span style="font-weight:700;font-size:16px">'+(p.symbol||'')+'</span>'+
-      (conf?'<span class="cb '+cc(conf)+'">'+conf+'</span>':'')+'</div>'+
+      (conf?'<span class="cb '+cc(conf)+'">'+conf+'</span>':'')+
+      '<span style="padding:2px 8px;border-radius:4px;font-size:10px;font-weight:700;background:rgba(201,168,76,.08);color:var(--gold);border:1px solid rgba(201,168,76,.12)">L'+dl+'</span>'+
+      (holdStr?'<span style="font-size:11px;color:var(--text-3)">'+holdStr+'</span>':'')+'</div>'+
       '<div style="display:flex;gap:8px">'+
       '<button class="abtn '+(pnlVal>=0?'abtn-profit':'abtn-loss')+'" onclick="doAction(\\'/api/close_position\\','+
-      '{security_id:\\''+sid+'\\',reason:\\''+reason+'\\'},\\''+
-      (pnlVal>=0?'Book profit':'Book loss')+' on '+(p.symbol||'')+'? ('+fpnl(pnlVal)+')\\')">'+
+      '{security_id:\\''+sid+'\\',reason:\\''+reason+'\\'},null,this)">'+
       (pnlVal>=0?'Book Profit':'Close Loss')+'</button></div></div>'+
       '<div class="pc-p">'+
       '<span style="color:var(--text-2);font-size:14px">'+R+fmt(e)+'</span>'+
@@ -1181,19 +1370,23 @@ function rTrades(){
   if(!closed.length) h+='<div class="emp">No trades yet</div>';
   else{
     h+='<div style="overflow-x:auto"><table class="ttb"><thead><tr>'+
-      '<th>Symbol</th><th>Dir</th><th>Entry</th><th>Exit</th><th>P&L</th><th>%</th><th>Reason</th><th>Notes</th></tr></thead><tbody>';
+      '<th>Symbol</th><th>Dir</th><th>Entry</th><th>Exit</th><th>P&L</th><th>%</th><th>Reason</th><th>Time</th><th>Notes</th></tr></thead><tbody>';
     [...closed].reverse().forEach((t,i)=>{
       const e=t.entry||0,x=t.exit||0;
       let pct=e>0?((x-e)/e*100):0;
       if(t.direction==='SHORT')pct=-pct;
       const key=(t.symbol||'')+'_'+(t.exit_time||i);
       const note=notes[key]||'';
+      let holdStr='';
+      if(t.entry_time&&t.exit_time){try{const d=new Date(t.exit_time)-new Date(t.entry_time);const m=Math.floor(d/60000);holdStr=m>=60?Math.floor(m/60)+'h '+m%60+'m':m+'m';}catch(e){}}
+      const exitT=t.exit_time?t.exit_time.substring(11,16):'';
       h+='<tr><td style="font-weight:600">'+(t.symbol||'')+'</td>'+
         '<td><span class="db '+(t.direction==='LONG'?'db-l':'db-s')+'">'+(t.direction||'')[0]+'</span></td>'+
         '<td class="mono">'+R+fmt(e)+'</td><td class="mono">'+R+fmt(x)+'</td>'+
         '<td class="mono" style="color:'+pc(t.pnl||0)+';font-weight:600">'+fpnl(t.pnl||0)+'</td>'+
         '<td style="color:'+pc(t.pnl||0)+';font-size:12px">'+(pct>=0?'+':'')+pct.toFixed(1)+'%</td>'+
         '<td style="color:var(--text-3);font-size:12px">'+(t.reason||'')+'</td>'+
+        '<td style="color:var(--text-3);font-size:11px">'+exitT+(holdStr?' <span style="color:var(--text-2)">('+holdStr+')</span>':'')+'</td>'+
         '<td><input class="note-inp" style="width:120px;margin:0" placeholder="Add note..." value="'+note.replace(/"/g,'&quot;')+'" '+
         'oninput="saveNote(\\''+key.replace(/'/g,"")+'\\',this)"></td></tr>';
     });
@@ -1333,11 +1526,11 @@ function drawEq(closed){
 function updateSessionTimer(ms){
   const el=document.getElementById('sess-timer');
   const tm=document.getElementById('sess-tm');
+  const ist=new Date(new Date().toLocaleString('en-US',{timeZone:'Asia/Kolkata'}));
   if(ms==='CLOSED'||ms==='PRE-MARKET'){
     if(ms==='PRE-MARKET'){
-      const now=new Date();
-      const open=new Date(now);open.setHours(3,45,0,0);
-      const diff=open-now;
+      const open=new Date(ist);open.setHours(9,15,0,0);
+      const diff=open-ist;
       if(diff>0){
         const m=Math.floor(diff/60000),s=Math.floor((diff%60000)/1000);
         tm.textContent=m+'m '+s+'s to open';
@@ -1346,8 +1539,6 @@ function updateSessionTimer(ms){
     }else{tm.textContent='Closed';el.classList.remove('urgent');}
     return;
   }
-  const now=new Date();
-  const ist=new Date(now.toLocaleString('en-US',{timeZone:'Asia/Kolkata'}));
   const close=new Date(ist);close.setHours(15,15,0,0);
   const diff=close-ist;
   if(diff<=0){tm.textContent='Session ended';el.classList.remove('urgent');return;}
@@ -1448,19 +1639,40 @@ function saveNote(key,el){
 function exportCSV(){window.open('/api/export_csv','_blank');}
 
 /* ── FETCH LOOP ── */
+let _lastGoodPoll=Date.now();
+let _pollFails=0;
 async function poll(){
   try{
-    const r=await fetch('/api/state');
+    const ac=new AbortController();
+    const tm=setTimeout(()=>ac.abort(),3000);
+    const r=await fetch('/api/state',{signal:ac.signal});
+    clearTimeout(tm);
     S=await r.json();
+    _lastGoodPoll=Date.now();
+    _pollFails=0;
     document.getElementById('live-dot').style.background='#10b981';
     render();
     checkPnlAlerts();
   }catch(e){
-    document.getElementById('live-dot').style.background='#ef4444';
+    _pollFails++;
+    document.getElementById('live-dot').style.background=_pollFails>3?'#ef4444':'#f59e0b';
   }
-  setTimeout(poll,1000);
+  const staleMs=Date.now()-_lastGoodPoll;
+  const staleSec=Math.floor(staleMs/1000);
+  const dot=document.getElementById('live-dot');
+  if(staleSec>3){dot.style.background='#f59e0b';dot.title='Data '+staleSec+'s stale'}
+  else{dot.title='Live'}
+  setTimeout(poll,_pollFails>5?2000:1000);
 }
 poll();
+window.doAction=doAction;
+window.editSL=editSL;
+window.editTP=editTP;
+window.showModal=showModal;
+window.closeModal=closeModal;
+window.exportCSV=exportCSV;
+window.saveNote=saveNote;
+window.showToast=showToast;
 })();
 </script>
 </body>

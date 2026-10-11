@@ -63,7 +63,8 @@ CREATE TABLE IF NOT EXISTS positions (
     peak_price REAL DEFAULT 0,
     entry_order_id TEXT,
     strategy TEXT,
-    entry_time TEXT NOT NULL
+    entry_time TEXT NOT NULL,
+    dynamic_level INTEGER DEFAULT 1
 );
 
 CREATE TABLE IF NOT EXISTS signals (
@@ -101,6 +102,10 @@ class OmegaDB:
         self._local = threading.local()
         conn = self._conn()
         conn.executescript(_SCHEMA)
+        try:
+            conn.execute("ALTER TABLE positions ADD COLUMN dynamic_level INTEGER DEFAULT 1")
+        except sqlite3.OperationalError:
+            pass
         conn.commit()
         log.info("Database ready: %s", self._db_path)
 

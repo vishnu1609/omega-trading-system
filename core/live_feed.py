@@ -1,7 +1,8 @@
 """
-Dhan REST Live Market Feed
+Dhan WebSocket Live Market Feed
 
-Polls Dhan REST /v2/marketfeed/ltp for real-time LTP data every 2 seconds.
+Uses DhanHQ MarketFeed WebSocket for real-time tick-by-tick data (~200-500ms latency).
+Falls back to REST polling if WebSocket fails.
 Maintains a thread-safe LTP cache keyed by "segment:security_id".
 """
 from __future__ import annotations
@@ -40,6 +41,15 @@ EXCHANGE_SEG_MAP = {
 
 SEG_INT_TO_STR = {v: k for k, v in EXCHANGE_SEG_MAP.items()}
 
+WS_SEG_MAP = {
+    0: 0,    # IDX_I -> MarketFeed.IDX
+    1: 1,    # NSE
+    2: 2,    # NSE_FNO
+    4: 4,    # BSE
+    5: 5,    # MCX
+    8: 8,    # BSE_FNO
+}
+
 HEALTH_CHECK_INTERVAL = 30
 DATA_TIMEOUT = 90
 MAX_RECONNECT_ATTEMPTS = 10
@@ -48,7 +58,7 @@ MAX_RECONNECT_DELAY = 60
 
 
 class LiveFeed:
-    """Thread-safe REST-polling LTP feed from Dhan API."""
+    """Real-time market feed using DhanHQ WebSocket with REST fallback."""
 
     def __init__(self, client_id: str = "", access_token: str = ""):
         self._client_id = client_id or os.environ.get("DHAN_CLIENT_ID", "")
@@ -57,9 +67,9 @@ class LiveFeed:
         self._ltp: dict[str, float] = {}
         self._quotes: dict[str, dict] = {}
         self._subscribed: set[tuple[int, str, int]] = set()
-        self._feed = None
-        self._thread: threading.Thread | None = None
-        self._reader_thread: threading.Thread | None = None
+        self._ws_feed = None
+        self._ws_thread: threading.Thread | None = None
+        self._rest_thread: threading.Thread | None = None
         self._health_thread: threading.Thread | None = None
         self._running = False
 
@@ -71,6 +81,8 @@ class LiveFeed:
         self._fatal_reason: str = ""
         self._reconnect_count: int = 0
         self._connected: bool = False
+        self._ws_connected: bool = False
+        self._mode: str = "starting"
 
     def start(self, instruments: list[tuple[int, str, int]] | None = None) -> None:
         if self._running:
@@ -82,13 +94,143 @@ class LiveFeed:
         self._subscribed = set(initial)
         self._running = True
 
+        self._ws_thread = threading.Thread(
+            target=self._ws_feed_loop, daemon=True, name="dhan-ws-feed")
+        self._ws_thread.start()
+
         self._rest_thread = threading.Thread(
-            target=self._rest_poll_loop, daemon=True, name="dhan-rest-ltp")
+            target=self._rest_poll_loop, daemon=True, name="dhan-rest-fallback")
         self._rest_thread.start()
-        log.info("LiveFeed started (REST polling) with %d instruments", len(initial))
+
+        self._health_thread = threading.Thread(
+            target=self._health_loop, daemon=True, name="dhan-feed-health")
+        self._health_thread.start()
+
+        log.info("LiveFeed started (WebSocket + REST fallback) with %d instruments", len(initial))
+
+    def _build_ws_instruments(self) -> list[tuple]:
+        """Convert internal instrument tuples to DhanHQ MarketFeed format."""
+        try:
+            from dhanhq import MarketFeed as MF
+        except ImportError:
+            return []
+
+        ws_instruments = []
+        for seg_int, sec_id, sub_type in self._subscribed:
+            ws_seg = seg_int
+            if sub_type == 15:
+                mode = MF.Ticker
+            elif sub_type == 17:
+                mode = MF.Quote
+            elif sub_type == 21:
+                mode = MF.Full
+            else:
+                mode = MF.Ticker
+            ws_instruments.append((ws_seg, str(sec_id), mode))
+        return ws_instruments
+
+    def _ws_feed_loop(self) -> None:
+        """Run DhanHQ WebSocket MarketFeed with auto-reconnect."""
+        try:
+            from dhanhq import DhanContext, MarketFeed as MF
+        except ImportError:
+            log.warning("dhanhq package not available — WebSocket feed disabled, using REST only")
+            self._mode = "rest_only"
+            return
+
+        while self._running:
+            ws_instruments = self._build_ws_instruments()
+            if not ws_instruments:
+                time.sleep(2)
+                continue
+
+            try:
+                dhan_ctx = DhanContext(self._client_id, self._token)
+                self._ws_feed = MF(dhan_ctx, ws_instruments, "v2")
+                log.info("WebSocket MarketFeed connecting with %d instruments...", len(ws_instruments))
+                self._ws_connected = True
+                self._connected = True
+                self._mode = "websocket"
+                self._reconnect_count = 0
+
+                while self._running and self._ws_connected:
+                    try:
+                        self._ws_feed.run_forever()
+                        response = self._ws_feed.get_data()
+
+                        if response and isinstance(response, dict):
+                            self._process_ws_tick(response)
+
+                    except Exception as e:
+                        err_str = str(e)
+                        if self._is_fatal_error(err_str):
+                            log.error("WebSocket fatal error: %s — switching to REST only", err_str)
+                            self._fatal_error = True
+                            self._fatal_reason = err_str
+                            self._ws_connected = False
+                            self._mode = "rest_only"
+                            return
+                        if "connection" in err_str.lower() or "closed" in err_str.lower():
+                            log.warning("WebSocket disconnected: %s", err_str)
+                            self._ws_connected = False
+                            break
+                        time.sleep(0.1)
+
+            except Exception as e:
+                err_str = str(e)
+                log.warning("WebSocket connection failed: %s", err_str)
+                self._ws_connected = False
+                self._mode = "rest_fallback"
+
+                if self._is_fatal_error(err_str):
+                    log.error("Fatal WebSocket error — REST only mode")
+                    self._mode = "rest_only"
+                    return
+
+            if self._running:
+                self._reconnect_count += 1
+                delay = min(BASE_RECONNECT_DELAY * (2 ** min(self._reconnect_count - 1, 5)),
+                            MAX_RECONNECT_DELAY)
+                log.info("WebSocket reconnecting in %ds (attempt %d)", delay, self._reconnect_count)
+                time.sleep(delay)
+
+    def _process_ws_tick(self, data: dict) -> None:
+        """Process a tick from the WebSocket MarketFeed."""
+        now = time.time()
+        self._last_tick_time = now
+        self._tick_count += 1
+        self._tick_count_1m += 1
+
+        sec_id = str(data.get("security_id", data.get("securityId", "")))
+        if not sec_id:
+            return
+
+        seg = data.get("exchange_segment", data.get("exchangeSegment", ""))
+        if isinstance(seg, int):
+            seg_str = SEG_INT_TO_STR.get(seg, str(seg))
+        else:
+            seg_str = str(seg)
+        key = f"{seg_str}:{sec_id}"
+
+        ltp = data.get("LTP", data.get("ltp", 0))
+        if ltp and float(ltp) > 0:
+            with self._lock:
+                self._ltp[key] = float(ltp)
+
+        with self._lock:
+            self._quotes[key] = {
+                "ltp": float(ltp) if ltp else 0,
+                "open": float(data.get("open", 0)),
+                "high": float(data.get("high", 0)),
+                "low": float(data.get("low", 0)),
+                "close": float(data.get("close", data.get("prev_close", 0))),
+                "volume": int(data.get("volume", 0)),
+                "oi": int(data.get("oi", data.get("OI", 0))),
+                "timestamp": now,
+            }
 
     def _rest_poll_loop(self) -> None:
-        """Poll Dhan REST LTP API every second for subscribed instruments."""
+        """REST fallback — polls when WebSocket is down or as supplement."""
         import requests
         session = requests.Session()
         session.headers.update({
@@ -100,13 +242,18 @@ class LiveFeed:
 
         seg_map = {0: "IDX_I", 1: "NSE_EQ", 2: "NSE_FNO", 4: "BSE_EQ", 5: "MCX_COMM", 8: "BSE_FNO"}
         fail_streak = 0
-        poll_interval = 2
         rate_limit_backoff = 0
 
         while self._running:
-            if not self._subscribed:
-                time.sleep(poll_interval)
+            if self._ws_connected:
+                time.sleep(5)
                 continue
+
+            if not self._subscribed:
+                time.sleep(2)
+                continue
+
+            self._mode = "rest_fallback" if self._mode != "rest_only" else "rest_only"
 
             by_seg: dict[str, list[int]] = defaultdict(list)
             for seg_int, sec_id, _ in self._subscribed:
@@ -141,96 +288,47 @@ class LiveFeed:
                     rate_limit_backoff = min(rate_limit_backoff + 1, 6)
                     wait = 10 * (2 ** rate_limit_backoff)
                     if rate_limit_backoff <= 1:
-                        log.warning("LiveFeed rate limited — backing off %ds", wait)
+                        log.warning("LiveFeed REST rate limited — backing off %ds", wait)
                     time.sleep(wait)
                     continue
                 else:
                     fail_streak += 1
                     if fail_streak == 1 or fail_streak % 30 == 0:
-                        log.warning("LiveFeed REST LTP failed: HTTP %d", resp.status_code)
+                        log.warning("LiveFeed REST failed: HTTP %d", resp.status_code)
             except Exception as e:
                 fail_streak += 1
                 if fail_streak == 1 or fail_streak % 30 == 0:
                     log.warning("LiveFeed REST error: %s", e)
                 self._connected = False
 
-            time.sleep(poll_interval)
+            time.sleep(2)
 
-    def _backoff_sleep(self) -> None:
-        self._reconnect_count += 1
-        if self._reconnect_count >= MAX_RECONNECT_ATTEMPTS:
-            log.error("Max reconnect attempts (%d) reached — stopping",
-                      MAX_RECONNECT_ATTEMPTS)
-            self._running = False
-            return
-        delay = min(BASE_RECONNECT_DELAY * (2 ** (self._reconnect_count - 1)),
-                    MAX_RECONNECT_DELAY)
-        log.warning("Reconnecting in %ds (attempt %d/%d)",
-                    delay, self._reconnect_count, MAX_RECONNECT_ATTEMPTS)
-        time.sleep(delay)
+    def _health_loop(self) -> None:
+        """Monitor feed health, detect stalls."""
+        while self._running:
+            time.sleep(HEALTH_CHECK_INTERVAL)
+            if not self._running:
+                break
+            if self._last_tick_time <= 0:
+                continue
+            elapsed = time.time() - self._last_tick_time
+            if elapsed > DATA_TIMEOUT and self._ws_connected:
+                log.error("Data stall: no ticks for %.0fs — forcing WebSocket reconnect", elapsed)
+                self._ws_connected = False
+                if self._ws_feed:
+                    try:
+                        self._ws_feed.close_connection()
+                    except Exception:
+                        pass
 
     @staticmethod
     def _is_fatal_error(error_str: str) -> bool:
-        """Detect non-recoverable errors that should stop reconnection."""
         lower = error_str.lower()
         return any(indicator in lower for indicator in [
             "429", "too many requests", "client id is blocked",
             "subscription", "plan",
             "event loop is already running",
         ])
-
-    def _start_health_check(self) -> None:
-        if self._health_thread and self._health_thread.is_alive():
-            return
-        self._health_thread = threading.Thread(
-            target=self._health_loop, daemon=True, name="dhan-ws-health")
-        self._health_thread.start()
-
-    def _health_loop(self) -> None:
-        """Detect silent data stalls — force reconnect if no ticks within timeout."""
-        while self._running and self._connected:
-            time.sleep(HEALTH_CHECK_INTERVAL)
-            if not self._running or not self._connected:
-                break
-            if self._last_tick_time <= 0:
-                continue
-            elapsed = time.time() - self._last_tick_time
-            if elapsed > DATA_TIMEOUT:
-                log.error("Data stall: no ticks for %.0fs (threshold %ds) — "
-                          "forcing reconnect", elapsed, DATA_TIMEOUT)
-                self._connected = False
-                if self._feed:
-                    try:
-                        self._feed.close_connection()
-                    except Exception:
-                        pass
-                break
-
-    def _process_tick(self, data: dict) -> None:
-        sec_id = str(data.get("security_id", data.get("securityId", "")))
-        if not sec_id:
-            return
-
-        seg = data.get("exchange_segment", data.get("exchangeSegment", ""))
-        seg_str = SEG_INT_TO_STR.get(seg, str(seg)) if isinstance(seg, int) else str(seg)
-        key = f"{seg_str}:{sec_id}"
-
-        ltp = data.get("LTP", data.get("ltp", 0))
-        if ltp and ltp > 0:
-            with self._lock:
-                self._ltp[key] = float(ltp)
-
-        with self._lock:
-            self._quotes[key] = {
-                "ltp": float(ltp) if ltp else 0,
-                "open": float(data.get("open", 0)),
-                "high": float(data.get("high", 0)),
-                "low": float(data.get("low", 0)),
-                "close": float(data.get("close", data.get("prev_close", 0))),
-                "volume": int(data.get("volume", 0)),
-                "oi": int(data.get("oi", data.get("OI", 0))),
-                "timestamp": data.get("timestamp", time.time()),
-            }
 
     def get_ltp(self, security_id: str, exchange_segment: str = "") -> float:
         key = f"{exchange_segment}:{security_id}" if exchange_segment else None
@@ -259,13 +357,38 @@ class LiveFeed:
         if not new:
             return
         self._subscribed.update(new)
-        log.info("Subscribed %d new instruments (total: %d)",
-                 len(new), len(self._subscribed))
+
+        if self._ws_connected and self._ws_feed:
+            try:
+                from dhanhq import MarketFeed as MF
+                ws_new = []
+                for seg_int, sec_id, sub_type in new:
+                    mode = MF.Ticker if sub_type == 15 else MF.Quote if sub_type == 17 else MF.Full if sub_type == 21 else MF.Ticker
+                    ws_new.append((seg_int, str(sec_id), mode))
+                self._ws_feed.subscribe_symbols(ws_new)
+                log.info("WebSocket: subscribed %d new instruments (total: %d)", len(ws_new), len(self._subscribed))
+            except Exception as e:
+                log.warning("WebSocket subscribe failed: %s — REST will cover", e)
+        else:
+            log.info("Subscribed %d new instruments (total: %d) — REST mode",
+                     len(new), len(self._subscribed))
 
     def unsubscribe(self, instruments: list[tuple[int, str, int]]) -> None:
         if not self._running:
             return
         self._subscribed -= set(instruments)
+
+        if self._ws_connected and self._ws_feed:
+            try:
+                from dhanhq import MarketFeed as MF
+                ws_unsub = []
+                for seg_int, sec_id, sub_type in instruments:
+                    mode = MF.Ticker if sub_type == 15 else MF.Quote
+                    ws_unsub.append((seg_int, str(sec_id), mode))
+                self._ws_feed.unsubscribe_symbols(ws_unsub)
+            except Exception:
+                pass
+
         for seg_int, sec_id, _ in instruments:
             seg_str = SEG_INT_TO_STR.get(seg_int, str(seg_int))
             key = f"{seg_str}:{sec_id}"
@@ -275,15 +398,26 @@ class LiveFeed:
 
     def update_token(self, token: str) -> None:
         self._token = token
-        log.info("LiveFeed token updated — restart needed for new WS connection")
+        self._ws_connected = False
+        if self._ws_feed:
+            try:
+                self._ws_feed.close_connection()
+            except Exception:
+                pass
+        log.info("LiveFeed token updated — WebSocket will reconnect with new token")
 
     def stop(self) -> None:
         self._running = False
         self._connected = False
+        self._ws_connected = False
+        if self._ws_feed:
+            try:
+                self._ws_feed.close_connection()
+            except Exception:
+                pass
         log.info("LiveFeed stopped")
 
     def get_health_metrics(self) -> dict:
-        """Return feed health for dashboard / self-learning."""
         now = time.time()
         since_last = now - self._last_tick_time if self._last_tick_time > 0 else -1
         ticks_per_min = 0
@@ -294,6 +428,8 @@ class LiveFeed:
         return {
             "connected": self._connected,
             "running": self._running,
+            "mode": self._mode,
+            "ws_connected": self._ws_connected,
             "fatal_error": self._fatal_error,
             "fatal_reason": self._fatal_reason,
             "reconnect_count": self._reconnect_count,
@@ -304,7 +440,6 @@ class LiveFeed:
         }
 
     def reset_tick_window(self) -> None:
-        """Reset the 1-minute tick counter (call from main loop every minute)."""
         self._tick_count_1m = 0
         self._tick_window_start = time.time()
 
