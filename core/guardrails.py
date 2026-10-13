@@ -298,14 +298,28 @@ class Guardrails:
 
     # ── Combined Pre-Signal Check ────────────────────────────────────────
 
+    def check_spread_risk(self, max_loss: float, quantity: int) -> GuardrailResult:
+        risk = max_loss * quantity
+        max_risk = self.capital * self.max_risk_per_trade_pct / 100
+        if risk > max_risk:
+            return GuardrailResult(
+                False,
+                f"Spread risk ₹{risk:,.0f} (max_loss={max_loss:.0f} × qty={quantity}) "
+                f"exceeds {self.max_risk_per_trade_pct}% cap of ₹{max_risk:,.0f}",
+                "spread_risk",
+            )
+        return PASS
+
     def pre_signal_check(self, symbol: str, adx_value: float = 0,
-                         candle_time: datetime | None = None) -> GuardrailResult:
+                         candle_time: datetime | None = None,
+                         is_spread: bool = False) -> GuardrailResult:
         checks = [
             self.check_time_of_day(symbol),
             self.check_vwap_warmup(symbol),
-            self.check_adx_regime(adx_value, symbol),
             self.check_session_killswitch(symbol),
         ]
+        if not is_spread:
+            checks.append(self.check_adx_regime(adx_value, symbol))
         if candle_time:
             checks.append(self.check_candle_freshness(candle_time, symbol))
 

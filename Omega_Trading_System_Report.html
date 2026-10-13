@@ -1,0 +1,1129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Omega Trading Company — Complete Technical Report</title>
+<style>
+  @page {
+    size: A4;
+    margin: 18mm 16mm 20mm 16mm;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+    font-size: 11pt;
+    line-height: 1.55;
+    color: #1a1a2e;
+    background: #fff;
+    padding: 0 12px;
+  }
+  h1 { font-size: 22pt; color: #0f3460; margin: 24pt 0 6pt 0; letter-spacing: -0.5px; border-bottom: 3px solid #0f3460; padding-bottom: 6pt; page-break-after: avoid; }
+  h2 { font-size: 15pt; color: #16213e; margin: 18pt 0 6pt 0; border-bottom: 1.5px solid #e2e8f0; padding-bottom: 4pt; page-break-after: avoid; }
+  h3 { font-size: 12pt; color: #1a1a2e; margin: 12pt 0 4pt 0; page-break-after: avoid; }
+  h4 { font-size: 10.5pt; color: #333; margin: 8pt 0 3pt 0; page-break-after: avoid; }
+  p { margin: 0 0 6pt 0; text-align: justify; }
+  ul, ol { margin: 4pt 0 8pt 18pt; }
+  li { margin-bottom: 3pt; }
+  code { font-family: 'SF Mono', Consolas, 'Courier New', monospace; font-size: 9.5pt; background: #f1f5f9; padding: 1px 4px; border-radius: 3px; }
+  pre { font-family: 'SF Mono', Consolas, monospace; font-size: 8.5pt; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 4px; padding: 8pt; margin: 6pt 0 10pt 0; overflow-x: auto; white-space: pre-wrap; word-break: break-word; page-break-inside: avoid; }
+  table { width: 100%; border-collapse: collapse; margin: 6pt 0 12pt 0; font-size: 9.5pt; page-break-inside: avoid; }
+  th { background: #0f3460; color: #fff; padding: 5pt 8pt; text-align: left; font-weight: 600; }
+  td { padding: 4pt 8pt; border-bottom: 1px solid #e2e8f0; }
+  tr:nth-child(even) td { background: #f8fafc; }
+  .card { border: 1px solid #e2e8f0; border-radius: 6px; padding: 10pt 14pt; margin: 8pt 0; page-break-inside: avoid; background: #fafbfc; }
+  .card-title { font-weight: 700; color: #0f3460; margin-bottom: 4pt; font-size: 10.5pt; }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 8pt; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; }
+  .badge-green { background: #dcfce7; color: #166534; }
+  .badge-red { background: #fee2e2; color: #991b1b; }
+  .badge-yellow { background: #fef9c3; color: #854d0e; }
+  .badge-blue { background: #dbeafe; color: #1e40af; }
+  .toc { background: #f0f4f8; border: 1px solid #d0d7de; border-radius: 6px; padding: 14pt 18pt; margin: 12pt 0; }
+  .toc ul { list-style: none; margin: 0; padding: 0; columns: 2; column-gap: 20pt; }
+  .toc li { margin-bottom: 3pt; font-size: 10pt; break-inside: avoid; }
+  .toc a { color: #0f3460; text-decoration: none; }
+  .cover { text-align: center; padding: 60pt 0 40pt 0; page-break-after: always; }
+  .cover h1 { font-size: 32pt; border: none; margin-bottom: 8pt; }
+  .cover .subtitle { font-size: 14pt; color: #64748b; margin-bottom: 24pt; }
+  .cover .meta { font-size: 10pt; color: #94a3b8; }
+  .gate-pass { color: #166534; font-weight: 700; }
+  .gate-fail { color: #991b1b; font-weight: 700; }
+  .diagram { border: 1px solid #d0d7de; border-radius: 6px; padding: 12pt; margin: 8pt 0; background: #f8fafc; font-family: 'SF Mono', Consolas, monospace; font-size: 8.5pt; white-space: pre; overflow-x: auto; page-break-inside: avoid; }
+  .highlight { background: #fffbeb; border-left: 3px solid #f59e0b; padding: 8pt 12pt; margin: 8pt 0; page-break-inside: avoid; }
+  .danger { background: #fef2f2; border-left: 3px solid #ef4444; padding: 8pt 12pt; margin: 8pt 0; page-break-inside: avoid; }
+  .success { background: #f0fdf4; border-left: 3px solid #22c55e; padding: 8pt 12pt; margin: 8pt 0; page-break-inside: avoid; }
+  .two-col { display: flex; gap: 12pt; flex-wrap: wrap; }
+  .two-col > * { flex: 1; min-width: 200pt; }
+  .metric { text-align: center; padding: 10pt; }
+  .metric .value { font-size: 20pt; font-weight: 800; color: #0f3460; }
+  .metric .label { font-size: 8.5pt; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; }
+  .page-break { page-break-before: always; }
+  @media print {
+    body { padding: 0; }
+    .page-break { page-break-before: always; }
+    .card, table, pre, .diagram { page-break-inside: avoid; }
+    h2 { page-break-after: avoid; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ========== COVER PAGE ========== -->
+<div class="cover">
+  <div style="font-size: 60pt; margin-bottom: 12pt; color: #0f3460;">&#937;</div>
+  <h1>Omega Trading Company</h1>
+  <div class="subtitle">Complete Technical Report &amp; Architecture Audit</div>
+  <p style="font-size: 12pt; color: #475569; max-width: 400pt; margin: 0 auto 24pt auto; text-align: center;">
+    Algorithmic options trading system for Indian index derivatives.<br>
+    Confluence-based signal generation with adaptive risk management.
+  </p>
+  <div class="meta">
+    <p><strong>Version:</strong> 2.0 (Protocol Omega v10 + ML)</p>
+    <p><strong>Author:</strong> Vishnu Teja with Claude</p>
+    <p><strong>Report Date:</strong> 11 October 2026</p>
+    <p><strong>Codebase:</strong> 16,991 lines Python + 454 lines Pine Script v6</p>
+    <p><strong>Status:</strong> <span class="badge badge-yellow">Paper Trading</span> <span class="badge badge-blue">ML Integrated</span></p>
+  </div>
+</div>
+
+<!-- ========== TABLE OF CONTENTS ========== -->
+<h2>Table of Contents</h2>
+<div class="toc">
+<ul>
+  <li>1. <a href="#exec">Executive Summary</a></li>
+  <li>2. <a href="#arch">System Architecture</a></li>
+  <li>3. <a href="#signal-flow">Signal Processing Pipeline</a></li>
+  <li>4. <a href="#pine">Pine Script Indicator (TradingView)</a></li>
+  <li>5. <a href="#strategy">Strategy Engine (OmegaStrategy)</a></li>
+  <li>6. <a href="#risk">Risk Engine — 9-Gate Safety System</a></li>
+  <li>7. <a href="#sltp">Dynamic SL/TP Level Escalation</a></li>
+  <li>8. <a href="#trail">Trailing Stop &amp; 5-Layer Profit Engine</a></li>
+  <li>9. <a href="#memory">Trade Memory &amp; Statistical Learning</a></li>
+  <li>10. <a href="#guardrails">Pre-Trade Guardrails (15 Scenarios)</a></li>
+  <li>11. <a href="#orders">Order Management &amp; Execution</a></li>
+  <li>12. <a href="#positions">Position Management &amp; P&amp;L</a></li>
+  <li>13. <a href="#wallet">Wallet &amp; Capital Tracking</a></li>
+  <li>14. <a href="#infra">Infrastructure &amp; Deployment</a></li>
+  <li>15. <a href="#dashboard">Real-Time Dashboard</a></li>
+  <li>16. <a href="#database">Database Schema</a></li>
+  <li>17. <a href="#config">Configuration Reference</a></li>
+  <li>18. <a href="#ml">Machine Learning Module</a></li>
+  <li>19. <a href="#performance">Live Performance Analysis</a></li>
+  <li>20. <a href="#audit">Code Audit &amp; Bug Findings</a></li>
+  <li>21. <a href="#limitations">Known Limitations &amp; Assumptions</a></li>
+  <li>22. <a href="#questions">Open Questions for Contributors</a></li>
+</ul>
+</div>
+
+<!-- ========== 1. EXECUTIVE SUMMARY ========== -->
+<h1 id="exec">1. Executive Summary</h1>
+
+<p>The Omega Trading Company is a fully automated algorithmic trading bot designed for Indian index options markets. It trades NIFTY 50, Bank NIFTY, and SENSEX options on the NSE and BSE exchanges through the Dhan broker API. The system operates on a <strong>5-factor confluence</strong> model where all five independent technical indicators must agree before any trade is taken.</p>
+
+<p>The system supports both <strong>BUY mode</strong> (buying options when ADX signals a trending market) and <strong>SELL mode</strong> (selling options when ADX signals a ranging market). Every trade passes through a 9-gate risk engine and 15-scenario pre-trade guardrail framework before execution. Position management employs a 4-level dynamic SL/TP escalation system with ATR-based trailing stops after the final level is breached.</p>
+
+<div class="two-col">
+  <div class="card">
+    <div class="card-title">Key Metrics</div>
+    <div class="metric"><div class="value">16,991</div><div class="label">Lines of Python</div></div>
+    <div class="metric"><div class="value">454</div><div class="label">Lines of Pine Script</div></div>
+    <div class="metric"><div class="value">52</div><div class="label">Python Source Files</div></div>
+    <div class="metric"><div class="value">1,988</div><div class="label">ML Module Lines</div></div>
+  </div>
+  <div class="card">
+    <div class="card-title">Core Capabilities</div>
+    <ul>
+      <li>5-factor confluence signal generation</li>
+      <li>9-gate non-negotiable risk engine</li>
+      <li>15-scenario pre-trade guardrails</li>
+      <li>4-level dynamic SL/TP with ATR trailing</li>
+      <li>990-line statistical trade memory system</li>
+      <li>Real-time WebSocket live feed (Dhan)</li>
+      <li>Paper trading mode (default, safe)</li>
+      <li>Live dashboard with 4 tabs</li>
+    </ul>
+  </div>
+</div>
+
+<div class="highlight">
+  <strong>Safety First:</strong> The system defaults to paper trading mode. Live trading requires the <code>--live</code> flag AND a typed confirmation prompt: <code>"I understand this will use REAL MONEY"</code>. This double safety gate ensures no accidental live deployments.
+</div>
+
+<!-- ========== 2. SYSTEM ARCHITECTURE ========== -->
+<h1 id="arch" class="page-break">2. System Architecture</h1>
+
+<h2>2.1 Directory Structure</h2>
+<pre>
+omega-trading-system/
+├── core/                         # Engine layer (broker, risk, execution)
+│   ├── broker_base.py            # Abstract broker interface (all brokers implement this)
+│   ├── broker_dhan.py            # Dhan API adapter (REST + WebSocket)
+│   ├── broker_paper.py           # Paper trading simulator (fills at LTP)
+│   ├── order_manager.py          # Idempotent orders, retry logic, ghost fill detection
+│   ├── position_manager.py       # Tracks LONG + SHORT with correct P&L
+│   ├── risk_engine.py            # 9-gate safety system (597 lines)
+│   ├── signal_generator.py       # Yahoo Finance candle fetcher + indicator calc
+│   ├── trade_memory.py           # Statistical learning engine (990 lines)
+│   ├── guardrails.py             # 15-scenario pre-trade stress test (392 lines)
+│   ├── database.py               # SQLite with WAL mode (307 lines)
+│   ├── wallet.py                 # Persistent capital tracker (93 lines)
+│   ├── live_feed.py              # Dhan WebSocket live feed
+│   ├── instrument_master.py      # Dhan instrument CSV loader
+│   ├── instrument_selector.py    # ADX/volume-based instrument picker
+│   └── option_chain.py           # ATM option resolver via Dhan option chain
+├── strategies/
+│   └── omega_complete.py         # Main strategy engine (1,056 lines)
+├── webhook/
+│   ├── tv_receiver.py            # TradingView webhook receiver (FastAPI)
+│   └── dashboard.py              # Real-time dashboard (1,684 lines)
+├── pinescript/
+│   └── omega_v10_adaptive.pine   # TradingView indicator (454 lines, Pine Script v6)
+├── config/
+│   ├── settings.yaml             # Runtime configuration (78 lines)
+│   └── instruments.yaml          # Index definitions + cost model (56 lines)
+├── main.py                       # Entry point (paper default, --live flag)
+├── data/                         # Runtime data (SQLite DB, memory JSON, positions)
+├── logs/                         # Log files
+└── utils/                        # Alerts (iMessage, Telegram), logging
+</pre>
+
+<h2>2.2 Component Architecture Diagram</h2>
+<div class="diagram">
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                          SIGNAL SOURCES                                     │
+│                                                                             │
+│  ┌──────────────────┐         ┌──────────────────┐                         │
+│  │    TradingView    │         │  Signal Generator │                         │
+│  │   Pine Script     │────────▶│   (Yahoo Finance) │                         │
+│  │  (454 lines v6)   │ webhook │   + Indicators    │                         │
+│  └──────────────────┘         └────────┬─────────┘                         │
+│                                        │                                    │
+└────────────────────────────────────────┼────────────────────────────────────┘
+                                         │ signal payload
+                                         ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                       PRE-TRADE VALIDATION                                  │
+│                                                                             │
+│  ┌──────────────────┐   ┌──────────────────┐   ┌──────────────────┐        │
+│  │   Guardrails      │   │   Risk Engine     │   │  Trade Memory    │        │
+│  │  15 scenarios     │──▶│   9 gates         │──▶│  Pattern match   │        │
+│  │  (392 lines)      │   │  (597 lines)      │   │  (990 lines)     │        │
+│  └──────────────────┘   └──────────────────┘   └──────────────────┘        │
+│         ↓ PASS               ↓ PASS                ↓ PASS/MODIFY          │
+└─────────────────────────────────────────────────────────────────────────────┘
+                                         │
+                                         ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                        EXECUTION LAYER                                      │
+│                                                                             │
+│  ┌──────────────────┐   ┌──────────────────┐   ┌──────────────────┐        │
+│  │  OmegaStrategy    │   │  Order Manager    │   │   Broker API     │        │
+│  │  Entry + Position │──▶│  Retry + Dedup    │──▶│  Dhan / Paper    │        │
+│  │  (1,056 lines)    │   │  (337 lines)      │   │  REST + WS       │        │
+│  └──────────────────┘   └──────────────────┘   └──────────────────┘        │
+│         ↕                                                                   │
+│  ┌──────────────────┐   ┌──────────────────┐   ┌──────────────────┐        │
+│  │ Position Manager  │   │    Wallet         │   │   Database       │        │
+│  │ Track + P&L       │   │  Capital mgmt     │   │  SQLite WAL      │        │
+│  │ (312 lines)       │   │  (93 lines)       │   │  (307 lines)     │        │
+│  └──────────────────┘   └──────────────────┘   └──────────────────┘        │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+                                         │
+                                         ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                        MONITORING & ALERTS                                   │
+│                                                                             │
+│  ┌──────────────────┐   ┌──────────────────┐   ┌──────────────────┐        │
+│  │   Dashboard       │   │   iMessage/TG     │   │   Live Feed      │        │
+│  │  FastAPI + HTML   │   │   Alerts          │   │  Dhan WebSocket  │        │
+│  │  (1,684 lines)    │   │   Order fills,    │   │  Real-time LTP   │        │
+│  │  4 tabs           │   │   SL hits, errors │   │  health checks   │        │
+│  └──────────────────┘   └──────────────────┘   └──────────────────┘        │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+</div>
+
+<h2>2.3 Technology Stack</h2>
+<table>
+  <tr><th>Component</th><th>Technology</th><th>Purpose</th></tr>
+  <tr><td>Language</td><td>Python 3.11+</td><td>All backend logic, no compiled dependencies</td></tr>
+  <tr><td>Indicator Script</td><td>Pine Script v6</td><td>TradingView charting + signal generation</td></tr>
+  <tr><td>Broker API</td><td>Dhan REST + WebSocket</td><td>Order placement, LTP, option chain</td></tr>
+  <tr><td>Web Server</td><td>FastAPI + Uvicorn</td><td>Webhook receiver + dashboard</td></tr>
+  <tr><td>Database</td><td>SQLite (WAL mode)</td><td>Trades, positions, wallet, signals, daily stats</td></tr>
+  <tr><td>Data Feed</td><td>Yahoo Finance (yfinance)</td><td>Historical candles for indicator calculation</td></tr>
+  <tr><td>Live Feed</td><td>Dhan WebSocket</td><td>Real-time LTP for position monitoring</td></tr>
+  <tr><td>Notifications</td><td>iMessage + Telegram</td><td>Trade alerts, SL hits, errors</td></tr>
+  <tr><td>Hosting</td><td>Oracle Cloud VPS</td><td>Ubuntu, systemd service, always-on</td></tr>
+</table>
+
+<!-- ========== 3. SIGNAL PROCESSING PIPELINE ========== -->
+<h1 id="signal-flow" class="page-break">3. Signal Processing Pipeline</h1>
+
+<p>Every signal traverses a strict 12-step pipeline. If any step rejects the signal, the trade is blocked and the reason is logged. This pipeline is the core entry logic in <code>strategies/omega_complete.py</code> lines 160-536.</p>
+
+<h3>Step 1: Signal Reception</h3>
+<p>TradingView fires a JSON webhook to the FastAPI server at <code>/webhook</code>. The payload includes: <code>symbol</code>, <code>side</code> (BUY_CE, BUY_PE, SELL_CE, SELL_PE, EXIT), <code>confidence</code> (HIGH/MEDIUM/LOW), <code>score</code> (0-100), <code>strike</code>, <code>sl</code>, <code>atr</code>, and various indicator values (ADX, RSI, volume ratio, SuperTrend direction, VWAP position, Bollinger squeeze state).</p>
+
+<h3>Step 2: Exit Signal Check</h3>
+<p>If <code>side == "EXIT"</code>, the system routes directly to <code>_handle_exit()</code> which has 4 protective checks before closing any position: minimum 10-minute hold time, skip if at dynamic level 2+ (let levels manage), skip if currently in profit (let trailing stop manage), and skip if unrealized loss is under Rs 200 (let SL handle minor fluctuations).</p>
+
+<h3>Step 3: Opening Range Filter</h3>
+<p>All signals before 09:20 IST are blocked. Rationale: the first 5 minutes after market open (09:15) are extremely choppy with gap reactions and auction noise. This filter prevents whipsaw entries during the opening volatility.</p>
+
+<h3>Step 4: Theta Filters (SELL-specific)</h3>
+<ul>
+  <li><strong>SELL entry before 11:30 IST:</strong> Blocked. Theta decay (time value erosion) is too slow in the morning for option selling to be profitable on an intraday basis.</li>
+  <li><strong>SELL entry after 12:30 IST:</strong> +5 score bonus. Theta decay accelerates in the afternoon, making option selling more favorable.</li>
+  <li><strong>BUY entry after 14:30 IST:</strong> -10 score penalty. Rapid time decay in the last hour erodes option premium, making buying options risky.</li>
+</ul>
+
+<h3>Step 5: CE Bias Boost</h3>
+<p>All CE (Call) trades get +3 score. Historical data shows CE trades outperform PE (Put) trades in Indian markets due to the natural long bias of equity indices.</p>
+
+<h3>Step 6: Loss Recovery Mode</h3>
+<p>After 2+ consecutive losses: 15-minute cooldown, only MEDIUM/HIGH confidence accepted, minimum score raised to 55. After 4+ losses: minimum score raised to 60, quantity reduced to 1/3, SL tightened by 2%. The BANKNIFTY symbol also gets +10 added to minimum score requirement as a historically net-losing instrument.</p>
+
+<h3>Step 7: Instrument Resolution &amp; Option Chain</h3>
+<p>The webhook symbol is resolved to an instrument name (NIFTY, BANKNIFTY, SENSEX). If the option chain resolver is available (live feed active), it picks the ATM option contract with the best liquidity from Dhan's option chain API. Otherwise, it computes the ATM strike from the underlying LTP.</p>
+
+<h3>Step 8: Correlated Position Guard</h3>
+<p>Same-index duplicate positions are blocked (e.g., cannot have two LONG NIFTY positions simultaneously). Maximum 2 correlated index positions in the same direction across all indices.</p>
+
+<h3>Step 9: Guardrail Checks</h3>
+<p>Per-trade risk check ensures the trade risk (entry - SL) * quantity does not exceed 5% of capital (Rs 10,000 on Rs 2L capital in paper mode). Sector allocation check ensures total NSE exposure stays below 70% of capital.</p>
+
+<h3>Step 10: Trade Memory Evaluation</h3>
+<p>If enough historical data exists (5+ trades for the symbol), the memory system provides: Kelly criterion position sizing (half-Kelly), pattern-based blocking (e.g., 5+ consecutive losses on a symbol triggers a 7-day ban), score adjustments from learned rules (+/- based on statistical significance), and position size modifiers from drawdown protection.</p>
+
+<h3>Step 11: Position Sizing</h3>
+<p>Four sizing mechanisms stack multiplicatively: (a) Volatility regime sizing (HIGH_VOL: 0.5x, CHOPPY: 0.7x, TRENDING: 1.2x), (b) ATR-based risk sizing (limits risk to 1-3% of capital based on ATR distance), (c) Loss recovery sizing (halved after 3 losses, 1/3 after 4), (d) PE size reduction (PEs get 80% of normal quantity due to historical underperformance).</p>
+
+<h3>Step 12: Order Placement</h3>
+<p>The Order Manager places a LIMIT order with 0.5% slippage buffer on Dhan. If the fill is confirmed, a Position is created with dynamic SL/TP levels, a broker SL-LIMIT order is placed, margin is deducted from the wallet, and an iMessage/Telegram alert is sent with fill details.</p>
+
+<!-- ========== 4. PINE SCRIPT ========== -->
+<h1 id="pine" class="page-break">4. Pine Script Indicator (TradingView)</h1>
+
+<p>File: <code>pinescript/omega_v10_adaptive.pine</code> — 454 lines, Pine Script v6. This runs on TradingView charts and generates the webhook signals that drive the trading bot.</p>
+
+<h2>4.1 Five-Factor Confluence Model</h2>
+<p>A signal is generated only when ALL five independent technical factors agree on direction. This dramatically reduces false signals compared to single-indicator strategies.</p>
+
+<table>
+  <tr><th>#</th><th>Factor</th><th>Bullish Condition (BUY_CE)</th><th>Bearish Condition (BUY_PE)</th></tr>
+  <tr><td>1</td><td>SuperTrend (period=10, mult=3.0)</td><td>Price above SuperTrend line</td><td>Price below SuperTrend line</td></tr>
+  <tr><td>2</td><td>TEMA (Triple EMA)</td><td>Close > TEMA</td><td>Close < TEMA</td></tr>
+  <tr><td>3</td><td>EMA 200 (Long-term trend)</td><td>Close > EMA 200</td><td>Close < EMA 200</td></tr>
+  <tr><td>4</td><td>VWAP (Volume-Weighted Avg Price)</td><td>Close > VWAP</td><td>Close < VWAP</td></tr>
+  <tr><td>5</td><td>ADX (Average Directional Index)</td><td>ADX > 25 (trending)</td><td>ADX > 25 (trending)</td></tr>
+</table>
+
+<h2>4.2 Regime Detection</h2>
+<p>The script analyses market state to determine BUY vs SELL mode:</p>
+<ul>
+  <li><strong>BUY mode (ADX > 25):</strong> Market is trending. Buy ATM options to profit from directional moves.</li>
+  <li><strong>SELL mode (ADX < 20):</strong> Market is ranging/choppy. Sell OTM options to collect premium as theta decays.</li>
+  <li><strong>No-trade zone (20 ≤ ADX ≤ 25):</strong> Ambiguous regime. No signals generated.</li>
+</ul>
+
+<h2>4.3 Additional Indicators Calculated</h2>
+<table>
+  <tr><th>Indicator</th><th>Parameters</th><th>Use</th></tr>
+  <tr><td>RSI</td><td>Period 14</td><td>Overbought/oversold filter (blocks BUY > 70, SELL < 30)</td></tr>
+  <tr><td>Bollinger Bands</td><td>Period 20, 2 std dev</td><td>Squeeze detection for breakout signals</td></tr>
+  <tr><td>ATR</td><td>Period 14</td><td>Volatility measure for SL/TP sizing and position sizing</td></tr>
+  <tr><td>Chandelier Exit</td><td>Period 22, mult 3.0</td><td>Trend-following trailing stop reference</td></tr>
+  <tr><td>EMA 9/21</td><td>Fast/slow crossover</td><td>Short-term momentum confirmation</td></tr>
+  <tr><td>Choppiness Index</td><td>Period 14, threshold 61.8</td><td>Market noise detection (above 61.8 = choppy)</td></tr>
+</table>
+
+<h2>4.4 Signal Scoring (15 Factors)</h2>
+<p>Each signal receives a score from 0 to 100 based on 15 weighted factors. The score determines the confidence tier:</p>
+<ul>
+  <li><strong>HIGH confidence (score ≥ 72):</strong> Strong confluence, wider SL/TP allowed, full position size</li>
+  <li><strong>MEDIUM confidence (55 ≤ score < 72):</strong> Moderate confluence, standard SL/TP</li>
+  <li><strong>LOW confidence (score < 55):</strong> Weak confluence, tighter SL/TP, may be filtered out</li>
+</ul>
+<p>Minimum score for entry is 45 in paper mode, 55 in live mode. Additional score gates apply after consecutive losses.</p>
+
+<!-- ========== 5. STRATEGY ENGINE ========== -->
+<h1 id="strategy" class="page-break">5. Strategy Engine (OmegaStrategy)</h1>
+
+<p>File: <code>strategies/omega_complete.py</code> — 1,056 lines. The <code>OmegaStrategy</code> class is the brain of the system, coordinating signal processing, position management, and exit logic.</p>
+
+<h2>5.1 Class Structure</h2>
+<p>The strategy is initialized with references to all subsystems:</p>
+<ul>
+  <li><code>broker</code> — BrokerBase (Dhan or Paper)</li>
+  <li><code>order_manager</code> — Idempotent order placement</li>
+  <li><code>position_manager</code> — Open/closed position tracking</li>
+  <li><code>risk_engine</code> — 9-gate safety checks</li>
+  <li><code>instrument_selector</code> — Best-trending index picker</li>
+  <li><code>guardrails</code> — 15-scenario pre-trade checks</li>
+  <li><code>trade_memory</code> — Statistical learning from past trades</li>
+  <li><code>wallet</code> — Capital tracking and margin management</li>
+  <li><code>option_chain</code> — ATM option resolver</li>
+  <li><code>live_feed</code> — Dhan WebSocket for real-time LTP</li>
+</ul>
+
+<h2>5.2 Key Methods</h2>
+<table>
+  <tr><th>Method</th><th>Lines</th><th>Purpose</th></tr>
+  <tr><td><code>process_signal()</code></td><td>160-536</td><td>Main entry: validates, sizes, and places trades</td></tr>
+  <tr><td><code>monitor_positions()</code></td><td>580-828</td><td>Called every 1s: trailing stops, level-ups, exits</td></tr>
+  <tr><td><code>_handle_exit()</code></td><td>538-578</td><td>Signal-based exit with 4 protective checks</td></tr>
+  <tr><td><code>_exit_position()</code></td><td>900-967</td><td>Clean exit: order, P&L, wallet, DB, alerts, memory</td></tr>
+  <tr><td><code>_partial_exit()</code></td><td>849-877</td><td>Tranche scale-out (exits a portion of the position)</td></tr>
+  <tr><td><code>square_off_all()</code></td><td>890-898</td><td>End-of-day forced exit of all open positions</td></tr>
+  <tr><td><code>auto_select_instrument()</code></td><td>1003-1030</td><td>ADX/ATR-based best instrument picker</td></tr>
+</table>
+
+<h2>5.3 State Variables</h2>
+<ul>
+  <li><code>_consecutive_losses</code> — Tracks loss streaks for recovery mode sizing</li>
+  <li><code>_last_loss_time</code> — Timestamp for 15-minute post-loss cooldown</li>
+  <li><code>_signal_context</code> — Stores signal metadata per trade for memory recording</li>
+  <li><code>_underlying_cache</code> — 15-second TTL cache for underlying index prices</li>
+</ul>
+
+<!-- ========== 6. RISK ENGINE ========== -->
+<h1 id="risk" class="page-break">6. Risk Engine — 9-Gate Safety System</h1>
+
+<p>File: <code>core/risk_engine.py</code> — 597 lines. Every trade must pass ALL 9 gates sequentially. A single failure blocks the trade with a logged reason. This is the <strong>non-negotiable safety layer</strong> — no code path bypasses it.</p>
+
+<div class="danger">
+  <strong>Non-Negotiable:</strong> The risk engine cannot be disabled. There is no configuration flag, no command-line override, and no API endpoint that skips the risk check. The <code>allow_new_trade()</code> method is the single entry point for all trade authorization.
+</div>
+
+<table>
+  <tr><th>Gate</th><th>Check</th><th>Failure Action</th><th>Config</th></tr>
+  <tr><td>1</td><td><strong>Bot Kill Switch</strong></td><td>No trades for rest of day</td><td>Triggered when Gate 2 fires</td></tr>
+  <tr><td>2</td><td><strong>Daily Loss Limit</strong></td><td>Kills bot, sends CRITICAL alert</td><td><code>max_daily_loss: 3000</code> (Rs)</td></tr>
+  <tr><td>3</td><td><strong>Session Time</strong></td><td>Blocks trades outside hours</td><td><code>09:16 - 15:10 IST</code></td></tr>
+  <tr><td>4</td><td><strong>Cooldown Period</strong></td><td>30-min pause after 2 losses</td><td><code>cooldown_minutes: 30</code></td></tr>
+  <tr><td>5</td><td><strong>Concurrent Positions</strong></td><td>Max 2 at any time</td><td><code>max_concurrent: 2</code></td></tr>
+  <tr><td>5b</td><td><strong>Progressive Loss Reduction</strong></td><td>Max 1 position after 50% daily loss used</td><td>Dynamic</td></tr>
+  <tr><td>6</td><td><strong>SL Cap</strong></td><td>Max 8% SL if score ≥ 75, else 10%</td><td>Hardcoded</td></tr>
+  <tr><td>7</td><td><strong>Category Toggle + Margin</strong></td><td>Index Futures disabled live; margin check</td><td><code>margin_buffer_pct: 15</code></td></tr>
+  <tr><td>8</td><td><strong>Portfolio Exposure Cap</strong></td><td>Total exposure ≤ 80% of capital</td><td><code>max_exposure_pct: 80</code></td></tr>
+  <tr><td>9</td><td><strong>Per-Symbol Cooldown</strong></td><td>15-min cooldown after SL hit on a symbol</td><td><code>symbol_cooldown_minutes: 15</code></td></tr>
+</table>
+
+<h2>6.1 Gate Details</h2>
+
+<h3>Gate 2: Daily Loss Limit (Rs 3,000)</h3>
+<p>Why Rs 3,000? On Rs 1,00,000 capital, a 3% loss requires only 3.09% recovery to break even. A 5% loss requires 5.26% recovery — the recovery curve gets exponentially harder. Rs 3,000 keeps the bot within the recoverable zone. When breached, the <code>_bot_killed</code> flag is set and persists until <code>reset_daily()</code> is called the next trading day.</p>
+
+<h3>Gate 5b: Progressive Loss Reduction</h3>
+<p>When daily P&L reaches -50% of the max daily loss limit (i.e., -Rs 1,500), the system reduces max concurrent positions from 2 to 1. This prevents a cascading loss scenario where two losing positions compound the damage. The system must recover to above -50% before the second slot reopens.</p>
+
+<h3>Gate 6: SL Cap (Confluence-Scaled)</h3>
+<p>The stop-loss distance is capped as a percentage of entry price. High-confidence trades (score ≥ 75) get a tighter 8% cap because the signal is stronger, while lower-confidence trades get a 10% cap. This prevents outsized losses on any single trade regardless of ATR-based sizing.</p>
+
+<h2>6.2 Additional Risk Methods</h2>
+<table>
+  <tr><th>Method</th><th>Purpose</th></tr>
+  <tr><td><code>evaluate_trail()</code></td><td>ATR-based trailing stop with time-aware phased progression</td></tr>
+  <tr><td><code>kelly_position_size()</code></td><td>Half-Kelly criterion position sizing (max 25% kelly, max 50% fraction)</td></tr>
+  <tr><td><code>atr_position_size()</code></td><td>ATR-based risk sizing (risk amount / ATR distance = quantity)</td></tr>
+  <tr><td><code>time_decay_tp()</code></td><td>Reduce TP target as hold time increases (theta awareness)</td></tr>
+  <tr><td><code>check_partial_exit()</code></td><td>Scale out 50% at 1.5x ATR profit</td></tr>
+  <tr><td><code>compute_r_multiple()</code></td><td>Calculate R-multiple for trade quality measurement</td></tr>
+  <tr><td><code>get_risk_metrics()</code></td><td>Dashboard risk snapshot (PnL, zone, trades, drawdown)</td></tr>
+</table>
+
+<!-- ========== 7. DYNAMIC SL/TP LEVELS ========== -->
+<h1 id="sltp" class="page-break">7. Dynamic SL/TP Level Escalation</h1>
+
+<p>Instead of a fixed stop-loss and take-profit, the system uses a 4-level escalation model. When price hits the take-profit of Level N, the SL moves up to the previous TP and a new, wider TP is set for Level N+1. This locks in profit while letting winners run.</p>
+
+<h2>7.1 LONG (BUY) Levels</h2>
+<table>
+  <tr><th>Confidence</th><th>Level</th><th>SL (% below entry)</th><th>TP (% above entry)</th><th>Behavior</th></tr>
+  <tr><td rowspan="4"><span class="badge badge-red">LOW</span></td><td>L1</td><td>6.0%</td><td>7.0%</td><td>Tight initial SL, modest TP target</td></tr>
+  <tr><td>L2</td><td>7.0%</td><td>10.0%</td><td>SL moves to L1 TP, wider TP</td></tr>
+  <tr><td>L3</td><td>10.0%</td><td>12.5%</td><td>Profit locked, extending target</td></tr>
+  <tr><td>L4</td><td>12.5%</td><td>15.0%</td><td>Final level before ATR trail</td></tr>
+  <tr><td rowspan="4"><span class="badge badge-yellow">MEDIUM</span></td><td>L1</td><td>6.0%</td><td>9.0%</td><td>Same initial SL, better R:R</td></tr>
+  <tr><td>L2</td><td>9.0%</td><td>13.0%</td><td>Wider TP reflects stronger signal</td></tr>
+  <tr><td>L3</td><td>13.0%</td><td>17.0%</td><td>Significant profit locked</td></tr>
+  <tr><td>L4</td><td>17.0%</td><td>22.0%</td><td>Final level, 22% target</td></tr>
+  <tr><td rowspan="4"><span class="badge badge-green">HIGH</span></td><td>L1</td><td>8.0%</td><td>15.0%</td><td>Wider SL allows room, strong TP</td></tr>
+  <tr><td>L2</td><td>15.0%</td><td>20.0%</td><td>Aggressive extension</td></tr>
+  <tr><td>L3</td><td>20.0%</td><td>26.0%</td><td>Runner territory</td></tr>
+  <tr><td>L4</td><td>26.0%</td><td>33.0%</td><td>Maximum target, then ATR trail</td></tr>
+</table>
+
+<h2>7.2 SHORT (SELL) Levels</h2>
+<table>
+  <tr><th>Confidence</th><th>Level</th><th>SL (% above entry)</th><th>TP (% below entry)</th><th>Behavior</th></tr>
+  <tr><td rowspan="4"><span class="badge badge-red">LOW</span></td><td>L1</td><td>12.0%</td><td>5.0%</td><td>Wide SL (short gamma risk), modest TP</td></tr>
+  <tr><td>L2</td><td>5.0%</td><td>8.0%</td><td>SL tightens once profit starts</td></tr>
+  <tr><td>L3</td><td>8.0%</td><td>12.0%</td><td>Significant decay captured</td></tr>
+  <tr><td>L4</td><td>12.0%</td><td>15.0%</td><td>Full premium capture target</td></tr>
+  <tr><td rowspan="4"><span class="badge badge-yellow">MEDIUM</span></td><td>L1</td><td>15.0%</td><td>7.0%</td><td>Wider initial SL for shorts</td></tr>
+  <tr><td>L2</td><td>7.0%</td><td>11.0%</td><td>Better R:R with confidence</td></tr>
+  <tr><td>L3</td><td>11.0%</td><td>15.0%</td><td>Strong decay zone</td></tr>
+  <tr><td>L4</td><td>15.0%</td><td>20.0%</td><td>Aggressive decay target</td></tr>
+  <tr><td rowspan="4"><span class="badge badge-green">HIGH</span></td><td>L1</td><td>18.0%</td><td>10.0%</td><td>Maximum room for short volatility</td></tr>
+  <tr><td>L2</td><td>10.0%</td><td>15.0%</td><td>Tightening as decay accelerates</td></tr>
+  <tr><td>L3</td><td>15.0%</td><td>20.0%</td><td>Near-max premium capture</td></tr>
+  <tr><td>L4</td><td>20.0%</td><td>25.0%</td><td>Full capture, then ATR trail</td></tr>
+</table>
+
+<h2>7.3 Level-Up Mechanics</h2>
+<p>When price hits the current TP:</p>
+<ol>
+  <li>The old TP becomes the new SL (profit locked at this level).</li>
+  <li>A new, wider TP is set from the level table.</li>
+  <li><code>dynamic_level</code> increments.</li>
+  <li>The broker SL order is cancelled and replaced at the new SL price.</li>
+  <li>If price has already blown past multiple levels (e.g., a gap move), the system performs a <strong>multi-level jump</strong> — it iterates through all applicable levels in one pass.</li>
+  <li>After L4 is breached, the system enters <strong>ATR Trail Mode</strong> — no more levels, just a 1.5x ATR trailing stop from the peak price.</li>
+</ol>
+
+<!-- ========== 8. TRAILING STOP & PROFIT ENGINE ========== -->
+<h1 id="trail" class="page-break">8. Trailing Stop &amp; 5-Layer Profit Engine</h1>
+
+<p>The <code>monitor_positions()</code> method runs every 1 second and implements a 5-layer profit management system. This is the most complex part of the codebase at 250 lines.</p>
+
+<h2>8.1 Layer 1: Breakeven Lockdown</h2>
+<p>At 3% profit, the stop-loss moves to entry price + 0.1% (just above breakeven). This ensures that once a trade is 3% in profit, it can never turn into a loss. The <code>breakeven_locked</code> flag is set permanently for the position.</p>
+
+<h2>8.2 Layer 2: Scale-Out in 3 Tranches</h2>
+<p>Partial exits lock in profit while letting the remainder ride:</p>
+<table>
+  <tr><th>Tranche</th><th>Trigger (HIGH/MEDIUM/LOW)</th><th>Exit Quantity</th><th>Remaining</th></tr>
+  <tr><td>1</td><td>5.0% / 4.0% / 3.5% profit</td><td>1/3 of position</td><td>2/3</td></tr>
+  <tr><td>2</td><td>9.0% / 7.0% / 5.5% profit</td><td>1/2 of remaining</td><td>1/3 of original</td></tr>
+  <tr><td>3</td><td>—</td><td>Full exit via SL or TP</td><td>0</td></tr>
+</table>
+
+<h2>8.3 Layer 3: Time-Decay Targets (Theta Awareness)</h2>
+<p>Options lose value over time. The system progressively reduces TP targets based on hold duration:</p>
+<ul>
+  <li><strong>60-120 minutes:</strong> TP reduced to 75% of original distance from entry</li>
+  <li><strong>120+ minutes:</strong> TP reduced to 50% of original distance from entry</li>
+  <li><strong>Safety floor:</strong> Decayed TP must stay at least 0.5x ATR above the active SL</li>
+</ul>
+
+<h2>8.4 Layer 4: Momentum Hold</h2>
+<p>When price hits the TP and the system is in ATR trail mode (past all 4 levels): if profit is within 0.3% of peak profit AND hold time is under 2 hours, the TP exit is delayed. This lets strongly trending trades continue to run instead of exiting at a potentially intermediate high.</p>
+
+<h2>8.5 Layer 5: ATR-Based Trailing Stop (evaluate_trail)</h2>
+<p>The core trailing algorithm in <code>risk_engine.py</code> uses time-aware phased progression:</p>
+
+<table>
+  <tr><th>Time Phase</th><th>Trail Width</th><th>Rationale</th></tr>
+  <tr><td>&lt; 10 minutes</td><td>3.0x ATR</td><td>Let trade develop, avoid premature exits</td></tr>
+  <tr><td>10-30 minutes</td><td>2.5x ATR</td><td>Medium room as direction establishes</td></tr>
+  <tr><td>30-60 minutes</td><td>2.0x ATR</td><td>Tighter as move matures</td></tr>
+  <tr><td>60+ minutes</td><td>1.5x ATR</td><td>Tight — theta eating, lock profits</td></tr>
+</table>
+
+<p>Profit-phase overrides:</p>
+<ul>
+  <li><strong>&lt; 1.0x ATR profit:</strong> No trail tightening (trade hasn't moved enough)</li>
+  <li><strong>1.5x ATR profit:</strong> SL moves to breakeven</li>
+  <li><strong>3.0x ATR profit:</strong> Time-based trail from peak</li>
+  <li><strong>5.0x+ ATR profit:</strong> Override to tight 1.5x ATR regardless of time</li>
+</ul>
+
+<h2>8.6 SL Grace Period</h2>
+<p>When an SL is hit, there is a 90-second grace period (<code>SL_GRACE_SECONDS = 90</code>). If the position has been held for less than 90 seconds, the SL hit is ignored. This prevents premature exits on opening-bar volatility where price momentarily touches the SL and then reverses.</p>
+
+<h2>8.7 SL-Skip Freefall Detection</h2>
+<p>If LTP falls MORE than 0.5% past the SL (i.e., the SL was "skipped" by a gap move or latency), the system triggers an emergency market exit. This protects against scenarios where the SL limit order didn't get filled due to fast price movement.</p>
+
+<!-- ========== 9. TRADE MEMORY ========== -->
+<h1 id="memory" class="page-break">9. Trade Memory &amp; Statistical Learning</h1>
+
+<p>File: <code>core/trade_memory.py</code> — 990 lines. The trade memory is a self-learning system that records every trade outcome and discovers statistically significant patterns. These patterns then influence future trading decisions.</p>
+
+<h2>9.1 Architecture</h2>
+<p>The memory system stores three types of data in a single JSON file (<code>data/omega_memory.json</code>):</p>
+<ul>
+  <li><strong>Trades:</strong> Complete record of every trade with 25+ fields (entry/exit times, prices, indicators, outcome, R-multiple, etc.)</li>
+  <li><strong>Lessons:</strong> User-taught rules (e.g., "Don't trade BANKNIFTY on Wednesdays")</li>
+  <li><strong>Adaptive Rules:</strong> Machine-discovered patterns from statistical analysis</li>
+</ul>
+
+<h2>9.2 Pattern Detection</h2>
+<p>The <code>analyze_patterns()</code> method runs after every 10 trades and groups trades by 9 dimensions:</p>
+<ul>
+  <li>Entry hour (0-23)</li>
+  <li>Entry day of week (Mon-Fri)</li>
+  <li>Symbol base (NIFTY, BANKNIFTY, SENSEX)</li>
+  <li>ADX zone (flat, weak, moderate, strong, very_strong)</li>
+  <li>Signal confidence (HIGH, MEDIUM, LOW)</li>
+  <li>SuperTrend direction</li>
+  <li>VWAP position (above/below)</li>
+  <li>Volatility regime (NORMAL, HIGH_VOL, CHOPPY, TRENDING)</li>
+  <li>Exit reason (TRAIL_SL, SIGNAL_EXIT, SQUARE_OFF, etc.)</li>
+</ul>
+
+<h2>9.3 Statistical Significance Testing</h2>
+<p>For each group, a <strong>two-proportion z-test</strong> (at 90% confidence, z ≥ 1.65) compares the group's weighted win rate against the overall baseline win rate. If the difference is statistically significant, a rule is created:</p>
+<ul>
+  <li><strong>Group wins less than baseline:</strong> PENALIZE action, negative score modifier (up to -30)</li>
+  <li><strong>Group wins more than baseline:</strong> BOOST action, positive score modifier (up to +25)</li>
+  <li><strong>5+ consecutive losses on a symbol:</strong> BLOCK action, 7-day ban on that symbol</li>
+  <li><strong>SL-skip rate above 10%:</strong> REDUCE_SIZE action, position size halved</li>
+</ul>
+
+<h2>9.4 Decay &amp; Pruning</h2>
+<ul>
+  <li><strong>30-day half-life:</strong> Older trades contribute less weight via exponential decay: <code>weight = e^(-0.693 * age / 30)</code></li>
+  <li><strong>7-day ban expiry:</strong> Symbol bans automatically lift after 7 days</li>
+  <li><strong>90-day rule max age:</strong> Rules with fewer than 3 hits in 90 days are pruned as stale</li>
+  <li><strong>45% effectiveness threshold:</strong> Rules that predict correctly less than 45% of the time (after 15+ evaluations) are deactivated</li>
+</ul>
+
+<h2>9.5 Multi-Factor Combinations</h2>
+<p>Beyond single-dimension analysis, the system also tests combinations like "NIFTY at 10:00" or "SuperTrend bullish in strong ADX zone." These catch nuanced patterns that single factors miss.</p>
+
+<h2>9.6 Health Monitoring</h2>
+<p>The memory system generates health reports with status levels: HEALTHY, DEGRADED (7-day win rate < 40%), CRITICAL (win rate < 30% or 5+ consecutive losses). Degraded/Critical status triggers alerts via iMessage/Telegram and recommends raising the minimum score threshold.</p>
+
+<!-- ========== 10. GUARDRAILS ========== -->
+<h1 id="guardrails" class="page-break">10. Pre-Trade Guardrails (15 Scenarios)</h1>
+
+<p>File: <code>core/guardrails.py</code> — 392 lines. These checks run BEFORE the risk engine and act as the first line of defense against entering trades in unfavorable conditions.</p>
+
+<table>
+  <tr><th>#</th><th>Scenario</th><th>Check</th><th>Parameters</th></tr>
+  <tr><td>1</td><td>Capital Allocation Cap</td><td>NSE exposure ≤ 70% of capital</td><td><code>nse_allocation_cap: 0.70</code></td></tr>
+  <tr><td>2</td><td>Per-Trade Risk Cap</td><td>Risk ≤ 5% of capital per trade</td><td><code>max_risk_per_trade_pct: 5.0</code></td></tr>
+  <tr><td>3</td><td>Index Conflict Rule</td><td>All indices must agree on direction</td><td>Compares NIFTY/BANKNIFTY/SENSEX sides</td></tr>
+  <tr><td>5</td><td>Candle Freshness</td><td>Candle age ≤ 5.5 minutes</td><td><code>candle_max_staleness_sec: 330</code></td></tr>
+  <tr><td>7</td><td>ADX Regime Filter</td><td>ADX ≥ 10 (not dead market)</td><td><code>adx_min_threshold: 10</code></td></tr>
+  <tr><td>8</td><td>VWAP Warm-Up</td><td>No signals before 09:30 IST</td><td><code>vwap_warmup_time: "09:30"</code></td></tr>
+  <tr><td>9</td><td>Economic Calendar Blackout</td><td>No trades ±15/30 min around events</td><td><code>event_before: 15, event_after: 30</code></td></tr>
+  <tr><td>10</td><td>0-DTE Expiry Day</td><td>No new entries after 12:30 on expiry</td><td><code>expiry_day_cutoff: "12:30"</code></td></tr>
+  <tr><td>12</td><td>Session Kill-Switch</td><td>No new entries after 15:10 IST</td><td>Hardcoded</td></tr>
+  <tr><td>15</td><td>Step-Ladder Trail SL</td><td>Placeholder for enhanced trailing</td><td>Not yet implemented</td></tr>
+  <tr><td>16</td><td>Broker Outage Defcon</td><td>API health check before trading</td><td>Calls <code>get_available_margin()</code></td></tr>
+  <tr><td>17</td><td>Freak Tick Sanity</td><td>Price move ≤ 5% from previous</td><td><code>max_move_pct: 5.0</code></td></tr>
+  <tr><td>18</td><td>Contract Rollover</td><td>Warn if expiry within 3 days</td><td><code>days_before: 3</code></td></tr>
+  <tr><td>19</td><td>Time-of-Day Filter</td><td>No signals in first 15 min (09:15-09:30)</td><td>Hardcoded</td></tr>
+</table>
+
+<h2>10.1 NSE 2026 Expiry Calendar</h2>
+<p>Post-SEBI November 2024 circular, weekly expiries were restricted to one per exchange:</p>
+<ul>
+  <li><strong>NIFTY:</strong> Thursday (weekly, NSE's only weekly)</li>
+  <li><strong>BANKNIFTY:</strong> Thursday (monthly only — weekly discontinued)</li>
+  <li><strong>SENSEX:</strong> Friday (weekly, BSE's only weekly)</li>
+  <li><strong>FINNIFTY/BANKEX:</strong> Monthly only</li>
+</ul>
+
+<!-- ========== 11. ORDER MANAGEMENT ========== -->
+<h1 id="orders" class="page-break">11. Order Management &amp; Execution</h1>
+
+<p>File: <code>core/order_manager.py</code> — 337 lines. The Order Manager handles idempotent order placement with retry logic and ghost fill detection.</p>
+
+<h2>11.1 Key Features</h2>
+<ul>
+  <li><strong>Idempotency:</strong> Every signal has a unique tag. Duplicate signals are silently ignored via <code>exists(tag)</code> check.</li>
+  <li><strong>Limit Orders Only:</strong> The system NEVER places market orders. All entries use LIMIT orders with a 0.5% slippage buffer above LTP (for buys) or below LTP (for sells). This prevents fill at extreme prices during volatility.</li>
+  <li><strong>Exponential Backoff Retry:</strong> On broker errors, the system retries up to 4 times with exponential backoff (1s, 2s, 4s, 8s). Rate limit errors (DH-904) are handled separately with appropriate wait times.</li>
+  <li><strong>Auth Failure Handling:</strong> On DH-901 (auth expired), the system sends a CRITICAL alert via iMessage/Telegram instructing manual intervention. No retry is attempted — the token must be manually renewed at api.dhan.co.</li>
+</ul>
+
+<h2>11.2 Ghost Fill Detection</h2>
+<p>After all retries are exhausted, the system checks for "ghost fills" — situations where the order actually went through on the broker side but the confirmation response was lost due to a timeout. It queries broker positions for the security and, if a position exists, creates a synthetic <code>OrderResponse</code> with the broker's fill price. This prevents the system from thinking a trade failed when it actually succeeded.</p>
+
+<h2>11.3 SL Order Management</h2>
+<p>After each entry, a broker-side SL-LIMIT order is placed with a 2% buffer. This means the SL trigger price and the actual limit price differ by 2%: for a LONG position, the limit is 2% below the trigger to ensure fill. As trailing stops move, the old SL order is cancelled and a new one placed at the updated price.</p>
+
+<!-- ========== 12. POSITION MANAGEMENT ========== -->
+<h1 id="positions" class="page-break">12. Position Management &amp; P&amp;L</h1>
+
+<p>File: <code>core/position_manager.py</code> — 312 lines. Thread-safe position tracking with crash recovery.</p>
+
+<h2>12.1 Position Data Model (20+ Fields)</h2>
+<table>
+  <tr><th>Field</th><th>Type</th><th>Purpose</th></tr>
+  <tr><td><code>symbol</code></td><td>str</td><td>Trade symbol (e.g., NIFTY24500CE)</td></tr>
+  <tr><td><code>direction</code></td><td>str</td><td>LONG or SHORT</td></tr>
+  <tr><td><code>entry_price</code></td><td>float</td><td>Option premium at entry</td></tr>
+  <tr><td><code>current_price</code></td><td>float</td><td>Latest LTP from live feed</td></tr>
+  <tr><td><code>sl_price</code></td><td>float</td><td>Original stop-loss</td></tr>
+  <tr><td><code>trail_sl</code></td><td>float</td><td>Current trailing stop-loss</td></tr>
+  <tr><td><code>tp_price</code></td><td>float</td><td>Current take-profit target</td></tr>
+  <tr><td><code>dynamic_level</code></td><td>int</td><td>Current escalation level (1-4)</td></tr>
+  <tr><td><code>max_dynamic_level</code></td><td>int</td><td>Highest level reached (enables ATR trail mode)</td></tr>
+  <tr><td><code>peak_price</code></td><td>float</td><td>Highest (LONG) or lowest (SHORT) price seen</td></tr>
+  <tr><td><code>peak_profit_pct</code></td><td>float</td><td>Highest profit percentage reached</td></tr>
+  <tr><td><code>breakeven_locked</code></td><td>bool</td><td>True when SL moved to entry</td></tr>
+  <tr><td><code>tranche_exits</code></td><td>int</td><td>Number of partial exits completed (0, 1, or 2)</td></tr>
+  <tr><td><code>confidence</code></td><td>str</td><td>HIGH/MEDIUM/LOW — determines level table</td></tr>
+  <tr><td><code>atr_value</code></td><td>float</td><td>ATR from signal, used for trailing calculations</td></tr>
+  <tr><td><code>tp_extended</code></td><td>bool</td><td>True if greed extension was applied</td></tr>
+</table>
+
+<h2>12.2 P&amp;L Calculation</h2>
+<pre>
+LONG:  PnL = (current_price - entry_price) * quantity
+SHORT: PnL = (entry_price - current_price) * quantity
+</pre>
+<p>For options, all prices are PREMIUM prices (not underlying). A LONG CE profits when the call premium rises; a SHORT CE profits when the call premium falls (decays).</p>
+
+<h2>12.3 Crash Recovery</h2>
+<p>Position state is serialized to <code>data/paper_positions.json</code> after every update. On restart, <code>load_state()</code> restores all open positions with their exact SL/TP levels, dynamic level, peak price, and other state. This ensures no positions are lost if the bot crashes mid-session.</p>
+
+<!-- ========== 13. WALLET ========== -->
+<h1 id="wallet">13. Wallet &amp; Capital Tracking</h1>
+
+<p>File: <code>core/wallet.py</code> — 93 lines. Thread-safe capital tracker backed by SQLite.</p>
+
+<ul>
+  <li><strong>Starting Capital:</strong> Rs 2,00,000 (configurable)</li>
+  <li><strong>deduct_margin(amount, symbol):</strong> Called on entry — locks margin equal to entry_price * quantity</li>
+  <li><strong>release_margin(margin, pnl, symbol, reason):</strong> Called on exit — returns margin and applies P&L</li>
+  <li><strong>Thread Safety:</strong> All operations protected by <code>threading.Lock()</code></li>
+  <li><strong>Daily Reset:</strong> Today's P&L resets at start of each trading day via <code>OmegaDB.init_wallet()</code></li>
+</ul>
+
+<!-- ========== 14. INFRASTRUCTURE ========== -->
+<h1 id="infra" class="page-break">14. Infrastructure &amp; Deployment</h1>
+
+<h2>14.1 Server Details</h2>
+<table>
+  <tr><th>Component</th><th>Detail</th></tr>
+  <tr><td>Cloud Provider</td><td>Oracle Cloud Infrastructure (OCI)</td></tr>
+  <tr><td>Server IP</td><td>129.225.76.88</td></tr>
+  <tr><td>OS</td><td>Ubuntu (latest LTS)</td></tr>
+  <tr><td>SSH Access</td><td>SSH key at <code>~/.ssh/oracle_vps.key</code></td></tr>
+  <tr><td>Process Manager</td><td>systemd (auto-restart on failure)</td></tr>
+  <tr><td>Dashboard Port</td><td>8000 (FastAPI + Uvicorn)</td></tr>
+  <tr><td>Webhook Endpoint</td><td><code>http://129.225.76.88:8000/webhook</code></td></tr>
+</table>
+
+<h2>14.2 Deployment Steps</h2>
+<ol>
+  <li>SSH to VPS: <code>ssh -i ~/.ssh/oracle_vps.key ubuntu@129.225.76.88</code></li>
+  <li>Git pull latest code</li>
+  <li>Install dependencies: <code>pip install -r requirements.txt</code></li>
+  <li>Set environment variables in <code>.env</code> (DHAN_CLIENT_ID, DHAN_ACCESS_TOKEN, TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID)</li>
+  <li>Restart service: <code>sudo systemctl restart omega</code></li>
+</ol>
+
+<div class="danger">
+  <strong>SECURITY:</strong> The <code>.env</code> file contains live API tokens and must NEVER be committed to git. It is listed in <code>.gitignore</code>. If compromised, immediately revoke and regenerate all tokens at api.dhan.co.
+</div>
+
+<!-- ========== 15. DASHBOARD ========== -->
+<h1 id="dashboard">15. Real-Time Dashboard</h1>
+
+<p>File: <code>webhook/dashboard.py</code> — 1,684 lines. Generates a complete HTML/CSS/JS dashboard served by FastAPI at <code>/dashboard</code>.</p>
+
+<h2>15.1 Four Dashboard Tabs</h2>
+<table>
+  <tr><th>Tab</th><th>Content</th></tr>
+  <tr><td><strong>Dashboard</strong></td><td>Wallet balance, today's P&L, win/loss count, recent trades table, performance chart</td></tr>
+  <tr><td><strong>Positions</strong></td><td>All open positions with real-time P&L, SL/TP levels, dynamic level indicator, hold time</td></tr>
+  <tr><td><strong>Trades</strong></td><td>Complete trade history with entry/exit times, P&L per trade, exit reasons, R-multiples</td></tr>
+  <tr><td><strong>Signals</strong></td><td>Recent signals received (including rejected ones) with confidence, score, and indicator values</td></tr>
+</table>
+
+<h2>15.2 Auto-Refresh</h2>
+<p>The dashboard auto-refreshes every 5 seconds via JavaScript <code>setInterval</code>. The API endpoint <code>/api/dashboard</code> serves JSON data from the SQLite database.</p>
+
+<!-- ========== 16. DATABASE ========== -->
+<h1 id="database" class="page-break">16. Database Schema</h1>
+
+<p>File: <code>core/database.py</code> — 307 lines. SQLite database with WAL mode for concurrent read/write access. Singleton pattern ensures one connection per thread.</p>
+
+<h2>16.1 Tables</h2>
+<table>
+  <tr><th>Table</th><th>Primary Key</th><th>Purpose</th><th>Key Columns</th></tr>
+  <tr><td><code>wallet</code></td><td>id=1 (single row)</td><td>Capital tracking</td><td>balance, in_trade, today_pnl, today_trades, starting_capital</td></tr>
+  <tr><td><code>trades</code></td><td>AUTO id</td><td>Trade history</td><td>symbol, direction, qty, entry/exit price, pnl, times, exit_reason, balance_after</td></tr>
+  <tr><td><code>positions</code></td><td>security_id</td><td>Open positions</td><td>symbol, direction, qty, entry_price, sl/tp/trail, dynamic_level</td></tr>
+  <tr><td><code>signals</code></td><td>AUTO id</td><td>Signal log</td><td>symbol, side, score, confidence, details (JSON)</td></tr>
+  <tr><td><code>daily_stats</code></td><td>date</td><td>Daily summary</td><td>total_pnl, wins, losses, starting/ending balance</td></tr>
+</table>
+
+<h2>16.2 Thread Safety</h2>
+<p>SQLite WAL mode allows concurrent readers with one writer. The database uses Python <code>threading.local()</code> for per-thread connections and <code>PRAGMA busy_timeout=5000</code> (5-second wait on lock contention). The <code>OmegaDB.get()</code> singleton ensures only one instance exists across all threads.</p>
+
+<!-- ========== 17. CONFIGURATION ========== -->
+<h1 id="config">17. Configuration Reference</h1>
+
+<h2>17.1 settings.yaml</h2>
+<table>
+  <tr><th>Section</th><th>Parameter</th><th>Value</th><th>Description</th></tr>
+  <tr><td>broker</td><td>name</td><td>"dhan"</td><td>Broker adapter to use</td></tr>
+  <tr><td>risk</td><td>max_daily_loss</td><td>3000</td><td>Daily loss limit in Rs</td></tr>
+  <tr><td>risk</td><td>max_concurrent_positions</td><td>2</td><td>Max open positions</td></tr>
+  <tr><td>risk</td><td>max_daily_trades</td><td>999</td><td>No hard cap on trade count</td></tr>
+  <tr><td>risk</td><td>sl_buffer_pct</td><td>0.3</td><td>SL buffer for underlying</td></tr>
+  <tr><td>risk</td><td>trail_pct</td><td>0.15</td><td>Trailing stop percentage</td></tr>
+  <tr><td>risk</td><td>cooldown_minutes</td><td>30</td><td>Pause after 2 losses</td></tr>
+  <tr><td>risk</td><td>margin_buffer_pct</td><td>15</td><td>Extra margin headroom</td></tr>
+  <tr><td>session</td><td>start_time</td><td>"09:16"</td><td>1 min after market open</td></tr>
+  <tr><td>session</td><td>square_off_time</td><td>"15:10"</td><td>5 min before RMS kicks in</td></tr>
+  <tr><td>strategy</td><td>mode</td><td>"paper"</td><td>Default to paper trading</td></tr>
+  <tr><td>strategy</td><td>default_qty_lots</td><td>1</td><td>1 lot per trade</td></tr>
+  <tr><td>guardrails</td><td>capital</td><td>200000</td><td>Capital for risk calculations</td></tr>
+  <tr><td>guardrails</td><td>max_risk_per_trade_pct</td><td>5.0</td><td>Max risk per trade (paper)</td></tr>
+</table>
+
+<h2>17.2 instruments.yaml</h2>
+<table>
+  <tr><th>Instrument</th><th>Lot Size</th><th>Strike Step</th><th>Exchange</th><th>Expiry Day</th></tr>
+  <tr><td>NIFTY</td><td>75</td><td>50</td><td>NSE</td><td>Thursday</td></tr>
+  <tr><td>BANKNIFTY</td><td>15</td><td>100</td><td>NSE</td><td>Wednesday*</td></tr>
+  <tr><td>SENSEX</td><td>10</td><td>100</td><td>BSE</td><td>Friday</td></tr>
+</table>
+<p><em>* BANKNIFTY expiry was moved to Thursday monthly post-SEBI Nov 2024 circular. The instruments.yaml may need updating.</em></p>
+
+<!-- ========== 18. MACHINE LEARNING MODULE ========== -->
+<h1 id="ml" class="page-break">18. Machine Learning Module</h1>
+
+<p>The ML module (<code>ml/</code>) adds a neural-network-based intelligence layer to Omega Trading Company. It is built from scratch using pure NumPy — adapted from the <em>trekhleb/homemade-machine-learning</em> repository's MultilayerPerceptron implementation — with no dependency on TensorFlow, PyTorch, or scikit-learn for inference.</p>
+
+<h2>18.1 Architecture Overview</h2>
+
+<div class="diagram">
+                  ┌──────────────────────────────────────────┐
+                  │         OMEGA ML ENGINE                  │
+                  │                                          │
+  OHLCV Candles → │  ┌─────────────┐   ┌──────────────────┐ │
+                  │  │  FEATURE     │   │  SIGNAL QUALITY  │ │ → Approved / Blocked
+                  │  │  EXTRACTOR   │──▶│  CLASSIFIER      │ │   + Confidence Score
+                  │  │  (44 feats)  │   │  (44→32→16→2)    │ │
+                  │  └─────────────┘   └──────────────────┘ │
+                  │         │                                │
+                  │         ▼                                │
+                  │  ┌──────────────────┐                    │
+                  │  │  REGIME DETECTOR │                    │ → TRENDING / RANGING
+                  │  │  (K-Means × 4)  │                    │   VOLATILE / CHOPPY
+                  │  └──────────────────┘                    │   + SL/TP Adjustments
+                  │                                          │
+  Trade Outcome → │  ┌──────────────────┐                    │
+  (WIN / LOSS)    │  │  AUTO-RETRAIN    │                    │ → Saves updated model
+                  │  │  (every 20 new)  │                    │
+                  │  └──────────────────┘                    │
+                  └──────────────────────────────────────────┘
+</div>
+
+<h2>18.2 Module Files (1,988 lines)</h2>
+
+<table>
+<tr><th>File</th><th>Lines</th><th>Purpose</th></tr>
+<tr><td><code>features.py</code></td><td>373</td><td>44-feature extraction from OHLCV candles across 7 categories</td></tr>
+<tr><td><code>neural_net.py</code></td><td>358</td><td>Signal Quality Classifier — MLP with backpropagation, early stopping, save/load</td></tr>
+<tr><td><code>regime.py</code></td><td>268</td><td>Market Regime Detection — K-Means clustering into 4 market states</td></tr>
+<tr><td><code>data_collector.py</code></td><td>257</td><td>Training data pipeline — Yahoo Finance OHLCV + trade memory labeling</td></tr>
+<tr><td><code>engine.py</code></td><td>293</td><td>Central ML engine — integrates all models into Omega's trading pipeline</td></tr>
+<tr><td><code>train.py</code></td><td>258</td><td>CLI training script with full pipeline, walk-forward validation</td></tr>
+<tr><td><code>validation.py</code></td><td>156</td><td>Walk-forward validation + permutation-based feature importance</td></tr>
+<tr><td><code>__init__.py</code></td><td>25</td><td>Clean module exports</td></tr>
+</table>
+
+<h2>18.3 Feature Engineering (44 Features × 7 Categories)</h2>
+
+<table>
+<tr><th>Category</th><th>Count</th><th>Key Features</th></tr>
+<tr><td>Price Action</td><td>10</td><td>Return %, candle body ratio, upper/lower wick, higher high/lower low, gap %</td></tr>
+<tr><td>Trend</td><td>8</td><td>ADX, EMA crossovers (9/21/50), SuperTrend direction, slope of EMA21</td></tr>
+<tr><td>Momentum</td><td>6</td><td>RSI, MACD histogram, MACD signal, stochastic %K/%D</td></tr>
+<tr><td>Volatility</td><td>6</td><td>ATR %, Bollinger bandwidth/position/squeeze, Hurst exponent, choppiness index</td></tr>
+<tr><td>Volume</td><td>4</td><td>Volume ratio (vs 20-period avg), OBV slope, volume-price correlation, relative volume</td></tr>
+<tr><td>Time</td><td>6</td><td>Minute of day, day of week, session phase (morning/midday/closing), days to expiry</td></tr>
+<tr><td>Microstructure</td><td>4</td><td>Average bar range (5-period), return skewness, return kurtosis, consecutive same-direction bars</td></tr>
+</table>
+
+<h2>18.4 Signal Quality Classifier (Neural Network)</h2>
+
+<div class="card">
+<div class="card-title">MLP Architecture: 44 → 32 → 16 → 2</div>
+<ul>
+<li><strong>Input layer:</strong> 44 features (z-score normalized)</li>
+<li><strong>Hidden layer 1:</strong> 32 neurons, sigmoid activation</li>
+<li><strong>Hidden layer 2:</strong> 16 neurons, sigmoid activation</li>
+<li><strong>Output layer:</strong> 2 neurons (LOSS probability, WIN probability)</li>
+<li><strong>Training:</strong> Gradient descent with backpropagation, L2 regularization (λ=0.3)</li>
+<li><strong>Early stopping:</strong> Monitors validation loss, patience=50 evaluations (every 10 iterations)</li>
+<li><strong>Initialization:</strong> Xavier/Glorot — <code>sqrt(6 / (fan_in + fan_out))</code></li>
+<li><strong>Serialization:</strong> JSON save/load of weights, means, std deviations</li>
+<li><strong>Online learning:</strong> <code>incremental_train()</code> fine-tunes on new trades with small learning rate (α=0.01)</li>
+</ul>
+</div>
+
+<h2>18.5 Regime Detection (K-Means Clustering)</h2>
+
+<p>Classifies market into 4 regimes using unsupervised K-Means on 10 regime-specific features (ADX, ATR%, Bollinger squeeze, choppiness index, RSI, return kurtosis/skewness, SuperTrend direction, volume ratio, Hurst exponent). Clusters are mapped to named regimes using domain rules based on cluster centroids.</p>
+
+<table>
+<tr><th>Regime</th><th>Characteristics</th><th>SL Mult</th><th>TP Mult</th><th>Trail ATR</th><th>Action</th></tr>
+<tr><td><span class="badge badge-green">TRENDING</span></td><td>ADX &gt; 25, low choppiness</td><td>1.2×</td><td>1.5×</td><td>2.5×</td><td>Wider stops, bigger targets, hold longer</td></tr>
+<tr><td><span class="badge badge-blue">RANGING</span></td><td>ADX &lt; 20, high choppiness</td><td>0.8×</td><td>0.7×</td><td>1.5×</td><td>Tight stops, quick profits, mean-reversion</td></tr>
+<tr><td><span class="badge badge-red">VOLATILE</span></td><td>High ATR, Bollinger expansion</td><td>1.5×</td><td>1.3×</td><td>3.0×</td><td>Wide stops for noise, cautious sizing</td></tr>
+<tr><td><span class="badge badge-yellow">CHOPPY</span></td><td>Erratic, many false signals</td><td>0.7×</td><td>0.5×</td><td>1.0×</td><td>Tight everything, reduce exposure, skip weak signals</td></tr>
+</table>
+
+<p>Falls back to rule-based classification when insufficient training data is available.</p>
+
+<h2>18.6 Integration with Strategy Engine</h2>
+
+<p>The ML engine hooks into <code>OmegaStrategy.process_signal()</code> as a pre-trade gate (between guardrails check and trade memory check). On each signal:</p>
+
+<ol>
+<li>Extracts 44 features from the live candle buffer</li>
+<li>Regime detector classifies market state → adjusts SL/TP multipliers and volatility regime</li>
+<li>Signal classifier predicts WIN/LOSS probability</li>
+<li>If confidence &lt; 55% or model predicts loss with &gt; 65% confidence → signal blocked</li>
+<li>If regime is CHOPPY and signal score &lt; 65 → signal blocked</li>
+</ol>
+
+<p>On trade exit, the outcome (win/loss, P&amp;L, features at entry) is recorded to the trade buffer. After 20 new trades, both models auto-retrain on the accumulated data.</p>
+
+<h2>18.7 Validation Framework</h2>
+
+<div class="two-col">
+<div class="card">
+<div class="card-title">Walk-Forward Validation</div>
+<p>Trains on a sliding window (default 50 samples), tests on the next 10. Measures accuracy, precision, recall, and F1 per window. Prevents overfitting by mimicking how the model would be retrained in production.</p>
+</div>
+<div class="card">
+<div class="card-title">Feature Importance</div>
+<p>Permutation-based: for each of the 44 features, shuffles that column N times, measures accuracy drop. Features with larger drops are more important for prediction. Used to prune noisy features and understand what drives predictions.</p>
+</div>
+</div>
+
+<h2>18.8 Current ML Status</h2>
+
+<div class="danger">
+<strong>Insufficient training data.</strong> The system has 22 trades (6W / 16L). ML models require 100+ labeled trades to learn meaningful patterns. The neural network is built and tested with synthetic data — it achieves 80%+ accuracy on learnable patterns — but with 22 real trades and 44 features, the model would overfit to noise. The regime detector operates in rule-based fallback mode until enough data is collected.
+</div>
+
+<div class="highlight">
+<strong>Data collection strategy:</strong> Every trade automatically feeds into the ML pipeline. The <code>DataCollector</code> also downloads 5-minute candles from Yahoo Finance to build a feature dataset. Once 100+ labeled trades exist, the classifier will auto-train and begin filtering signals. The system improves with every trade taken.
+</div>
+
+<!-- ========== 19. LIVE PERFORMANCE ANALYSIS ========== -->
+<h1 id="performance" class="page-break">19. Live Performance Analysis</h1>
+
+<p>Analysis of all 22 paper trades taken by the system as of 11 October 2026.</p>
+
+<h2>19.1 Overall Statistics</h2>
+
+<div class="two-col">
+<div class="card">
+<div class="metric"><div class="value">22</div><div class="label">Total Trades</div></div>
+<div class="metric"><div class="value" style="color:#991b1b;">27%</div><div class="label">Win Rate</div></div>
+</div>
+<div class="card">
+<div class="metric"><div class="value" style="color:#991b1b;">-₹14,178</div><div class="label">Total P&amp;L</div></div>
+<div class="metric"><div class="value">6W / 16L</div><div class="label">Win / Loss</div></div>
+</div>
+</div>
+
+<h2>19.2 Two Trading Phases</h2>
+
+<div class="two-col">
+<div class="card">
+<div class="card-title">Phase 1: Index Price Proxy (Trades 1-8)</div>
+<p><span class="badge badge-red">Inaccurate</span> Used underlying index price instead of actual option premium for P&amp;L calculation. Results are unreliable — a 100-point Nifty move does not equal a 100-point option premium change. These trades show losses of ₹1,500–₹2,800 each but the real P&amp;L is unknown.</p>
+<p><strong>P&amp;L:</strong> -₹13,564 (inaccurate)</p>
+</div>
+<div class="card">
+<div class="card-title">Phase 2: Real Option Premiums (Trades 9-22)</div>
+<p><span class="badge badge-green">Accurate</span> Uses actual option premium prices from Dhan. 14 trades with 5 wins and 9 losses. Average winning move: +0.53%. Average losing move: -1.32%.</p>
+<p><strong>P&amp;L:</strong> -₹614 (accurate)</p>
+</div>
+</div>
+
+<h2>19.3 Critical Findings</h2>
+
+<div class="danger">
+<strong>Finding 1: 10 of 14 real trades exit on sub-1% moves via TRAIL_SL.</strong>
+<p>Most trades exit within 0–1 minutes with moves of 0.1%–0.6%. This is within the bid-ask spread noise of Indian index options. The dynamic SLTP levels (6–8% SL) never get a chance to work because the trail SL is triggering on price jitter, not real market movement.</p>
+</div>
+
+<div class="danger">
+<strong>Finding 2: Inverted risk/reward ratio.</strong>
+<p>Average win: ₹27. Average loss: ₹896. Winners are 33× smaller than losers. For a 27% win rate to be profitable, average win must exceed 2.7× average loss. Currently it is 0.03× — the strategy cuts winners early and holds losers.</p>
+</div>
+
+<div class="highlight">
+<strong>Finding 3: All trades are LONG.</strong>
+<p>All 22 trades are LONG direction (buying options). The SELL mode (option selling in ranging markets) has not been exercised. This leaves half the market opportunity untested.</p>
+</div>
+
+<div class="highlight">
+<strong>Finding 4: Time clustering.</strong>
+<p>18 of 22 trades entered between 10:00–11:30 IST. The system may be overtrading during the morning session while missing afternoon setups.</p>
+</div>
+
+<h2>19.4 Phase 2 Trade-by-Trade</h2>
+
+<table>
+<tr><th>#</th><th>Symbol</th><th>Entry</th><th>Exit</th><th>Move%</th><th>P&amp;L</th><th>Exit Reason</th><th>Issue</th></tr>
+<tr><td>9</td><td>NIFTY24SEP25500CE</td><td>200.0</td><td>200.0</td><td>0.0%</td><td>₹0</td><td>SIGNAL_EXIT</td><td>Zero movement</td></tr>
+<tr><td>10</td><td>NIFTY23050PE</td><td>87.4</td><td>87.7</td><td>+0.3%</td><td style="color:green">+₹19</td><td>TRAIL_SL</td><td>Noise exit</td></tr>
+<tr><td>11</td><td>SENSEX73600PE</td><td>410.2</td><td>410.0</td><td>-0.0%</td><td style="color:red">-₹2</td><td>TRAIL_SL</td><td>Noise exit</td></tr>
+<tr><td>12</td><td>NIFTY23050PE</td><td>92.8</td><td>92.3</td><td>-0.5%</td><td style="color:red">-₹34</td><td>TRAIL_SL</td><td>Noise exit</td></tr>
+<tr><td>13</td><td>NIFTY23050PE</td><td>87.3</td><td>87.0</td><td>-0.4%</td><td style="color:red">-₹26</td><td>TRAIL_SL</td><td>Noise exit</td></tr>
+<tr><td>14</td><td>BANKNIFTY55600CE</td><td>385.4</td><td>386.8</td><td>+0.4%</td><td style="color:green">+₹20</td><td>TRAIL_SL</td><td>Noise exit</td></tr>
+<tr><td>15</td><td>NIFTY23100CE</td><td>126.1</td><td>126.3</td><td>+0.2%</td><td style="color:green">+₹18</td><td>TRAIL_SL</td><td>Noise exit</td></tr>
+<tr><td>16</td><td>SENSEX73700CE</td><td>582.3</td><td>581.7</td><td>-0.1%</td><td style="color:red">-₹6</td><td>TRAIL_SL</td><td>Noise exit</td></tr>
+<tr><td>17</td><td>NIFTY23100CE</td><td>127.1</td><td>127.4</td><td>+0.2%</td><td style="color:green">+₹22</td><td>TRAIL_SL</td><td>Noise exit</td></tr>
+<tr><td>18</td><td>BANKNIFTY55600CE</td><td>398.6</td><td>397.8</td><td>-0.2%</td><td style="color:red">-₹14</td><td>TRAIL_SL</td><td>Noise exit</td></tr>
+<tr><td>19</td><td>SENSEX73800CE</td><td>534.0</td><td>531.0</td><td>-0.6%</td><td style="color:red">-₹30</td><td>TRAIL_SL</td><td>Noise exit</td></tr>
+<tr><td>20</td><td>NIFTY23100CE</td><td>126.5</td><td>121.5</td><td>-3.9%</td><td style="color:red">-₹372</td><td>SIGNAL_EXIT</td><td>Real loss</td></tr>
+<tr><td>21</td><td>NIFTY22600PE</td><td>57.0</td><td>53.5</td><td>-6.1%</td><td style="color:red">-₹261</td><td>SIGNAL_EXIT</td><td>Real loss</td></tr>
+<tr><td>22</td><td>NIFTY22650PE</td><td>42.8</td><td>43.5</td><td>+1.6%</td><td style="color:green">+₹51</td><td>SIGNAL_EXIT</td><td>Proper trade</td></tr>
+</table>
+
+<h2>19.5 Root Cause Analysis</h2>
+
+<p>The dynamic SLTP system is well-designed (4-level escalation, ATR trailing, breakeven lock, tranche scale-outs). However, trades are dying before the SLTP system gets a chance to work. The suspected cause is the live price feed triggering SL exits on bid-ask spread fluctuations within the first few ticks. This is a microstructure issue, not a strategy logic issue.</p>
+
+<!-- ========== 20. CODE AUDIT ========== -->
+<h1 id="audit" class="page-break">20. Code Audit &amp; Bug Findings</h1>
+
+<p>The following bugs were identified during code review and have been fixed in prior sessions. They are documented here for completeness and to help contributors understand common pitfall areas.</p>
+
+<h2>18.1 Fixed Bugs</h2>
+
+<div class="card">
+  <div class="card-title">Bug #1: JS Operator Precedence in Dashboard <span class="badge badge-green">FIXED</span></div>
+  <p><strong>File:</strong> <code>webhook/dashboard.py</code><br>
+  <strong>Issue:</strong> JavaScript expression <code>pnl &gt; 0 ? '+' : '' + pnl.toFixed(2)</code> was incorrectly parsed due to operator precedence. The <code>+</code> string concatenation bound tighter than the ternary operator, causing the positive case to show just <code>'+'</code> without the number.<br>
+  <strong>Fix:</strong> Added parentheses: <code>(pnl &gt; 0 ? '+' : '') + pnl.toFixed(2)</code></p>
+</div>
+
+<div class="card">
+  <div class="card-title">Bug #2: close_all() Used consecutive_losses Instead of Iteration <span class="badge badge-green">FIXED</span></div>
+  <p><strong>File:</strong> <code>core/position_manager.py</code><br>
+  <strong>Issue:</strong> The <code>close_all()</code> method iterated over <code>self._open.keys()</code> while modifying the dict, which could skip positions or raise a RuntimeError.<br>
+  <strong>Fix:</strong> Changed to iterate over <code>list(self._open.keys())</code> to create a snapshot before modification.</p>
+</div>
+
+<div class="card">
+  <div class="card-title">Bug #3: Missing Position Fields in save_state() <span class="badge badge-green">FIXED</span></div>
+  <p><strong>File:</strong> <code>core/position_manager.py</code><br>
+  <strong>Issue:</strong> Several fields added later (confidence, tp_extended, breakeven_locked, tranche_exits, peak_profit_pct, dynamic_level, max_dynamic_level) were missing from <code>save_state()</code> and <code>load_state()</code>. A crash would lose these fields and the position would restart with incorrect default values.<br>
+  <strong>Fix:</strong> Added all missing fields to both serialization and deserialization.</p>
+</div>
+
+<div class="card">
+  <div class="card-title">Bug #4: Missing entry_time in ClosedTrade <span class="badge badge-green">FIXED</span></div>
+  <p><strong>File:</strong> <code>core/position_manager.py</code><br>
+  <strong>Issue:</strong> <code>ClosedTrade</code> was created without <code>entry_time</code>, which is needed for trade duration calculation and memory recording.<br>
+  <strong>Fix:</strong> Added <code>entry_time=pos.entry_time</code> to the ClosedTrade constructor in <code>close_position()</code>.</p>
+</div>
+
+<div class="card">
+  <div class="card-title">Bug #5: Duplicate Dict Key in Dashboard <span class="badge badge-green">FIXED</span></div>
+  <p><strong>File:</strong> <code>webhook/dashboard.py</code><br>
+  <strong>Issue:</strong> A dictionary literal had a duplicate key, causing one value to silently overwrite the other.<br>
+  <strong>Fix:</strong> Removed the duplicate entry.</p>
+</div>
+
+<div class="card">
+  <div class="card-title">Bug #6: Hardcoded Trade Limit Display <span class="badge badge-green">FIXED</span></div>
+  <p><strong>File:</strong> <code>webhook/dashboard.py</code><br>
+  <strong>Issue:</strong> The dashboard displayed "0 / 6" for trade count, using a hardcoded limit of 6 when the config sets <code>max_daily_trades: 999</code>.<br>
+  <strong>Fix:</strong> Changed to display just the trade count without a fixed denominator.</p>
+</div>
+
+<h2>18.2 Potential Issues (Not Yet Fixed)</h2>
+
+<div class="card">
+  <div class="card-title">Issue #1: Yahoo Finance Data Reliability <span class="badge badge-yellow">OPEN</span></div>
+  <p>Yahoo Finance provides free but unreliable data. The 5-minute candle data can have delays of 15+ minutes, missing candles, or incorrect volume data. The candle freshness guardrail (330s timeout) mitigates this partially, but the system can still act on delayed data within that window.</p>
+</div>
+
+<div class="card">
+  <div class="card-title">Issue #2: Option Premium vs Underlying Price Mismatch <span class="badge badge-yellow">OPEN</span></div>
+  <p>The system's signal scoring is based on underlying index price movements, but trades are on option premiums. A 100-point NIFTY move does NOT always equal a 100-point CE premium change due to Greeks (IV crush, theta decay, gamma effects). This is acknowledged in the strategy docstring but not programmatically corrected.</p>
+</div>
+
+<div class="card">
+  <div class="card-title">Issue #3: No Instrument Master CSV Auto-Download <span class="badge badge-yellow">OPEN</span></div>
+  <p>Dhan requires a daily instrument CSV to resolve security IDs for option contracts. The current system relies on the option chain API or manual CSV placement. An automated daily download from Dhan's API would make this more robust.</p>
+</div>
+
+<!-- ========== 19. KNOWN LIMITATIONS ========== -->
+<h1 id="limitations" class="page-break">21. Known Limitations &amp; Assumptions</h1>
+
+<ol>
+  <li><strong>Backtest Accuracy:</strong> The backtester uses underlying index price as a proxy for option premium movement. In reality, IV expansion/crush, theta decay, and gamma curvature significantly affect option premiums. The backtest overestimates P&L for far OTM strikes and underestimates for ATM.</li>
+  <li><strong>Single Broker:</strong> Only Dhan is currently supported. There is a <code>broker_base.py</code> abstract interface but no Zerodha, Angel, or other broker adapters have been built.</li>
+  <li><strong>No Real Historical Option Data:</strong> The system cannot backtest with actual option premium tick data. This would require purchasing data from NSE or using a paid provider.</li>
+  <li><strong>No Greeks Calculation:</strong> The system does not compute or use IV, delta, theta, gamma, or vega for decision-making. Option selling is done purely on directional signals + ADX regime, not on volatility surface analysis.</li>
+  <li><strong>Single Timeframe:</strong> Only 5-minute candles are used. No multi-timeframe analysis (e.g., daily trend + 5-min entry) is implemented.</li>
+  <li><strong>No Market Depth (Level 2):</strong> The system trades on LTP alone without considering order book depth, bid-ask spread, or liquidity profile.</li>
+  <li><strong>Yahoo Finance Dependency:</strong> The Python signal generator depends on Yahoo Finance for candle data, which is free but unreliable and delayed. The TradingView webhook path bypasses this but requires a paid TradingView subscription.</li>
+  <li><strong>No Slippage Model:</strong> The 0.5% slippage buffer is applied but no actual slippage tracking or modeling is done.</li>
+  <li><strong>No Overnight Positions:</strong> The system is strictly intraday with forced square-off at 15:10 IST. Positional or swing trades are not supported.</li>
+  <li><strong>VPS Single Point of Failure:</strong> If the Oracle Cloud VPS goes down, all monitoring stops. There is no failover or redundant instance.</li>
+</ol>
+
+<!-- ========== 20. OPEN QUESTIONS ========== -->
+<h1 id="questions" class="page-break">22. Open Questions for Contributors</h1>
+
+<p>These are design questions, feature ideas, and architectural decisions that remain open. Each one is an opportunity for a contributor to add value to the system. They are ranked roughly by impact.</p>
+
+<h3>Q1: How should the system incorporate Greeks (IV, Delta, Theta)?</h3>
+<p>Currently, option selling decisions are based purely on ADX regime (ranging = sell). Should the system require IV percentile > X before selling? Should delta be used to select strike prices (e.g., sell 0.15-delta OTM)? How would this affect the signal scoring model?</p>
+
+<h3>Q2: Should the backtest use actual option premium data?</h3>
+<p>The current proxy-based approach (underlying price change = option premium change) is known to be inaccurate. Would purchasing historical option tick data from NSE or a data vendor be worth the cost? How would the backtest engine need to change?</p>
+
+<h3>Q3: Is 0-DTE (same-day expiry) trading worth the risk?</h3>
+<p>The guardrails block new 0-DTE entries after 12:30. But 0-DTE options have the fastest theta decay, which benefits option sellers. Should there be a separate 0-DTE strategy with tighter risk parameters?</p>
+
+<h3>Q4: How should the system handle gap openings?</h3>
+<p>If the market gaps up/down significantly at open, the SL from the previous candle may already be breached. Should the system have gap-specific logic (wider initial SL on gap days, reduced size, or a gap-and-reverse detection)?</p>
+
+<h3>Q5: Should multi-timeframe analysis be added?</h3>
+<p>Currently, only 5-minute candles drive signals. Adding a higher timeframe filter (e.g., "only BUY_CE if the 1-hour trend is also bullish") could reduce false signals. How should the timeframe hierarchy be structured?</p>
+
+<h3>Q6: Is the 30-day half-life correct for trade memory decay?</h3>
+<p>The trade memory system uses a 30-day half-life for exponential decay. Is this too short (loses valid patterns too fast) or too long (keeps outdated patterns active)? Should the half-life vary by market regime?</p>
+
+<h3>Q7: How should the system handle broker API token expiration?</h3>
+<p>Dhan tokens expire daily. The current system sends an alert and stops trading. Should the system attempt auto-renewal? Should there be a watchdog that pre-checks token validity before market open?</p>
+
+<h3>Q8: Should there be a maximum position hold time?</h3>
+<p>Currently, positions are held until SL, TP, or square-off. Should there be a maximum hold time (e.g., 2 hours) after which positions are exited regardless of P&L? Options theta decay accelerates over time.</p>
+
+<h3>Q9: How should the system handle multiple simultaneous signals?</h3>
+<p>If NIFTY BUY_CE and BANKNIFTY BUY_CE arrive within seconds, the current system processes them sequentially. Should there be a queue with priority scoring? Should the system prefer one index over another?</p>
+
+<h3>Q10: Is the current alerting sufficient?</h3>
+<p>The system uses iMessage and Telegram for alerts. Should there be an escalation matrix (e.g., phone call for CRITICAL errors)? Should alerts include more context (current P&L, open positions, risk utilization)?</p>
+
+<h3>Q11: Should the system support multiple strategies?</h3>
+<p>Currently, only "omega_complete" strategy exists. Should the architecture support running multiple strategies simultaneously (e.g., a momentum strategy + a mean-reversion strategy)? How would risk be shared between strategies?</p>
+
+<h3>Q12: How should the system handle exchange maintenance/holidays?</h3>
+<p>NSE/BSE have scheduled maintenance windows and public holidays. Should the system have a holiday calendar that prevents the bot from starting on non-trading days? Should it handle early market closures (like Muhurat trading)?</p>
+
+<h3>Q13: Should there be an A/B testing framework?</h3>
+<p>To compare parameter changes (e.g., different SL percentages or trailing widths), an A/B testing framework could split signals between two parameter sets and compare outcomes. How should this be implemented without doubling capital requirements?</p>
+
+<h3>Q14: Is the Kelly criterion sizing too aggressive or too conservative?</h3>
+<p>The system uses half-Kelly with a 25% cap. Academic literature suggests even quarter-Kelly for options. Should the fractional Kelly be reduced? Should it vary by instrument volatility?</p>
+
+<h3>Q15: Should the system have a "warm-up" period each day?</h3>
+<p>Currently, the system starts accepting signals at 09:16. Should there be a period where it observes market behavior (e.g., first 30 minutes) and adjusts parameters (SL width, position size) based on opening volatility before taking any trades?</p>
+
+<!-- ========== FOOTER ========== -->
+<div style="margin-top: 40pt; padding-top: 12pt; border-top: 2px solid #0f3460; text-align: center; color: #64748b; font-size: 9pt;">
+  <p><strong>Omega Trading Company — Complete Technical Report</strong></p>
+  <p>Generated: 12 October 2026 | Version 2.0 | Protocol Omega v10 + ML</p>
+  <p>Codebase: 16,991 lines Python + 454 lines Pine Script v6 | 52 Python files | ML Module: 1,988 lines</p>
+  <p style="margin-top: 6pt; font-style: italic;">This report was auto-generated from source code analysis. All line counts, parameter values, and logic descriptions reflect the actual codebase at the time of generation.</p>
+</div>
+
+</body>
+</html>

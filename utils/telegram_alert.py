@@ -100,7 +100,7 @@ class TelegramAlert:
 
     def bot_started(self, mode: str, strategy: str) -> None:
         self.send(
-            f"<b>OMEGA BOT STARTED</b>\n"
+            f"<b>OMEGA TRADING COMPANY</b>\n"
             f"{'='*28}\n"
             f"Mode: {mode.upper()}\n"
             f"Strategy: {strategy}\n"
@@ -110,7 +110,7 @@ class TelegramAlert:
 
     def bot_stopped(self, reason: str) -> None:
         self.send(
-            f"<b>OMEGA BOT STOPPED</b>\n"
+            f"<b>OTC BOT STOPPED</b>\n"
             f"{'='*28}\n"
             f"Reason: {reason}\n"
             f"{datetime.now(IST).strftime('%H:%M:%S IST')}\n"

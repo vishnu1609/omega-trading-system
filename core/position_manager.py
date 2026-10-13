@@ -57,6 +57,19 @@ class Position:
     peak_profit_pct: float = 0.0
     dynamic_level: int = 1
     max_dynamic_level: int = 0
+    expiry: str = ""
+    underlying: str = ""
+    strike: int = 0
+    iv: float = 0.0
+    is_spread: bool = False
+    hedge_security_id: str = ""
+    hedge_trade_symbol: str = ""
+    hedge_strike: int = 0
+    spread_width: int = 0
+    net_credit: float = 0.0
+    max_loss: float = 0.0
+    hedge_entry_price: float = 0.0
+    hedge_current_price: float = 0.0
 
     @property
     def is_long(self) -> bool:
@@ -66,6 +79,10 @@ class Position:
     def unrealised_pnl(self) -> float:
         if self.current_price <= 0:
             return 0.0
+        if self.is_spread and self.hedge_current_price > 0:
+            sell_pnl = (self.entry_price - self.current_price) * self.quantity
+            hedge_pnl = (self.hedge_current_price - self.hedge_entry_price) * self.quantity
+            return sell_pnl + hedge_pnl
         if self.is_long:
             return (self.current_price - self.entry_price) * self.quantity
         return (self.entry_price - self.current_price) * self.quantity
@@ -252,6 +269,19 @@ class PositionManager:
                         "peak_profit_pct": p.peak_profit_pct,
                     "dynamic_level": p.dynamic_level,
                     "max_dynamic_level": p.max_dynamic_level,
+                    "expiry": p.expiry,
+                    "underlying": p.underlying,
+                    "strike": p.strike,
+                    "iv": p.iv,
+                    "is_spread": p.is_spread,
+                    "hedge_security_id": p.hedge_security_id,
+                    "hedge_trade_symbol": p.hedge_trade_symbol,
+                    "hedge_strike": p.hedge_strike,
+                    "spread_width": p.spread_width,
+                    "net_credit": p.net_credit,
+                    "max_loss": p.max_loss,
+                    "hedge_entry_price": p.hedge_entry_price,
+                    "hedge_current_price": p.hedge_current_price,
                     } for sid, p in self._open.items()
                 },
                 "closed_count": len(self._closed),
@@ -292,6 +322,19 @@ class PositionManager:
                     peak_profit_pct=data.get("peak_profit_pct", 0.0),
                     dynamic_level=data.get("dynamic_level", 1),
                     max_dynamic_level=data.get("max_dynamic_level", 0),
+                    expiry=data.get("expiry", ""),
+                    underlying=data.get("underlying", ""),
+                    strike=data.get("strike", 0),
+                    iv=data.get("iv", 0.0),
+                    is_spread=data.get("is_spread", False),
+                    hedge_security_id=data.get("hedge_security_id", ""),
+                    hedge_trade_symbol=data.get("hedge_trade_symbol", ""),
+                    hedge_strike=data.get("hedge_strike", 0),
+                    spread_width=data.get("spread_width", 0),
+                    net_credit=data.get("net_credit", 0.0),
+                    max_loss=data.get("max_loss", 0.0),
+                    hedge_entry_price=data.get("hedge_entry_price", 0.0),
+                    hedge_current_price=data.get("hedge_current_price", 0.0),
                 )
                 self._open[sid] = pos
                 loaded += 1

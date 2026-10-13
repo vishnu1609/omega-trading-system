@@ -1,5 +1,5 @@
 """
-Chaos Resilience Test Suite — Omega Trading System
+Chaos Resilience Test Suite — Omega Trading Company
 
 Mocks the Dhan API and data feeds to prove guardrails activate under
 extreme stress: network timeouts, corrupt data, price gaps, margin

@@ -156,12 +156,20 @@ class OmegaDB:
         conn.commit()
         return self.get_wallet()
 
+    _WALLET_COLUMNS = frozenset({
+        "balance", "in_trade", "today_pnl", "today_trades",
+        "starting_capital", "trade_date", "updated_at",
+    })
+
     def update_wallet(self, **kwargs) -> None:
         if not kwargs:
             return
         kwargs["updated_at"] = datetime.now(IST).isoformat()
-        sets = ", ".join(f"{k}=?" for k in kwargs)
-        vals = list(kwargs.values())
+        safe = {k: v for k, v in kwargs.items() if k in self._WALLET_COLUMNS}
+        if not safe:
+            return
+        sets = ", ".join(f"{k}=?" for k in safe)
+        vals = list(safe.values())
         self._conn().execute(f"UPDATE wallet SET {sets} WHERE id=1", vals)
         self._conn().commit()
 
@@ -195,22 +203,32 @@ class OmegaDB:
         return [dict(r) for r in rows]
 
     def get_trade_stats(self, date: str = "") -> dict:
-        where = f"WHERE date(created_at)='{date}'" if date else ""
-        row = self._conn().execute(f"""
-            SELECT COUNT(*) as total,
+        q = """SELECT COUNT(*) as total,
                    SUM(CASE WHEN pnl >= 0 THEN 1 ELSE 0 END) as wins,
                    SUM(CASE WHEN pnl < 0 THEN 1 ELSE 0 END) as losses,
                    COALESCE(SUM(pnl), 0) as total_pnl,
                    COALESCE(AVG(CASE WHEN pnl >= 0 THEN pnl END), 0) as avg_win,
                    COALESCE(AVG(CASE WHEN pnl < 0 THEN ABS(pnl) END), 0) as avg_loss
-            FROM trades {where}
-        """).fetchone()
+            FROM trades"""
+        params: list = []
+        if date:
+            q += " WHERE date(created_at)=?"
+            params.append(date)
+        row = self._conn().execute(q, params).fetchone()
         return dict(row) if row else {}
 
     # ── Positions ──────────────────────────────────────────────────────
 
+    _POSITION_COLUMNS = frozenset({
+        "security_id", "symbol", "exchange_segment", "option_type",
+        "direction", "quantity", "entry_price", "current_price",
+        "sl_price", "trail_sl", "tp_price", "peak_price",
+        "entry_order_id", "strategy", "entry_time", "dynamic_level",
+    })
+
     def upsert_position(self, security_id: str, **data) -> None:
         data["security_id"] = security_id
+        data = {k: v for k, v in data.items() if k in self._POSITION_COLUMNS}
         cols = ", ".join(data.keys())
         placeholders = ", ".join("?" for _ in data)
         updates = ", ".join(f"{k}=excluded.{k}" for k in data if k != "security_id")

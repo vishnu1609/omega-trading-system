@@ -1,5 +1,5 @@
 """
-Brutal Chaos Test Suite — Omega Trading System
+Brutal Chaos Test Suite — Omega Trading Company
 
 Tests that simulate the market's absolute worst days:
 cascading failures, data corruption, race conditions,

@@ -234,6 +234,134 @@ class OptionChainResolver:
                  best.iv, f"{best.oi:,}", best.security_id)
         return best
 
+    def resolve_otm_option(
+        self,
+        underlying: str,
+        underlying_price: float,
+        option_type: str = "CE",
+        otm_steps: int = 2,
+        expiry: str = "",
+        lot_size: int = 75,
+        strike_step: int = 50,
+    ) -> OptionContract | None:
+        if not expiry:
+            expiry = self.get_nearest_expiry(underlying)
+        if not expiry:
+            return None
+
+        atm_strike = round(underlying_price / strike_step) * strike_step
+        if option_type == "CE":
+            target_strike = atm_strike + (otm_steps * strike_step)
+        else:
+            target_strike = atm_strike - (otm_steps * strike_step)
+
+        chain_data = self.fetch_chain(underlying, expiry)
+        if not chain_data:
+            return self._fallback_contract(
+                underlying, target_strike, option_type, expiry, lot_size)
+
+        inner = chain_data.get("data", chain_data)
+        oc = inner.get("oc", {})
+        if not oc:
+            return self._fallback_contract(
+                underlying, target_strike, option_type, expiry, lot_size)
+
+        exch_seg = EXCHANGE_FNO.get(underlying.upper(), "NSE_FNO")
+        opt_key = "ce" if option_type == "CE" else "pe"
+
+        best = None
+        best_dist = float("inf")
+        for strike_str, sides in oc.items():
+            try:
+                strike_val = float(strike_str)
+            except (ValueError, TypeError):
+                continue
+            dist = abs(strike_val - target_strike)
+            opt_data = sides.get(opt_key, {})
+            if not opt_data:
+                continue
+            ltp = opt_data.get("last_price", 0)
+            if ltp <= 0:
+                continue
+            if dist < best_dist:
+                best_dist = dist
+                trade_sym = f"{underlying}{int(strike_val)}{option_type}"
+                best = OptionContract(
+                    underlying=underlying,
+                    strike=int(strike_val),
+                    option_type=option_type,
+                    expiry=expiry,
+                    security_id=str(opt_data.get("security_id", "")),
+                    exchange_segment=exch_seg,
+                    ltp=float(ltp),
+                    bid=float(opt_data.get("top_bid_price", 0)),
+                    ask=float(opt_data.get("top_ask_price", 0)),
+                    oi=int(opt_data.get("oi", 0)),
+                    iv=float(opt_data.get("implied_volatility", 0)),
+                    lot_size=lot_size,
+                    trade_symbol=trade_sym,
+                )
+
+        if not best:
+            return self._fallback_contract(
+                underlying, target_strike, option_type, expiry, lot_size)
+
+        log.info("OTM resolved: %s → strike=%d (ATM=%d, %d steps OTM), LTP=₹%.2f, OI=%s",
+                 best.trade_symbol, best.strike, atm_strike, otm_steps,
+                 best.ltp, f"{best.oi:,}")
+        return best
+
+    def resolve_spread_pair(
+        self,
+        underlying: str,
+        underlying_price: float,
+        option_type: str = "CE",
+        sell_otm_steps: int = 2,
+        hedge_otm_steps: int = 6,
+        expiry: str = "",
+        lot_size: int = 75,
+        strike_step: int = 50,
+    ) -> tuple[OptionContract, OptionContract] | None:
+        if not expiry:
+            expiry = self.get_nearest_expiry(underlying)
+        if not expiry:
+            return None
+
+        sell_leg = self.resolve_otm_option(
+            underlying, underlying_price, option_type,
+            otm_steps=sell_otm_steps, expiry=expiry,
+            lot_size=lot_size, strike_step=strike_step)
+        hedge_leg = self.resolve_otm_option(
+            underlying, underlying_price, option_type,
+            otm_steps=hedge_otm_steps, expiry=expiry,
+            lot_size=lot_size, strike_step=strike_step)
+
+        if not sell_leg or not hedge_leg:
+            log.warning("Spread pair resolution failed for %s %s", underlying, option_type)
+            return None
+
+        if sell_leg.bid <= 0 and sell_leg.ltp <= 0:
+            log.warning("Sell leg %s has no bid — spread not viable", sell_leg.trade_symbol)
+            return None
+        if sell_leg.oi < 100:
+            log.warning("Sell leg %s OI=%d too low — spread not viable", sell_leg.trade_symbol, sell_leg.oi)
+            return None
+
+        net_credit = sell_leg.mid_price - hedge_leg.mid_price
+        if net_credit <= 0:
+            log.warning("Spread %s/%s has no net credit (%.2f - %.2f = %.2f)",
+                        sell_leg.trade_symbol, hedge_leg.trade_symbol,
+                        sell_leg.mid_price, hedge_leg.mid_price, net_credit)
+            return None
+
+        spread_width = abs(sell_leg.strike - hedge_leg.strike)
+        max_loss = spread_width - net_credit
+        log.info("SPREAD PAIR: SELL %s @ ₹%.2f / BUY %s @ ₹%.2f | credit=₹%.2f, max_loss=₹%.2f, width=%d",
+                 sell_leg.trade_symbol, sell_leg.mid_price,
+                 hedge_leg.trade_symbol, hedge_leg.mid_price,
+                 net_credit, max_loss, spread_width)
+        return (sell_leg, hedge_leg)
+
     def _fallback_contract(
         self,
         underlying: str,

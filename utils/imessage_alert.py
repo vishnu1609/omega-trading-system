@@ -17,7 +17,12 @@ class IMessageAlert:
             log.info("iMessage alerts enabled → %s", self.recipient)
 
     def _escape(self, text: str) -> str:
-        return text.replace("\\", "\\\\").replace('"', '\\"')
+        return (text
+                .replace("\\", "\\\\")
+                .replace('"', '\\"')
+                .replace("\n", "\\n")
+                .replace("\r", "\\r")
+                .replace("\t", "\\t"))
 
     def send(self, message: str) -> None:
         if not self.enabled:
@@ -201,7 +206,7 @@ class IMessageAlert:
     def bot_started(self, mode: str, strategy: str) -> None:
         lines = [
             f"{'='*28}",
-            f"    OMEGA BOT STARTED",
+            f"  OMEGA TRADING COMPANY",
             f"{'='*28}",
             f"  Mode:     {mode.upper()}",
             f"  Strategy: {strategy}",
@@ -214,7 +219,7 @@ class IMessageAlert:
     def bot_stopped(self, reason: str) -> None:
         lines = [
             f"{'='*28}",
-            f"    OMEGA BOT STOPPED",
+            f"    OTC BOT STOPPED",
             f"{'='*28}",
             f"  Reason: {reason}",
             f"  Time:   {datetime.now(IST).strftime('%H:%M:%S IST')}",

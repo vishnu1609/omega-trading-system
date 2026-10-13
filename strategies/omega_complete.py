@@ -41,12 +41,17 @@ from core.risk_engine import RiskEngine
 from core.signal_generator import YAHOO_SYMBOLS
 from core.trade_memory import TradeMemory
 from core.database import OmegaDB
+from core.greeks import compute_greeks, dte_from_expiry, should_exit_spread_by_greeks
 from core.wallet import Wallet
 try:
     from utils.imessage_alert import IMessageAlert
 except ImportError:
     IMessageAlert = None
 from utils.telegram_alert import TelegramAlert
+try:
+    from ml.engine import OmegaMLEngine
+except ImportError:
+    OmegaMLEngine = None
 
 log = logging.getLogger(__name__)
 
@@ -94,7 +99,9 @@ SHORT_DYNAMIC_SLTP_LEVELS = {
     ],
 }
 
-SL_GRACE_SECONDS = 90
+SL_GRACE_SECONDS = 120
+MIN_OPTION_ATR_PCT = 5.0
+BREAKEVEN_PROFIT_PCT = 5.0
 
 
 class OmegaStrategy:
@@ -129,6 +136,14 @@ class OmegaStrategy:
         self.wallet = wallet
         self.option_chain: OptionChainResolver | None = None
         self.live_feed = None
+        self.ml_engine: OmegaMLEngine | None = None
+        if OmegaMLEngine:
+            try:
+                self.ml_engine = OmegaMLEngine(min_confidence=0.55, auto_train=True)
+                log.info("ML Engine loaded: %s", self.ml_engine.get_model_stats())
+            except Exception as e:
+                log.warning("ML Engine init failed (trading continues without ML): %s", e)
+                self.ml_engine = None
         self._signal_context: dict[str, dict] = {}
         self._underlying_cache: dict[str, tuple[float, float]] = {}
         self._consecutive_losses: int = 0
@@ -175,6 +190,10 @@ class OmegaStrategy:
 
         if side == "EXIT":
             self._handle_exit(symbol, strategy)
+            return
+
+        if side in ("SELL_CE_SPREAD", "SELL_PE_SPREAD"):
+            self._handle_spread_entry(payload)
             return
 
         now_ist = datetime.now(IST)
@@ -321,6 +340,28 @@ class OmegaStrategy:
 
         vol_regime = payload.get("volatility_regime", "NORMAL")
 
+        if self.ml_engine and self.live_feed:
+            try:
+                candles = getattr(self.live_feed, 'candle_buffer', [])
+                if candles and len(candles) >= 50:
+                    from ml.features import Candle as MLCandle
+                    ml_candles = [MLCandle(c.timestamp, c.open, c.high, c.low, c.close, c.volume)
+                                  for c in candles] if not isinstance(candles[0], MLCandle) else candles
+                    ml_result = self.ml_engine.evaluate_signal(
+                        ml_candles, signal_direction=direction, signal_score=score)
+                    self._signal_context[trade_symbol] = ml_result
+                    if not ml_result["approved"]:
+                        log.info("ML GATE: %s %s BLOCKED — %s (confidence=%.2f, regime=%s)",
+                                 side, symbol, ml_result["reason"],
+                                 ml_result["confidence"], ml_result["regime"])
+                        return
+                    if ml_result.get("regime_adjustments"):
+                        adj = ml_result["regime_adjustments"]
+                        vol_regime = ml_result["regime"]
+                        log.info("ML regime=%s: %s", ml_result["regime"], adj.get("notes", ""))
+            except Exception as e:
+                log.warning("ML evaluation error (continuing without ML): %s", e)
+
         if self.memory:
             exp = self.memory.get_expectancy(trade_symbol)
             if exp.get("enough_data") and exp.get("win_rate", 0) > 0:
@@ -440,6 +481,12 @@ class OmegaStrategy:
         log.info("Pct-based SL/TP: %s → SL=%.2f (-%s%%) TP=%.2f (+%s%%)",
                  confidence, sl_price, sl_pct, tp_price, tp_pct)
 
+        option_atr = fill_price * MIN_OPTION_ATR_PCT / 100
+        if atr_value > 0 and fill_price > 0:
+            delta_est = 0.5
+            estimated_premium_atr = atr_value * delta_est
+            option_atr = max(option_atr, min(estimated_premium_atr, fill_price * 0.15))
+
         position = Position(
             symbol=trade_symbol,
             security_id=security_id,
@@ -454,9 +501,13 @@ class OmegaStrategy:
             entry_order_id=resp.order_id,
             peak_price=fill_price,
             strategy=strategy,
-            atr_value=atr_value if atr_value > 0 else fill_price * 0.02,
+            atr_value=option_atr,
             original_quantity=quantity,
             confidence=confidence,
+            expiry=contract.expiry if contract else "",
+            underlying=contract.underlying if contract else "",
+            strike=contract.strike if contract else 0,
+            iv=contract.iv if contract else 0.0,
         )
         self.pm.add_position(position)
         self.re.record_trade_taken()
@@ -572,10 +623,234 @@ class OmegaStrategy:
                 ltp = self.broker.get_ltp(pos.security_id, pos.exchange_segment)
                 if ltp > 0:
                     exit_price = ltp
-                self._exit_position(pos, exit_price, "SIGNAL_EXIT")
+                if pos.is_spread:
+                    self._exit_spread(pos, exit_price, "SIGNAL_EXIT")
+                else:
+                    self._exit_position(pos, exit_price, "SIGNAL_EXIT")
                 closed.append(pos.symbol)
 
         log.info("Exited %d positions on signal", len(closed))
+
+    def _handle_spread_entry(self, payload: dict) -> None:
+        symbol = payload["symbol"]
+        side = payload["side"]
+        option_type = "CE" if "CE" in side else "PE"
+        confidence = payload.get("confidence", "MEDIUM")
+        score = payload.get("score", 0)
+
+        inst_name = self._resolve_instrument(symbol)
+        if not inst_name:
+            log.warning("Unknown instrument for spread: %s", symbol)
+            return
+
+        inst_cfg = self.instruments.get(inst_name, {})
+        lot_size = inst_cfg.get("lot_size", 75)
+        quantity = lot_size * self.default_qty_lots
+        strike_step = inst_cfg.get("strike_step", 50)
+
+        if not self.option_chain:
+            log.warning("No option chain resolver — cannot place spread")
+            return
+
+        underlying_price = payload.get("close", 0)
+        if underlying_price <= 0:
+            underlying_price = payload.get("sl", 0) * 1.01
+        if underlying_price <= 0:
+            log.warning("No underlying price for spread on %s", inst_name)
+            return
+
+        spread = self.option_chain.resolve_spread_pair(
+            underlying=inst_name,
+            underlying_price=underlying_price,
+            option_type=option_type,
+            sell_otm_steps=2,
+            hedge_otm_steps=6,
+            lot_size=lot_size,
+            strike_step=strike_step,
+        )
+        if not spread:
+            log.warning("Spread pair resolution failed for %s %s", inst_name, option_type)
+            return
+
+        sell_contract, hedge_contract = spread
+        net_credit = sell_contract.mid_price - hedge_contract.mid_price
+        spread_width = abs(sell_contract.strike - hedge_contract.strike)
+        max_loss_per_unit = spread_width - net_credit
+
+        if max_loss_per_unit <= 0:
+            log.warning("Invalid spread: max_loss=%.2f (width=%d - credit=%.2f)",
+                        max_loss_per_unit, spread_width, net_credit)
+            return
+
+        spread_count = sum(1 for p in self.pm.open_positions if p.is_spread)
+        if spread_count >= 2:
+            log.warning("Max 2 concurrent spreads reached — blocking %s %s", side, inst_name)
+            return
+
+        if self.guardrails:
+            risk_check = self.guardrails.check_spread_risk(max_loss_per_unit, quantity)
+            if not risk_check:
+                log.warning("Spread blocked by guardrail: %s", risk_check.reason)
+                return
+
+        sell_signal = Signal(
+            strategy="omega_spread", symbol=sell_contract.trade_symbol,
+            security_id=sell_contract.security_id,
+            exchange_segment=sell_contract.exchange_segment,
+            side="SELL_" + option_type, quantity=quantity,
+            price=sell_contract.mid_price, sl=0, strike=sell_contract.strike,
+        )
+        sell_resp = self.om.place_entry(sell_signal, self.re, instrument=inst_name)
+        if not sell_resp:
+            log.warning("Sell leg order failed for %s", sell_contract.trade_symbol)
+            return
+
+        hedge_signal = Signal(
+            strategy="omega_spread", symbol=hedge_contract.trade_symbol,
+            security_id=hedge_contract.security_id,
+            exchange_segment=hedge_contract.exchange_segment,
+            side="BUY_" + option_type, quantity=quantity,
+            price=hedge_contract.mid_price, sl=0, strike=hedge_contract.strike,
+        )
+        hedge_resp = self.om.place_entry(hedge_signal, self.re, instrument=inst_name)
+        if not hedge_resp:
+            log.warning("Hedge leg order failed for %s — unwinding sell leg", hedge_contract.trade_symbol)
+            unwind = Signal(
+                strategy="omega_spread", symbol=sell_contract.trade_symbol,
+                security_id=sell_contract.security_id,
+                exchange_segment=sell_contract.exchange_segment,
+                side="EXIT", quantity=quantity, price=0,
+            )
+            self.om.place_exit(unwind, "SHORT")
+            return
+
+        sell_fill = sell_resp.fill_price if sell_resp.fill_price > 0 else sell_contract.mid_price
+        hedge_fill = hedge_resp.fill_price if hedge_resp.fill_price > 0 else hedge_contract.mid_price
+        actual_credit = sell_fill - hedge_fill
+        actual_max_loss = spread_width - actual_credit
+
+        level_table = SHORT_DYNAMIC_SLTP_LEVELS
+        levels = level_table.get(confidence, level_table["LOW"])
+        sl_pct = levels[0]["sl_pct"]
+        tp_pct = levels[0]["tp_pct"]
+
+        sl_price = round(sell_fill * (1 + sl_pct / 100), 2)
+        tp_price = round(sell_fill * (1 - tp_pct / 100), 2)
+
+        position = Position(
+            symbol=sell_contract.trade_symbol,
+            security_id=sell_contract.security_id,
+            exchange_segment=sell_contract.exchange_segment,
+            option_type=option_type,
+            direction="SHORT",
+            quantity=quantity,
+            entry_price=sell_fill,
+            sl_price=sl_price,
+            trail_sl=sl_price,
+            tp_price=tp_price,
+            entry_order_id=sell_resp.order_id,
+            peak_price=sell_fill,
+            strategy="omega_spread",
+            original_quantity=quantity,
+            confidence=confidence,
+            expiry=sell_contract.expiry,
+            underlying=sell_contract.underlying,
+            strike=sell_contract.strike,
+            iv=sell_contract.iv,
+            is_spread=True,
+            hedge_security_id=hedge_contract.security_id,
+            hedge_trade_symbol=hedge_contract.trade_symbol,
+            hedge_strike=hedge_contract.strike,
+            spread_width=spread_width,
+            net_credit=round(actual_credit, 2),
+            max_loss=round(actual_max_loss, 2),
+            hedge_entry_price=hedge_fill,
+        )
+        self.pm.add_position(position)
+        self.re.record_trade_taken()
+
+        if self.wallet:
+            self.wallet.deduct_spread_margin(actual_max_loss, quantity, sell_contract.trade_symbol)
+
+        if self.guardrails:
+            self.guardrails.record_allocation(symbol, actual_max_loss * quantity)
+
+        log.info("SPREAD OPENED: SELL %s @ ₹%.2f / BUY %s @ ₹%.2f | "
+                 "credit=₹%.2f, max_loss=₹%.2f/unit, width=%d, qty=%d",
+                 sell_contract.trade_symbol, sell_fill,
+                 hedge_contract.trade_symbol, hedge_fill,
+                 actual_credit, actual_max_loss, spread_width, quantity)
+
+        self.tg.order_filled(
+            side=side, symbol=f"{sell_contract.trade_symbol}/{hedge_contract.trade_symbol}",
+            qty=quantity, price=sell_fill, order_id=sell_resp.order_id,
+            strike=f"{sell_contract.strike}/{hedge_contract.strike}",
+            expiry=sell_contract.expiry,
+            iv=sell_contract.iv, oi=sell_contract.oi, score=score,
+        )
+
+    def _exit_spread(self, pos: Position, sell_ltp: float, reason: str) -> None:
+        hedge_ltp = self.broker.get_ltp(pos.hedge_security_id, pos.exchange_segment)
+        if hedge_ltp <= 0:
+            hedge_ltp = pos.hedge_current_price if pos.hedge_current_price > 0 else pos.hedge_entry_price
+
+        unwind_sell = Signal(
+            strategy=pos.strategy, symbol=pos.symbol,
+            security_id=pos.security_id, exchange_segment=pos.exchange_segment,
+            side="EXIT", quantity=pos.quantity, price=0,
+        )
+        self.om.place_exit(unwind_sell, "SHORT")
+
+        unwind_hedge = Signal(
+            strategy=pos.strategy, symbol=pos.hedge_trade_symbol,
+            security_id=pos.hedge_security_id, exchange_segment=pos.exchange_segment,
+            side="EXIT", quantity=pos.quantity, price=0,
+        )
+        self.om.place_exit(unwind_hedge, "LONG")
+
+        sell_pnl = (pos.entry_price - sell_ltp) * pos.quantity
+        hedge_pnl = (hedge_ltp - pos.hedge_entry_price) * pos.quantity
+        total_pnl = sell_pnl + hedge_pnl
+
+        trade = self.pm.close_position(pos.security_id, sell_ltp, reason)
+        if trade:
+            trade.pnl = round(total_pnl, 2)
+            if trade.pnl >= 0:
+                self._consecutive_losses = 0
+            else:
+                self._consecutive_losses += 1
+                self._last_loss_time = time.time()
+
+            if self.guardrails:
+                self.guardrails.release_allocation(pos.symbol, pos.max_loss * pos.quantity)
+            if self.wallet:
+                margin = pos.max_loss * pos.quantity
+                self.wallet.release_margin(margin, trade.pnl, pos.symbol, reason)
+
+            try:
+                db = OmegaDB.get()
+                db.record_trade(
+                    symbol=f"{pos.symbol}/{pos.hedge_trade_symbol}",
+                    direction="SHORT_SPREAD", option_type=pos.option_type,
+                    quantity=pos.quantity, entry_price=pos.entry_price,
+                    exit_price=sell_ltp, pnl=trade.pnl,
+                    entry_time=trade.entry_time.isoformat(),
+                    exit_time=trade.exit_time.isoformat(),
+                    exit_reason=reason, strategy=pos.strategy,
+                    balance_after=self.wallet.balance if self.wallet else 0,
+                )
+                db.delete_position(pos.security_id)
+            except Exception as e:
+                log.warning("DB spread trade record failed: %s", e)
+
+            log.info("SPREAD CLOSED: %s/%s pnl=₹%.2f (sell=₹%.2f, hedge=₹%.2f) reason=%s",
+                     pos.symbol, pos.hedge_trade_symbol, total_pnl, sell_pnl, hedge_pnl, reason)
+
+            self.tg.sl_hit(
+                f"{pos.symbol}/{pos.hedge_trade_symbol}", trade.pnl,
+                reason=reason, entry=pos.entry_price, exit_price=sell_ltp,
+                duration=f"credit=₹{pos.net_credit:.2f}",
+            )
 
     def monitor_positions(self) -> None:
         """Called every 1s. Implements 5-layer profit engine:
@@ -602,6 +877,35 @@ class OmegaStrategy:
                 log.warning("LTP fetch failed for %s: %s", pos.symbol, exc)
                 continue
 
+            if pos.is_spread and pos.hedge_security_id:
+                try:
+                    hedge_ltp = 0.0
+                    if self.live_feed:
+                        hedge_ltp = self.live_feed.get_ltp(pos.hedge_security_id, pos.exchange_segment)
+                    if hedge_ltp <= 0:
+                        hedge_ltp = self.broker.get_ltp(pos.hedge_security_id, pos.exchange_segment)
+                    if hedge_ltp > 0:
+                        pos.hedge_current_price = hedge_ltp
+                except Exception:
+                    pass
+
+                spot = self._underlying_spot(pos.underlying)
+                if pos.expiry and pos.net_credit > 0 and spot > 0 and pos.iv > 0:
+                    try:
+                        dte = dte_from_expiry(pos.expiry)
+                        sell_g = compute_greeks(spot, pos.strike, dte, pos.iv, pos.option_type)
+                        hedge_g = compute_greeks(spot, pos.hedge_strike, dte, pos.iv, pos.option_type)
+                        current_net = ltp - pos.hedge_current_price
+                        should_exit, exit_reason = should_exit_spread_by_greeks(
+                            sell_g, hedge_g, pos.net_credit, current_net, dte, spot)
+                        if should_exit:
+                            log.info("GREEKS EXIT: %s %s reason=%s dte=%.1f theta=%.2f",
+                                     pos.direction, pos.symbol, exit_reason, dte, sell_g.theta)
+                            self._exit_spread(pos, ltp, exit_reason)
+                            continue
+                    except Exception as e:
+                        log.debug("Greeks calc skipped for %s: %s", pos.symbol, e)
+
             hold_seconds = (now - pos.entry_time).total_seconds()
             hold_minutes = hold_seconds / 60
 
@@ -610,11 +914,11 @@ class OmegaStrategy:
                           (pos.entry_price - ltp) / pos.entry_price * 100)
             pos.peak_profit_pct = max(pos.peak_profit_pct, profit_pct)
 
-            # --- Use stored ATR from signal, fall back to 2% of entry ---
-            premium_atr = pos.atr_value if pos.atr_value > 0 else pos.entry_price * 0.02
+            min_atr = pos.entry_price * MIN_OPTION_ATR_PCT / 100
+            premium_atr = max(pos.atr_value, min_atr) if pos.atr_value > 0 else min_atr
             is_bought_option = pos.direction == "LONG" and ("CE" in pos.symbol or "PE" in pos.symbol)
             if is_bought_option:
-                premium_atr *= 1.5
+                premium_atr *= 1.3
 
             level_table = SHORT_DYNAMIC_SLTP_LEVELS if pos.direction == "SHORT" else DYNAMIC_SLTP_LEVELS
             levels = level_table.get(pos.confidence, level_table["LOW"])
@@ -646,16 +950,20 @@ class OmegaStrategy:
                     if new_trail <= 0 or atr_trail < new_trail:
                         new_trail = atr_trail
 
-            # --- 1. BREAKEVEN LOCKDOWN: at 3% profit, SL moves to entry ---
-            if not pos.breakeven_locked and profit_pct >= 3.0:
-                be_price = round(pos.entry_price * 1.001, 2) if pos.is_long else round(pos.entry_price * 0.999, 2)
-                if pos.is_long and be_price > new_trail:
-                    new_trail = be_price
-                elif not pos.is_long and (new_trail <= 0 or be_price < new_trail):
-                    new_trail = be_price
+            # --- 1. BREAKEVEN LOCKDOWN ---
+            if not pos.breakeven_locked and profit_pct >= BREAKEVEN_PROFIT_PCT:
+                be_buffer = max(premium_atr * 0.5, pos.entry_price * 0.015)
+                if pos.is_long:
+                    be_price = round(pos.entry_price + be_buffer, 2)
+                    if be_price > new_trail:
+                        new_trail = be_price
+                else:
+                    be_price = round(pos.entry_price - be_buffer, 2)
+                    if new_trail <= 0 or be_price < new_trail:
+                        new_trail = be_price
                 pos.breakeven_locked = True
-                log.info("BREAKEVEN LOCKED: %s %s profit=%.1f%% → SL moved to %.2f (entry=%.2f)",
-                         pos.direction, pos.symbol, profit_pct, be_price, pos.entry_price)
+                log.info("BREAKEVEN LOCKED: %s %s profit=%.1f%% → SL moved to %.2f (entry=%.2f, buffer=%.2f)",
+                         pos.direction, pos.symbol, profit_pct, be_price, pos.entry_price, be_buffer)
 
             self.pm.update_trail_sl(pos.security_id, new_trail)
 
@@ -750,7 +1058,10 @@ class OmegaStrategy:
             if pos.is_sl_hit and hold_seconds >= SL_GRACE_SECONDS:
                 log.info("SL HIT: %s %s @ %.2f (SL=%.2f) pnl=%.1f%% hold=%.0fs level=L%d",
                          pos.direction, pos.symbol, ltp, pos.trail_sl, profit_pct, hold_seconds, pos.dynamic_level)
-                self._exit_position(pos, ltp, "TRAIL_SL")
+                if pos.is_spread:
+                    self._exit_spread(pos, ltp, "TRAIL_SL")
+                else:
+                    self._exit_position(pos, ltp, "TRAIL_SL")
             elif pos.is_sl_hit and hold_seconds < SL_GRACE_SECONDS:
                 log.info("SL GRACE: %s %s SL hit at %.2f but hold=%.0fs < %ds grace — holding",
                          pos.direction, pos.symbol, ltp, hold_seconds, SL_GRACE_SECONDS)
@@ -830,7 +1141,24 @@ class OmegaStrategy:
                 log.critical("SL-SKIP FREEFALL: %s %s LTP=%.2f fell past SL=%.2f — "
                              "emergency exit at LTP-1%%",
                              pos.direction, pos.symbol, ltp, pos.trail_sl)
-                self._exit_position(pos, ltp, "SL_SKIP_EMERGENCY")
+                if pos.is_spread:
+                    self._exit_spread(pos, ltp, "SL_SKIP_EMERGENCY")
+                else:
+                    self._exit_position(pos, ltp, "SL_SKIP_EMERGENCY")
+
+    _INDEX_SEC_IDS = {"NIFTY": "13", "BANKNIFTY": "25", "SENSEX": "51",
+                      "FINNIFTY": "27", "BANKEX": "12"}
+
+    def _underlying_spot(self, underlying: str) -> float:
+        sec_id = self._INDEX_SEC_IDS.get((underlying or "").upper())
+        if not sec_id:
+            return 0.0
+        try:
+            if self.live_feed:
+                return self.live_feed.get_ltp(sec_id, "IDX_I")
+        except Exception:
+            pass
+        return 0.0
 
     def _check_tp_hit(self, pos, ltp: float, decayed_tp: float) -> bool:
         if decayed_tp <= 0 or ltp <= 0:
@@ -895,7 +1223,10 @@ class OmegaStrategy:
             ltp = self.broker.get_ltp(pos.security_id, pos.exchange_segment)
             if ltp <= 0:
                 ltp = pos.current_price if pos.current_price > 0 else pos.entry_price
-            self._exit_position(pos, ltp, "SQUARE_OFF")
+            if pos.is_spread:
+                self._exit_spread(pos, ltp, "SQUARE_OFF")
+            else:
+                self._exit_position(pos, ltp, "SQUARE_OFF")
 
     def _exit_position(self, pos: Position, price: float, reason: str) -> None:
         exit_tag = f"{pos.strategy}_{pos.symbol}_{int(time.time())}_{reason.lower()}"
@@ -989,6 +1320,20 @@ class OmegaStrategy:
                 volatility_regime=ctx.get("volatility_regime", "NORMAL"),
             )
             self.memory.record_trade(trade_ctx)
+
+            if self.ml_engine and self.live_feed:
+                try:
+                    candles = getattr(self.live_feed, 'candle_buffer', [])
+                    if candles and len(candles) >= 50:
+                        from ml.features import Candle as MLCandle
+                        ml_candles = [MLCandle(c.timestamp, c.open, c.high, c.low, c.close, c.volume)
+                                      for c in candles] if not isinstance(candles[0], MLCandle) else candles
+                        is_win = trade.pnl > 0
+                        self.ml_engine.record_trade_outcome(
+                            ml_candles, is_win=is_win, pnl=trade.pnl,
+                            entry_time=str(pos.entry_time), symbol=pos.symbol)
+                except Exception as e:
+                    log.warning("ML outcome recording failed: %s", e)
 
             if self.memory.trade_count % 10 == 0:
                 self.memory.analyze_patterns()

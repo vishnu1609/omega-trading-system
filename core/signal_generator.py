@@ -884,6 +884,56 @@ class SignalGenerator:
                     "bb_squeeze": False, "choppiness": round(chop_vals[i], 1),
                 }
 
+            adx_val = calc_adx(candles, self.adx_len)[i]
+            vol_regime = self._classify_volatility_regime(inst_name, atr_vals_local, candles)
+            kc_mid_c, kc_upper_c, kc_lower_c = calc_keltner(candles, self.bb_period, 1.5)
+            ttm_sq = detect_ttm_squeeze(bb_upper, bb_lower, kc_upper_c, kc_lower_c)
+            spread_ok = (adx_val < 22
+                         and (ttm_sq[i] or vol_regime in ("CHOPPY", "RANGING"))
+                         and chop_vals[i] > 61.8)
+            if spread_ok and not in_cooldown:
+                bb_pos = ((close - bb_lower[i]) / (bb_upper[i] - bb_lower[i])
+                          if bb_upper[i] > bb_lower[i] else 0.5)
+                strategy = "omega_futures" if asset == "futures" else "omega_complete"
+                if bb_pos > 0.7 and last != "SELL_CE_SPREAD":
+                    self._last_signal[inst_name] = "SELL_CE_SPREAD"
+                    self._signal_time[inst_name] = now_ts
+                    self._trade_dir[inst_name] = -1
+                    sl = round(bb_upper[i] + atr_vals_local[i], 2)
+                    log.info("SPREAD SIGNAL: SELL_CE_SPREAD %s — ADX=%.1f, chop=%.1f, BB_pos=%.0f%%, squeeze=%s",
+                             inst_name, adx_val, chop_vals[i], bb_pos * 100, ttm_sq[i])
+                    return {
+                        "strategy": strategy, "symbol": inst_name,
+                        "side": "SELL_CE_SPREAD", "sl": sl, "close": close,
+                        "asset": asset, "strike": 0,
+                        "atr": round(atr_vals_local[i], 2),
+                        "adx": round(adx_val, 2), "rsi": round(rsi_vals[i], 1),
+                        "score": 60, "confidence": "MEDIUM",
+                        "volatility_regime": vol_regime,
+                        "signal_type": "CREDIT_SPREAD",
+                        "bb_squeeze": ttm_sq[i],
+                        "choppiness": round(chop_vals[i], 1),
+                    }
+                elif bb_pos < 0.3 and last != "SELL_PE_SPREAD":
+                    self._last_signal[inst_name] = "SELL_PE_SPREAD"
+                    self._signal_time[inst_name] = now_ts
+                    self._trade_dir[inst_name] = 1
+                    sl = round(bb_lower[i] - atr_vals_local[i], 2)
+                    log.info("SPREAD SIGNAL: SELL_PE_SPREAD %s — ADX=%.1f, chop=%.1f, BB_pos=%.0f%%, squeeze=%s",
+                             inst_name, adx_val, chop_vals[i], bb_pos * 100, ttm_sq[i])
+                    return {
+                        "strategy": strategy, "symbol": inst_name,
+                        "side": "SELL_PE_SPREAD", "sl": sl, "close": close,
+                        "asset": asset, "strike": 0,
+                        "atr": round(atr_vals_local[i], 2),
+                        "adx": round(adx_val, 2), "rsi": round(rsi_vals[i], 1),
+                        "score": 60, "confidence": "MEDIUM",
+                        "volatility_regime": vol_regime,
+                        "signal_type": "CREDIT_SPREAD",
+                        "bb_squeeze": ttm_sq[i],
+                        "choppiness": round(chop_vals[i], 1),
+                    }
+
             if self._scan_count <= 1 or self._scan_count % 20 == 0:
                 log.info("CHOP: %s choppiness=%.1f — no mean reversion setup (RSI=%.1f, BB pos=%.2f%%)",
                          inst_name, chop_vals[i], rsi_vals[i],

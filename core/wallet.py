@@ -81,6 +81,32 @@ class Wallet:
                      self.available)
             self._sync_to_db()
 
+    def deduct_spread_margin(self, max_loss: float, quantity: int, symbol: str = ""):
+        amount = max_loss * quantity
+        with self._lock:
+            self._in_trade += amount
+            log.info("WALLET: spread margin locked ₹%.2f for %s (max_loss=%.2f × %d) | "
+                     "balance=%.2f in_trade=%.2f avail=%.2f",
+                     amount, symbol, max_loss, quantity,
+                     self._balance, self._in_trade, self.available)
+            self._sync_to_db()
+
+    def reconcile_in_trade(self, open_positions: list):
+        with self._lock:
+            actual = 0.0
+            for p in open_positions:
+                if getattr(p, 'is_spread', False) and p.max_loss > 0:
+                    actual += p.max_loss * p.quantity
+                else:
+                    actual += p.entry_price * p.quantity
+            actual = round(actual, 2)
+            if abs(self._in_trade - actual) > 1:
+                log.warning("WALLET RECONCILE: in_trade ₹%.2f → ₹%.2f "
+                            "(open positions: %d)", self._in_trade, actual,
+                            len(open_positions))
+                self._in_trade = actual
+                self._sync_to_db()
+
     def snapshot(self) -> dict:
         return {
             "balance": round(self._balance, 2),

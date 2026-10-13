@@ -516,7 +516,8 @@ class RiskEngine:
                     "detail": "invalid price"}
 
         is_long = direction == "LONG"
-        atr = atr_value if atr_value > 0 else entry_price * 0.02
+        min_atr = entry_price * 0.05
+        atr = max(atr_value, min_atr) if atr_value > 0 else min_atr
 
         if is_long:
             peak = max(peak_price, current_price) if _is_valid_price(peak_price) else current_price
@@ -558,12 +559,19 @@ class RiskEngine:
             candidate = sl
 
         candidate = round(candidate, 2)
+        min_distance = entry_price * 0.03
         if is_long:
+            floor_sl = round(peak - min_distance, 2) if _is_valid_price(peak) else candidate
+            if _is_valid_price(candidate) and candidate > floor_sl:
+                candidate = floor_sl
             if _is_valid_price(candidate) and candidate > sl:
                 sl = candidate
             else:
                 detail = ""
         else:
+            ceil_sl = round(peak + min_distance, 2) if _is_valid_price(peak) else candidate
+            if _is_valid_price(candidate) and candidate < ceil_sl:
+                candidate = ceil_sl
             if _is_valid_price(candidate) and (sl <= 0 or candidate < sl):
                 sl = candidate
             else:

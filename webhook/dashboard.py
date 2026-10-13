@@ -1,5 +1,5 @@
 """
-Omega Trading Dashboard — Professional Web UI
+OTC Dashboard — Omega Trading Company Web UI
 
 Client-side SPA served at /dashboard on port 8000.
 Fetches /api/state every second for live updates.
@@ -8,15 +8,24 @@ Tab navigation: Dashboard | Positions | Trades | Signals
 from __future__ import annotations
 
 import json
+import secrets
 from datetime import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import HTMLResponse
 
 IST = ZoneInfo("Asia/Kolkata")
 router = APIRouter()
+
+_CSRF_TOKEN = secrets.token_hex(32)
+
+
+def _check_csrf(request: Request):
+    token = request.headers.get("X-CSRF-Token", "")
+    if not secrets.compare_digest(token, _CSRF_TOKEN):
+        raise HTTPException(status_code=403, detail="Invalid CSRF token")
 
 STATE_FILE = Path(__file__).parent.parent / "data" / "dashboard_state.json"
 
@@ -33,8 +42,17 @@ def _read_state() -> dict:
 def _write_state(data: dict):
     STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
     tmp = STATE_FILE.with_suffix(".tmp")
-    tmp.write_text(json.dumps(data, default=str))
-    tmp.replace(STATE_FILE)
+    for _ in range(3):
+        try:
+            tmp.write_text(json.dumps(data, default=str))
+            tmp.replace(STATE_FILE)
+            return
+        except (FileNotFoundError, OSError):
+            pass
+    try:
+        STATE_FILE.write_text(json.dumps(data, default=str))
+    except Exception:
+        pass
 
 
 def update_state(system: str = "indices", **kwargs):
@@ -113,18 +131,19 @@ def _market_status() -> str:
     return "CLOSED"
 
 
-def _token_expiry() -> int:
-    import base64 as _b64, os as _os
+def _token_hours_remaining() -> float:
+    import base64 as _b64, os as _os, time as _time
     tok = _os.environ.get("DHAN_ACCESS_TOKEN", "")
     if not tok:
-        return 0
+        return -1
     try:
         payload = tok.split(".")[1]
         payload += "=" * (4 - len(payload) % 4)
         data = json.loads(_b64.urlsafe_b64decode(payload))
-        return int(data.get("exp", 0))
+        exp = int(data.get("exp", 0))
+        return (exp - _time.time()) / 3600
     except Exception:
-        return 0
+        return -1
 
 
 @router.get("/api/state")
@@ -166,7 +185,7 @@ async def api_state():
         "memory": idx.get("memory", {}),
         "market_status": _market_status(),
         "server_time": datetime.now(IST).isoformat(),
-        "token_expiry": _token_expiry(),
+        "token_hours_remaining": _token_hours_remaining(),
         "trade_notes": notes,
         "index_prices": idx.get("index_prices", {}),
         "feed_health": idx.get("feed_health", {}),
@@ -178,6 +197,7 @@ async def api_state():
 @router.post("/api/close_position")
 async def close_position(request: Request):
     """Manually close a single position from the dashboard."""
+    _check_csrf(request)
     import logging
     log = logging.getLogger("omega.dashboard")
     body = await request.json()
@@ -285,6 +305,7 @@ async def close_position(request: Request):
 @router.post("/api/close_all")
 async def close_all(request: Request):
     """Square off ALL open positions from the dashboard."""
+    _check_csrf(request)
     import logging
     log = logging.getLogger("omega.dashboard")
 
@@ -378,6 +399,7 @@ async def close_all(request: Request):
 @router.post("/api/modify_sl")
 async def modify_sl(request: Request):
     """Manually adjust stop loss for a position."""
+    _check_csrf(request)
     import logging
     log = logging.getLogger("omega.dashboard")
     body = await request.json()
@@ -413,6 +435,7 @@ async def modify_sl(request: Request):
 @router.post("/api/modify_tp")
 async def modify_tp(request: Request):
     """Manually adjust take profit for a position."""
+    _check_csrf(request)
     import logging
     log = logging.getLogger("omega.dashboard")
     body = await request.json()
@@ -439,6 +462,7 @@ async def modify_tp(request: Request):
 @router.post("/api/add_note")
 async def add_note(request: Request):
     """Add a note to a trade."""
+    _check_csrf(request)
     body = await request.json()
     trade_key = body.get("trade_key", "")
     note = body.get("note", "").strip()
@@ -475,12 +499,141 @@ async def export_csv():
                     headers={"Content-Disposition": "attachment; filename=omega_trades.csv"})
 
 
+@router.get("/api/option_chain/{underlying}")
+async def api_option_chain(underlying: str, expiry: str = ""):
+    from core.option_chain import OptionChainResolver, UNDERLYING_MAP
+    underlying = underlying.upper()
+    if underlying not in UNDERLYING_MAP:
+        return {"error": f"Unknown underlying: {underlying}"}
+    resolver = _bot.get("_oc_resolver")
+    if not resolver:
+        import os
+        resolver = OptionChainResolver(
+            os.environ.get("DHAN_ACCESS_TOKEN", ""),
+            os.environ.get("DHAN_CLIENT_ID", ""))
+        _bot["_oc_resolver"] = resolver
+    if not expiry:
+        expiry = resolver.get_nearest_expiry(underlying)
+    if not expiry:
+        return {"error": "No expiry found"}
+    chain = resolver.fetch_chain(underlying, expiry)
+    expiries = resolver.get_expiry_list(underlying)
+    oc = chain.get("data", chain).get("oc", {})
+    spot = chain.get("data", chain).get("last_price", 0)
+    all_rows = []
+    for strike_str, sides in sorted(oc.items(), key=lambda x: float(x[0])):
+        try:
+            s = float(strike_str)
+        except (ValueError, TypeError):
+            continue
+        ce = sides.get("ce", {})
+        pe = sides.get("pe", {})
+        all_rows.append({
+            "strike": s,
+            "ce_ltp": ce.get("last_price", 0),
+            "ce_oi": ce.get("oi", 0),
+            "ce_iv": ce.get("implied_volatility", 0),
+            "ce_volume": ce.get("volume", 0),
+            "ce_bid": ce.get("top_bid_price", 0),
+            "ce_ask": ce.get("top_ask_price", 0),
+            "ce_change": ce.get("change", 0),
+            "pe_ltp": pe.get("last_price", 0),
+            "pe_oi": pe.get("oi", 0),
+            "pe_iv": pe.get("implied_volatility", 0),
+            "pe_volume": pe.get("volume", 0),
+            "pe_bid": pe.get("top_bid_price", 0),
+            "pe_ask": pe.get("top_ask_price", 0),
+            "pe_change": pe.get("change", 0),
+        })
+    active_rows = [r for r in all_rows if r["ce_oi"] > 0 or r["pe_oi"] > 0]
+    if not active_rows and len(expiries) >= 2 and expiry == expiries[0]:
+        expiry = expiries[1]
+        chain = resolver.fetch_chain(underlying, expiry)
+        oc = chain.get("data", chain).get("oc", {})
+        spot = chain.get("data", chain).get("last_price", 0) or spot
+        all_rows = []
+        for strike_str, sides in sorted(oc.items(), key=lambda x: float(x[0])):
+            try:
+                s = float(strike_str)
+            except (ValueError, TypeError):
+                continue
+            ce = sides.get("ce", {})
+            pe = sides.get("pe", {})
+            all_rows.append({
+                "strike": s,
+                "ce_ltp": ce.get("last_price", 0),
+                "ce_oi": ce.get("oi", 0),
+                "ce_iv": ce.get("implied_volatility", 0),
+                "ce_volume": ce.get("volume", 0),
+                "ce_bid": ce.get("top_bid_price", 0),
+                "ce_ask": ce.get("top_ask_price", 0),
+                "ce_change": ce.get("change", 0),
+                "pe_ltp": pe.get("last_price", 0),
+                "pe_oi": pe.get("oi", 0),
+                "pe_iv": pe.get("implied_volatility", 0),
+                "pe_volume": pe.get("volume", 0),
+                "pe_bid": pe.get("top_bid_price", 0),
+                "pe_ask": pe.get("top_ask_price", 0),
+                "pe_change": pe.get("change", 0),
+            })
+    if spot > 0:
+        step = {"NIFTY": 50, "BANKNIFTY": 100, "SENSEX": 100,
+                "FINNIFTY": 50, "MIDCPNIFTY": 25}.get(underlying, 100)
+        atm = round(spot / step) * step
+        spread = step * 20
+        rows = [r for r in all_rows if abs(r["strike"] - atm) <= spread]
+    else:
+        atm = 0
+        rows = all_rows[:40]
+    return {"underlying": underlying, "expiry": expiry, "expiries": expiries,
+            "spot": spot, "atm": atm, "rows": rows,
+            "server_time": datetime.now(IST).isoformat()}
+
+
+@router.get("/api/trade_analytics")
+async def api_trade_analytics():
+    state = _read_state()
+    idx = state.get("indices", {})
+    closed = idx.get("closed_trades", [])
+    hourly = {}
+    by_symbol = {}
+    by_reason = {}
+    pnl_series = []
+    cumulative = 0.0
+    for t in closed:
+        pnl = t.get("pnl", 0)
+        cumulative += pnl
+        pnl_series.append(round(cumulative, 2))
+        et = t.get("entry_time", "")
+        if et:
+            try:
+                hr = datetime.fromisoformat(et).hour
+                hourly.setdefault(hr, {"count": 0, "pnl": 0})
+                hourly[hr]["count"] += 1
+                hourly[hr]["pnl"] = round(hourly[hr]["pnl"] + pnl, 2)
+            except Exception:
+                pass
+        sym = t.get("symbol", "?")
+        base = sym.rstrip("0123456789").rstrip("CEPE") if sym else "?"
+        by_symbol.setdefault(base, {"count": 0, "pnl": 0, "wins": 0})
+        by_symbol[base]["count"] += 1
+        by_symbol[base]["pnl"] = round(by_symbol[base]["pnl"] + pnl, 2)
+        if pnl >= 0:
+            by_symbol[base]["wins"] += 1
+        reason = t.get("reason", "?")
+        by_reason.setdefault(reason, {"count": 0, "pnl": 0})
+        by_reason[reason]["count"] += 1
+        by_reason[reason]["pnl"] = round(by_reason[reason]["pnl"] + pnl, 2)
+    return {"hourly": hourly, "by_symbol": by_symbol, "by_reason": by_reason,
+            "pnl_series": pnl_series, "total_trades": len(closed)}
+
+
 _HTML = """<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>Omega Trading System</title>
+<title>Omega Trading Company</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -835,6 +988,52 @@ main{padding:24px;max-width:1440px;margin:0 auto;position:relative;z-index:1}
 .feed-rest{background:var(--warn);box-shadow:0 0 4px var(--warn)}
 .feed-off{background:var(--loss);box-shadow:0 0 4px var(--loss)}
 
+/* OPTION CHAIN */
+.oc-controls{display:flex;align-items:center;gap:12px;padding:12px 20px;flex-wrap:wrap}
+.oc-btn{padding:6px 18px;border-radius:8px;border:1px solid var(--border);background:var(--bg-2);
+  color:var(--text-2);font-size:12px;font-weight:600;cursor:pointer;transition:.2s;letter-spacing:.5px}
+.oc-btn:hover,.oc-btn.on{background:var(--gold-dim);border-color:var(--gold);color:var(--gold)}
+.oc-exp{padding:5px 12px;border-radius:6px;border:1px solid var(--border);background:var(--bg-2);
+  color:var(--text-1);font-size:11px;font-family:'JetBrains Mono',monospace}
+.oc-spot{font-size:13px;color:var(--accent-g);font-weight:700;font-family:'JetBrains Mono',monospace;
+  margin-left:auto}
+.oc-tbl{width:100%;border-collapse:collapse;font-size:11px;font-family:'JetBrains Mono',monospace}
+.oc-tbl th{padding:8px 6px;background:rgba(201,168,76,.04);color:var(--text-3);
+  font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1px;
+  position:sticky;top:0;z-index:2;border-bottom:1px solid var(--border)}
+.oc-tbl td{padding:5px 6px;text-align:right;border-bottom:1px solid var(--border-dim);white-space:nowrap}
+.oc-tbl .ce-side{background:rgba(0,230,138,.02)}
+.oc-tbl .pe-side{background:rgba(255,77,94,.02)}
+.oc-tbl .strike-col{text-align:center;font-weight:700;color:var(--text-1);font-size:12px;
+  background:rgba(201,168,76,.04);border-left:1px solid var(--border);border-right:1px solid var(--border)}
+.oc-tbl .atm{background:rgba(201,168,76,.08) !important}
+.oc-tbl .itm{opacity:.5}
+.oc-wrap{max-height:500px;overflow-y:auto;border:1px solid var(--border);border-radius:12px;
+  background:var(--bg-1)}
+.oi-bar{height:4px;border-radius:2px;display:block;margin-top:2px}
+.oi-ce{background:linear-gradient(90deg,transparent,var(--profit))}
+.oi-pe{background:linear-gradient(270deg,transparent,var(--loss))}
+
+/* ANALYTICS TAB */
+.ana-section{margin-bottom:24px}
+.ana-section .ct{margin-bottom:12px}
+.heatmap{display:grid;grid-template-columns:repeat(auto-fill,minmax(60px,1fr));gap:4px}
+.hm-cell{padding:10px 4px;text-align:center;border-radius:6px;font-size:11px;font-weight:600;
+  font-family:'JetBrains Mono',monospace}
+.reason-row{display:flex;align-items:center;gap:12px;padding:8px 12px;
+  border-bottom:1px solid var(--border-dim);font-size:12px}
+.reason-row:last-child{border-bottom:none}
+.reason-lbl{min-width:100px;font-weight:600;color:var(--text-2);text-transform:uppercase;
+  font-size:10px;letter-spacing:.5px}
+.reason-ct{min-width:40px;text-align:right;color:var(--text-1);font-weight:700}
+.reason-pnl{min-width:80px;text-align:right;font-weight:700;font-family:'JetBrains Mono',monospace}
+.sym-row{display:flex;align-items:center;gap:12px;padding:8px 12px;
+  border-bottom:1px solid var(--border-dim);font-size:12px}
+.sym-row:last-child{border-bottom:none}
+.sym-name{min-width:100px;font-weight:700;color:var(--accent-g)}
+.sym-wr{min-width:60px;text-align:center;font-size:10px;padding:2px 8px;
+  border-radius:10px;font-weight:700}
+
 /* ANALYTICS */
 .ana-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px}
 .ana-bar-row{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--border-dim)}
@@ -891,7 +1090,7 @@ main{padding:24px;max-width:1440px;margin:0 auto;position:relative;z-index:1}
 <header class="hdr">
   <div class="brand">
     <div class="brand-i">&Omega;</div>
-    <div class="brand-n">Omega Trading</div>
+    <div class="brand-n">OTC</div>
   </div>
   <div class="hdr-r">
     <span class="mkt-closed" id="mkt-st">CLOSED</span>
@@ -911,6 +1110,8 @@ main{padding:24px;max-width:1440px;margin:0 auto;position:relative;z-index:1}
   <button class="tab" data-t="pos">Positions</button>
   <button class="tab" data-t="trades">Trades</button>
   <button class="tab" data-t="sigs">Signals</button>
+  <button class="tab" data-t="chain">Option Chain</button>
+  <button class="tab" data-t="analytics">Analytics</button>
 </nav>
 
 <main>
@@ -918,14 +1119,17 @@ main{padding:24px;max-width:1440px;margin:0 auto;position:relative;z-index:1}
   <div class="tp" id="tp-pos"></div>
   <div class="tp" id="tp-trades"></div>
   <div class="tp" id="tp-sigs"></div>
+  <div class="tp" id="tp-chain"><div class="loading">Select an index to load option chain</div></div>
+  <div class="tp" id="tp-analytics"><div class="loading">Loading analytics...</div></div>
 </main>
 
-<div class="ftr"><span class="serif" style="color:var(--gold);font-size:13px;letter-spacing:2px">Omega Trading System</span><br><span style="margin-top:4px;display:inline-block">Precision. Performance. Profit.</span></div>
+<div class="ftr"><span class="serif" style="color:var(--gold);font-size:13px;letter-spacing:2px">Omega Trading Company</span><br><span style="margin-top:4px;display:inline-block">Precision. Performance. Profit.</span></div>
 <div id="modal-root"></div>
 <div id="pnl-alerts"></div>
 
 <script>
 (function(){
+const _csrf='__CSRF_TOKEN__';
 let S=null,tab='dash';
 
 function fmt(n,d){
@@ -934,8 +1138,28 @@ function fmt(n,d){
 }
 function fpnl(n){return (n>=0?'+':'')+String.fromCharCode(8377)+fmt(Math.abs(n))}
 function pc(n){return n>=0?'var(--profit)':'var(--loss)'}
+function esc(s){if(!s)return '';return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');}
 function cc(c){return c==='HIGH'?'cb-h':c==='MEDIUM'?'cb-m':'cb-lo'}
 function scc(s){return s>=70?'var(--profit)':s>=45?'var(--warn)':'var(--loss)'}
+function parseSym(sym){
+  const m=sym.match(/^(NIFTY|BANKNIFTY|SENSEX|FINNIFTY|MIDCPNIFTY)(\d+)(CE|PE)$/i);
+  if(!m) return {idx:sym,strike:'',type:'',label:sym};
+  return {idx:m[1],strike:m[2],type:m[3],label:m[1]+' '+m[2]+' '+m[3]};
+}
+function fmtExpiry(exp){
+  if(!exp)return '';
+  try{
+    const d=new Date(exp+'T00:00:00');
+    const mon=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    return d.getDate()+' '+mon[d.getMonth()]+' '+String(d.getFullYear()).slice(-2);
+  }catch(e){return exp;}
+}
+function instrLabel(sym,expiry,dir,ot,qty){
+  const p=parseSym(sym);
+  const side=dir==='LONG'?'BUY':'SELL';
+  const exp=fmtExpiry(expiry);
+  return (exp?exp+' ':'')+ p.idx+' '+p.strike+' '+(ot||p.type)+' '+side+(qty?' x'+qty:'');
+}
 
 /* Clock */
 function tick(){
@@ -953,6 +1177,8 @@ document.querySelectorAll('.tab').forEach(b=>{
     b.classList.add('on');
     document.querySelectorAll('.tp').forEach(x=>x.classList.remove('on'));
     document.getElementById('tp-'+tab).classList.add('on');
+    if(tab==='chain'){rChain();if(!_chainData)loadChain('NIFTY');}
+    if(tab==='analytics'){_anaLoaded=false;rAnalytics();}
   };
 });
 
@@ -1045,6 +1271,8 @@ function renderTab(){
     case'pos':rPos();break;
     case'trades':rTrades();break;
     case'sigs':rSigs();break;
+    case'chain':rChain();break;
+    case'analytics':rAnalytics();break;
   }
 }
 
@@ -1099,8 +1327,8 @@ function rDash(){
     const sid=p.security_id||'';
     const reason=(p.pnl||0)>=0?'BOOK_PROFIT':'BOOK_LOSS';
     h+='<div class="pr">'+
-      '<span class="db '+(p.direction==='LONG'?'db-l':'db-s')+'">'+(p.direction||'')+'</span>'+
-      '<span class="sym">'+(p.symbol||'')+'</span>'+
+      '<span class="db '+(p.direction==='LONG'?'db-l':'db-s')+'">'+(p.direction==='LONG'?'BUY':'SELL')+'</span>'+
+      '<span class="sym">'+parseSym(p.symbol||'').label+'</span>'+
       '<span class="mono" style="font-size:12px">'+R+fmt(e)+' &rarr; '+R+fmt(c)+'</span>'+
       '<span class="mono" style="color:'+pc(p.pnl||0)+';font-weight:600">'+fpnl(p.pnl||0)+'</span>'+
       '<span style="color:'+pc(p.pnl||0)+';font-size:11px">'+(pct>=0?'+':'')+pct.toFixed(1)+'%</span>'+
@@ -1267,7 +1495,7 @@ async function doAction(url,body,confirmMsg,btnEl){
   try{
     const ac=new AbortController();
     const tm=setTimeout(()=>ac.abort(),8000);
-    const r=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body),signal:ac.signal});
+    const r=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':_csrf},body:JSON.stringify(body),signal:ac.signal});
     clearTimeout(tm);
     const d=await r.json();
     if(d.ok){showToast(d.symbol?(d.symbol+' closed @ '+String.fromCharCode(8377)+(d.fill_price||0).toFixed(2)+' ('+fpnl(d.pnl||0)+')'):('Closed '+d.closed?.length+' positions'),'ok')}
@@ -1325,10 +1553,14 @@ function rPos(){
     let holdStr='';
     if(p.entry_time){try{const et=new Date(p.entry_time);const diff=Date.now()-et.getTime();const hm=Math.floor(diff/60000);holdStr=hm>=60?Math.floor(hm/60)+'h '+hm%60+'m':hm+'m';}catch(e){}}
 
-    h+='<div class="pc"><div class="pc-h"><div style="display:flex;align-items:center;gap:10px">'+
-      '<span class="db '+(p.direction==='LONG'?'db-l':'db-s')+'">'+(p.direction||'')+' '+(ot||'')+'</span>'+
-      '<span style="font-weight:700;font-size:16px">'+(p.symbol||'')+'</span>'+
-      (conf?'<span class="cb '+cc(conf)+'">'+conf+'</span>':'')+
+    const il=instrLabel(p.symbol||'',p.expiry||'',p.direction||'',ot,p.quantity||0);
+    const isSpr=p.is_spread||false;
+    h+='<div class="pc"><div class="pc-h"><div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">'+
+      (isSpr?'<span style="padding:2px 8px;border-radius:4px;font-size:10px;font-weight:700;background:rgba(168,85,247,.12);color:#a855f7;border:1px solid rgba(168,85,247,.2)">SPREAD</span>':'')+
+      '<span class="db '+(p.direction==='LONG'?'db-l':'db-s')+'">'+(p.direction==='LONG'?'BUY':'SELL')+' '+(ot||'')+'</span>'+
+      '<span style="font-weight:700;font-size:16px">'+(isSpr?esc(parseSym(p.symbol||'').label)+' / '+esc(parseSym(p.hedge_trade_symbol||'').label):esc(parseSym(p.symbol||'').label))+'</span>'+
+      (p.expiry?'<span style="padding:2px 8px;border-radius:4px;font-size:10px;font-weight:600;background:rgba(59,130,246,.1);color:#60a5fa;border:1px solid rgba(59,130,246,.15)">'+esc(fmtExpiry(p.expiry))+'</span>':'')+
+      (conf?'<span class="cb '+cc(conf)+'">'+esc(conf)+'</span>':'')+
       '<span style="padding:2px 8px;border-radius:4px;font-size:10px;font-weight:700;background:rgba(201,168,76,.08);color:var(--gold);border:1px solid rgba(201,168,76,.12)">L'+dl+'</span>'+
       (holdStr?'<span style="font-size:11px;color:var(--text-3)">'+holdStr+'</span>':'')+'</div>'+
       '<div style="display:flex;gap:8px">'+
@@ -1354,7 +1586,21 @@ function rPos(){
       '<span class="sltp-edit" onclick="editSL(\\''+sid+'\\',\\''+(p.symbol||'').replace(/'/g,"")+'\\','+sl+')">Edit</span>'+
       '<span class="sltp-val" style="color:var(--profit)" onclick="editTP(\\''+sid+'\\',\\''+(p.symbol||'').replace(/'/g,"")+'\\','+tp+')">TP: '+(tp>0?R+fmt(tp):'Not set')+'</span>'+
       '<span class="sltp-edit" onclick="editTP(\\''+sid+'\\',\\''+(p.symbol||'').replace(/'/g,"")+'\\','+tp+')">Edit</span>'+
-      '</div></div>';
+      '</div>'+
+      (isSpr?'<div style="display:flex;gap:16px;padding:6px 12px;background:rgba(168,85,247,.06);border-radius:6px;font-size:12px;margin-top:4px">'+
+        '<span style="color:var(--text-2)">Credit: <b style="color:var(--profit)">'+R+fmt(p.net_credit||0)+'</b></span>'+
+        '<span style="color:var(--text-2)">Max Loss: <b style="color:var(--loss)">'+R+fmt(p.max_loss||0)+'</b>/unit</span>'+
+        '<span style="color:var(--text-2)">Width: <b>'+(p.spread_width||0)+'</b></span>'+
+        '<span style="color:var(--text-2)">Hedge: <b>'+R+fmt(p.hedge_entry_price||0)+'</b>&rarr;<b>'+R+fmt(p.hedge_current_price||0)+'</b></span>'+
+      '</div>':'')+
+      (p.delta!=null?'<div style="display:flex;gap:16px;padding:6px 12px;background:rgba(59,130,246,.06);border-radius:6px;font-size:12px;margin-top:4px">'+
+        '<span style="color:var(--text-2)">Δ <b style="color:var(--cyan)">'+(p.delta||0).toFixed(3)+'</b></span>'+
+        '<span style="color:var(--text-2)">Γ <b>'+(p.gamma||0).toFixed(5)+'</b></span>'+
+        '<span style="color:var(--text-2)">Θ <b style="color:'+(p.theta<0?'var(--loss)':'var(--profit)')+'">'+((p.theta||0)>=0?'+':'')+(p.theta||0).toFixed(2)+'</b>/day</span>'+
+        '<span style="color:var(--text-2)">V <b>'+(p.vega||0).toFixed(2)+'</b></span>'+
+        '<span style="color:var(--text-2)">DTE <b style="color:var(--warn)">'+(p.dte||0).toFixed(1)+'d</b></span>'+
+      '</div>':'')+
+      '</div>';
   });
   document.getElementById('tp-pos').innerHTML=h;
 }
@@ -1370,7 +1616,7 @@ function rTrades(){
   if(!closed.length) h+='<div class="emp">No trades yet</div>';
   else{
     h+='<div style="overflow-x:auto"><table class="ttb"><thead><tr>'+
-      '<th>Symbol</th><th>Dir</th><th>Entry</th><th>Exit</th><th>P&L</th><th>%</th><th>Reason</th><th>Time</th><th>Notes</th></tr></thead><tbody>';
+      '<th>Instrument</th><th>Side</th><th>Qty</th><th>Entry</th><th>Exit</th><th>P&L</th><th>%</th><th>Reason</th><th>Hold</th><th>Notes</th></tr></thead><tbody>';
     [...closed].reverse().forEach((t,i)=>{
       const e=t.entry||0,x=t.exit||0;
       let pct=e>0?((x-e)/e*100):0;
@@ -1379,14 +1625,16 @@ function rTrades(){
       const note=notes[key]||'';
       let holdStr='';
       if(t.entry_time&&t.exit_time){try{const d=new Date(t.exit_time)-new Date(t.entry_time);const m=Math.floor(d/60000);holdStr=m>=60?Math.floor(m/60)+'h '+m%60+'m':m+'m';}catch(e){}}
-      const exitT=t.exit_time?t.exit_time.substring(11,16):'';
-      h+='<tr><td style="font-weight:600">'+(t.symbol||'')+'</td>'+
-        '<td><span class="db '+(t.direction==='LONG'?'db-l':'db-s')+'">'+(t.direction||'')[0]+'</span></td>'+
+      const ps=parseSym(t.symbol||'');
+      const side=t.direction==='LONG'?'BUY':'SELL';
+      h+='<tr><td style="font-weight:600;white-space:nowrap">'+esc(ps.label)+'</td>'+
+        '<td><span class="db '+(t.direction==='LONG'?'db-l':'db-s')+'">'+esc(side)+'</span></td>'+
+        '<td class="mono" style="font-size:12px">'+(t.quantity||'')+'</td>'+
         '<td class="mono">'+R+fmt(e)+'</td><td class="mono">'+R+fmt(x)+'</td>'+
         '<td class="mono" style="color:'+pc(t.pnl||0)+';font-weight:600">'+fpnl(t.pnl||0)+'</td>'+
         '<td style="color:'+pc(t.pnl||0)+';font-size:12px">'+(pct>=0?'+':'')+pct.toFixed(1)+'%</td>'+
-        '<td style="color:var(--text-3);font-size:12px">'+(t.reason||'')+'</td>'+
-        '<td style="color:var(--text-3);font-size:11px">'+exitT+(holdStr?' <span style="color:var(--text-2)">('+holdStr+')</span>':'')+'</td>'+
+        '<td style="color:var(--text-3);font-size:12px">'+esc(t.reason||'')+'</td>'+
+        '<td style="color:var(--text-3);font-size:11px">'+(holdStr||'')+'</td>'+
         '<td><input class="note-inp" style="width:120px;margin:0" placeholder="Add note..." value="'+note.replace(/"/g,'&quot;')+'" '+
         'oninput="saveNote(\\''+key.replace(/'/g,"")+'\\',this)"></td></tr>';
     });
@@ -1403,17 +1651,19 @@ function rTrades(){
     h+='<div class="tc">';
     h+='<div class="cd"><div class="ct">&#x1F3C6; Best Trades</div>';
     best.forEach((t,i)=>{
+      const ps=parseSym(t.symbol||'');
       h+='<div class="lr"><span class="lr-r">'+medals[i]+(i+1)+'</span>'+
-        '<span class="lr-s">'+(t.direction||'')[0]+' '+(t.symbol||'')+'</span>'+
+        '<span class="lr-s">'+(t.direction==='LONG'?'BUY':'SELL')+' '+esc(ps.label)+'</span>'+
         '<span class="mono" style="color:'+pc(t.pnl||0)+';font-weight:700">'+fpnl(t.pnl||0)+'</span>'+
-        '<span class="lr-re">'+(t.reason||'')+'</span></div>';
+        '<span class="lr-re">'+esc(t.reason||'')+'</span></div>';
     });
     h+='</div><div class="cd"><div class="ct">&#x1F480; Worst Trades</div>';
     worst.forEach((t,i)=>{
+      const ps=parseSym(t.symbol||'');
       h+='<div class="lr"><span class="lr-r">'+(i===0?'&#x1F480;':'')+(i+1)+'</span>'+
-        '<span class="lr-s">'+(t.direction||'')[0]+' '+(t.symbol||'')+'</span>'+
+        '<span class="lr-s">'+(t.direction==='LONG'?'BUY':'SELL')+' '+esc(ps.label)+'</span>'+
         '<span class="mono" style="color:'+pc(t.pnl||0)+';font-weight:700">'+fpnl(t.pnl||0)+'</span>'+
-        '<span class="lr-re">'+(t.reason||'')+'</span></div>';
+        '<span class="lr-re">'+esc(t.reason||'')+'</span></div>';
     });
     h+='</div></div>';
   }
@@ -1440,18 +1690,18 @@ function rSigs(){
 
     h+='<div class="xc"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">'+
       '<div style="display:flex;align-items:center;gap:10px">'+
-      '<span style="font-weight:700;font-size:14px;'+scl+'">'+side+'</span>'+
-      '<span style="font-weight:700;font-size:16px">'+(sg.symbol||'')+'</span></div>'+
+      '<span style="font-weight:700;font-size:14px;'+scl+'">'+esc(side)+'</span>'+
+      '<span style="font-weight:700;font-size:16px">'+esc(sg.symbol||'')+'</span></div>'+
       '<div style="display:flex;align-items:center;gap:10px">'+
-      '<span class="cb '+cc(sg.confidence||'')+'">'+(sg.confidence||'')+'</span>'+
+      '<span class="cb '+cc(sg.confidence||'')+'">'+esc(sg.confidence||'')+'</span>'+
       '<span class="mono" style="font-size:22px;font-weight:800;color:'+scc(sc)+'">'+sc.toFixed(0)+'</span></div></div>'+
       '<div style="display:flex;gap:16px;flex-wrap:wrap;font-size:12px;color:var(--text-2);margin-bottom:8px">'+
       '<span>ADX '+(sg.adx||0).toFixed(1)+'</span>'+
       '<span>RSI '+(sg.rsi||0).toFixed(1)+'</span>'+
-      '<span>VWAP '+(sg.vwap_position||'')+'</span>'+
-      '<span>ST '+(sg.supertrend_dir||'')+'</span>'+
+      '<span>VWAP '+esc(sg.vwap_position||'')+'</span>'+
+      '<span>ST '+esc(sg.supertrend_dir||'')+'</span>'+
       '<span>Vol '+(sg.volume_ratio||0).toFixed(2)+'x</span>'+
-      '<span>Regime '+(sg.volatility_regime||'')+'</span></div>';
+      '<span>Regime '+esc(sg.volatility_regime||'')+'</span></div>';
     if(Object.keys(det).length){
       h+='<div class="xd">';
       factors.forEach(([k,l])=>{
@@ -1549,11 +1799,9 @@ function updateSessionTimer(ms){
 
 /* ── TOKEN EXPIRY ── */
 function updateTokenBanner(){
-  const exp=S.token_expiry||0;
+  const hrs=S.token_hours_remaining;
   const ban=document.getElementById('token-ban');
-  if(!exp){ban.className='token-ban';ban.style.display='none';return;}
-  const now=Math.floor(Date.now()/1000);
-  const hrs=(exp-now)/3600;
+  if(hrs==null||hrs===-1){ban.className='token-ban';ban.style.display='none';return;}
   if(hrs<0){ban.className='token-ban crit';ban.innerHTML='&#x26A0; DHAN TOKEN EXPIRED — Renew immediately at api.dhan.co';ban.style.display='block';}
   else if(hrs<24){ban.className='token-ban crit';ban.innerHTML='&#x26A0; Token expires in '+Math.floor(hrs)+'h '+Math.floor((hrs%1)*60)+'m — Renew at api.dhan.co';ban.style.display='block';}
   else if(hrs<72){ban.className='token-ban warn';ban.innerHTML='Token expires in '+Math.floor(hrs/24)+'d '+Math.floor(hrs%24)+'h — Consider renewing at api.dhan.co';ban.style.display='block';}
@@ -1592,7 +1840,7 @@ if('Notification' in window&&Notification.permission==='default'){Notification.r
 function showModal(title,body,onSave){
   const root=document.getElementById('modal-root');
   root.innerHTML='<div class="modal-ov" onclick="if(event.target===this)closeModal()">'+
-    '<div class="modal-box"><div class="modal-title">'+title+'</div>'+body+
+    '<div class="modal-box"><div class="modal-title">'+esc(title)+'</div>'+body+
     '<div class="modal-btns"><button class="modal-btn modal-btn-c" onclick="closeModal()">Cancel</button>'+
     '<button class="modal-btn modal-btn-p" id="modal-save">Save</button></div></div></div>';
   document.getElementById('modal-save').onclick=onSave;
@@ -1606,7 +1854,7 @@ function editSL(sid,symbol,currentSL){
     async()=>{
       const v=parseFloat(document.getElementById('inp-sl').value);
       if(!v||v<=0){showToast('Invalid SL price','err');return;}
-      const r=await fetch('/api/modify_sl',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({security_id:sid,new_sl:v})});
+      const r=await fetch('/api/modify_sl',{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':_csrf},body:JSON.stringify({security_id:sid,new_sl:v})});
       const d=await r.json();
       if(d.ok){showToast(d.symbol+' SL → ₹'+fmt(v),'ok');closeModal();}else{showToast('Error: '+(d.error||'unknown'),'err');}
     });
@@ -1619,7 +1867,7 @@ function editTP(sid,symbol,currentTP){
     async()=>{
       const v=parseFloat(document.getElementById('inp-tp').value);
       if(!v||v<=0){showToast('Invalid TP price','err');return;}
-      const r=await fetch('/api/modify_tp',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({security_id:sid,new_tp:v})});
+      const r=await fetch('/api/modify_tp',{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':_csrf},body:JSON.stringify({security_id:sid,new_tp:v})});
       const d=await r.json();
       if(d.ok){showToast(d.symbol+' TP → ₹'+fmt(v),'ok');closeModal();}else{showToast('Error: '+(d.error||'unknown'),'err');}
     });
@@ -1631,12 +1879,179 @@ function saveNote(key,el){
   clearTimeout(_noteTm[key]);
   _noteTm[key]=setTimeout(async()=>{
     const note=el.value.trim();
-    await fetch('/api/add_note',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({trade_key:key,note:note})});
+    await fetch('/api/add_note',{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':_csrf},body:JSON.stringify({trade_key:key,note:note})});
   },800);
 }
 
 /* ── EXPORT CSV ── */
 function exportCSV(){window.open('/api/export_csv','_blank');}
+
+/* ── OPTION CHAIN ── */
+let _chainUl='NIFTY',_chainData=null,_chainLoading=false,_chainScrollOnce=false;
+async function loadChain(ul){
+  _chainUl=ul;_chainLoading=true;_chainScrollOnce=true;rChain();
+  try{
+    const r=await fetch('/api/option_chain/'+ul);
+    _chainData=await r.json();
+  }catch(e){_chainData={error:e.message};}
+  _chainLoading=false;rChain();
+}
+function rChain(){
+  const el=document.getElementById('tp-chain');
+  let h='<div class="cd"><div class="ct" style="display:flex;align-items:center;gap:8px"><span style="color:var(--gold)">&#x2636;</span> Option Chain</div>';
+  h+='<div class="oc-controls">';
+  ['NIFTY','BANKNIFTY','SENSEX'].forEach(u=>{
+    h+='<button class="oc-btn'+(u===_chainUl?' on':'')+'" onclick="loadChain(\\''+u+'\\')">'+u+'</button>';
+  });
+  if(_chainData&&!_chainData.error){
+    const exps=_chainData.expiries||[];
+    if(exps.length>1){
+      h+='<select class="oc-exp" onchange="loadChain(_chainUl+\\'?expiry=\\'+this.value)">';
+      exps.forEach(e=>{h+='<option'+(e===_chainData.expiry?' selected':'')+'>'+esc(e)+'</option>';});
+      h+='</select>';
+    }
+    h+='<span class="oc-spot">SPOT: '+String.fromCharCode(8377)+fmt(_chainData.spot||0)+'</span>';
+  }
+  h+='</div>';
+  if(_chainLoading){h+='<div class="loading">Loading chain...</div></div>';el.innerHTML=h;return;}
+  if(!_chainData||_chainData.error){
+    h+='<div class="emp" style="padding:30px 0;text-align:center;color:var(--text-3)">'+(_chainData?esc(_chainData.error):'Click an index above')+'</div></div>';
+    el.innerHTML=h;return;
+  }
+  const rows=_chainData.rows||[];
+  const spot=_chainData.spot||0;
+  const atm=_chainData.atm||0;
+  const maxOI=Math.max(...rows.map(r=>Math.max(r.ce_oi||0,r.pe_oi||0)),1);
+  h+='<div style="margin:8px 0;display:flex;gap:12px;font-size:12px;color:var(--text-3)">'+
+    '<span>Expiry: <b style="color:var(--text-1)">'+esc(fmtExpiry(_chainData.expiry))+'</b></span>'+
+    '<span>ATM: <b style="color:var(--gold)">'+fmt(atm,0)+'</b></span>'+
+    '<span>Strikes: <b style="color:var(--text-1)">'+rows.length+'</b></span></div>';
+  h+='<div class="oc-wrap"><table class="oc-tbl"><thead><tr>';
+  h+='<th style="color:var(--profit)">CE OI</th><th>Vol</th><th>IV%</th><th>Bid</th><th>Ask</th><th style="color:var(--profit)">CE LTP</th>';
+  h+='<th style="color:var(--gold)">STRIKE</th>';
+  h+='<th style="color:var(--loss)">PE LTP</th><th>Bid</th><th>Ask</th><th>IV%</th><th>Vol</th><th style="color:var(--loss)">PE OI</th>';
+  h+='</tr></thead><tbody>';
+  rows.forEach(r=>{
+    const isAtm=atm>0&&r.strike===atm;
+    const ceItm=r.strike<spot,peItm=r.strike>spot;
+    const ac=isAtm?' atm':'';
+    h+='<tr>';
+    h+='<td class="ce-side'+(ceItm?' itm':'')+ac+'" style="text-align:left">'+(r.ce_oi?fmt(r.ce_oi,0):'—');
+    h+='<span class="oi-bar oi-ce" style="width:'+Math.round(r.ce_oi/maxOI*100)+'%"></span></td>';
+    h+='<td class="ce-side'+(ceItm?' itm':'')+ac+'">'+(r.ce_volume?fmt(r.ce_volume,0):'—')+'</td>';
+    h+='<td class="ce-side'+(ceItm?' itm':'')+ac+'" style="color:var(--cyan)">'+(r.ce_iv?r.ce_iv.toFixed(1):'—')+'</td>';
+    h+='<td class="ce-side'+(ceItm?' itm':'')+ac+'">'+(r.ce_bid||'—')+'</td>';
+    h+='<td class="ce-side'+(ceItm?' itm':'')+ac+'">'+(r.ce_ask||'—')+'</td>';
+    h+='<td class="ce-side'+(ceItm?' itm':'')+ac+'" style="font-weight:700;color:'+(r.ce_change>=0?'var(--profit)':'var(--loss)')+'">'+(r.ce_ltp||'—')+'</td>';
+    h+='<td class="strike-col'+ac+'">'+fmt(r.strike,0)+'</td>';
+    h+='<td class="pe-side'+(peItm?' itm':'')+ac+'" style="font-weight:700;color:'+(r.pe_change>=0?'var(--profit)':'var(--loss)')+'">'+(r.pe_ltp||'—')+'</td>';
+    h+='<td class="pe-side'+(peItm?' itm':'')+ac+'">'+(r.pe_bid||'—')+'</td>';
+    h+='<td class="pe-side'+(peItm?' itm':'')+ac+'">'+(r.pe_ask||'—')+'</td>';
+    h+='<td class="pe-side'+(peItm?' itm':'')+ac+'" style="color:var(--cyan)">'+(r.pe_iv?r.pe_iv.toFixed(1):'—')+'</td>';
+    h+='<td class="pe-side'+(peItm?' itm':'')+ac+'">'+(r.pe_volume?fmt(r.pe_volume,0):'—')+'</td>';
+    h+='<td class="pe-side'+(peItm?' itm':'')+ac+'" style="text-align:left">'+(r.pe_oi?fmt(r.pe_oi,0):'—');
+    h+='<span class="oi-bar oi-pe" style="width:'+Math.round(r.pe_oi/maxOI*100)+'%"></span></td>';
+    h+='</tr>';
+  });
+  h+='</tbody></table></div></div>';
+  el.innerHTML=h;
+  if(_chainScrollOnce){
+    _chainScrollOnce=false;
+    const atmEl=el.querySelector('.atm');
+    if(atmEl)atmEl.scrollIntoView({block:'center',behavior:'smooth'});
+  }
+}
+
+/* ── ANALYTICS ── */
+let _anaData=null,_anaLoaded=false;
+async function loadAnalytics(){
+  if(_anaLoaded)return;
+  try{
+    const r=await fetch('/api/trade_analytics');
+    _anaData=await r.json();
+    _anaLoaded=true;
+  }catch(e){}
+  rAnalytics();
+}
+function rAnalytics(){
+  const el=document.getElementById('tp-analytics');
+  if(tab!=='analytics')return;
+  if(!_anaData){loadAnalytics();return;}
+  let h='';
+
+  /* P&L by exit reason */
+  h+='<div class="cd ana-section"><div class="ct" style="display:flex;align-items:center;gap:8px"><span style="color:var(--gold)">&#x1F4CA;</span> P&L by Exit Reason</div>';
+  const br=_anaData.by_reason||{};
+  const reasons=Object.entries(br).sort((a,b)=>b[1].count-a[1].count);
+  if(reasons.length){
+    reasons.forEach(([r,d])=>{
+      const c=d.pnl>=0?'var(--profit)':'var(--loss)';
+      h+='<div class="reason-row"><span class="reason-lbl">'+r+'</span>';
+      h+='<span class="reason-ct">'+d.count+' trades</span>';
+      h+='<span class="reason-pnl" style="color:'+c+'">'+fpnl(d.pnl)+'</span></div>';
+    });
+  } else{h+='<div class="emp" style="padding:20px;text-align:center;color:var(--text-3)">No trades yet</div>';}
+  h+='</div>';
+
+  /* P&L by symbol */
+  h+='<div class="cd ana-section"><div class="ct" style="display:flex;align-items:center;gap:8px"><span style="color:var(--gold)">&#x1F3AF;</span> P&L by Index</div>';
+  const bs=_anaData.by_symbol||{};
+  const syms=Object.entries(bs).sort((a,b)=>b[1].pnl-a[1].pnl);
+  if(syms.length){
+    syms.forEach(([s,d])=>{
+      const c=d.pnl>=0?'var(--profit)':'var(--loss)';
+      const wr=d.count>0?Math.round(d.wins/d.count*100):0;
+      const wrC=wr>=60?'var(--profit)':wr>=40?'var(--warn)':'var(--loss)';
+      h+='<div class="sym-row"><span class="sym-name">'+s+'</span>';
+      h+='<span class="reason-ct">'+d.count+' trades</span>';
+      h+='<span class="sym-wr" style="background:rgba('+(wr>=50?'0,230,138':'255,77,94')+',.1);color:'+wrC+'">'+wr+'% WR</span>';
+      h+='<span class="reason-pnl" style="color:'+c+'">'+fpnl(d.pnl)+'</span></div>';
+    });
+  }
+  h+='</div>';
+
+  /* Hourly heatmap */
+  h+='<div class="cd ana-section"><div class="ct" style="display:flex;align-items:center;gap:8px"><span style="color:var(--gold)">&#x1F552;</span> Hourly Performance</div>';
+  const hr=_anaData.hourly||{};
+  const hrs=Object.entries(hr).sort((a,b)=>parseInt(a[0])-parseInt(b[0]));
+  if(hrs.length){
+    h+='<div class="heatmap">';
+    for(let i=9;i<=15;i++){
+      const d=hr[String(i)]||{count:0,pnl:0};
+      const bg=d.pnl>0?'rgba(0,230,138,'+(0.1+Math.min(Math.abs(d.pnl)/1000,0.5))+')':
+               d.pnl<0?'rgba(255,77,94,'+(0.1+Math.min(Math.abs(d.pnl)/1000,0.5))+')':'var(--bg-3)';
+      const tc=d.pnl>=0?'var(--profit)':'var(--loss)';
+      h+='<div class="hm-cell" style="background:'+bg+'"><div style="font-size:9px;color:var(--text-3);margin-bottom:4px">'+i+':00</div>';
+      h+='<div style="color:'+(d.count?tc:'var(--text-3)')+'">'+(d.count?fpnl(d.pnl):'—')+'</div>';
+      h+='<div style="font-size:9px;color:var(--text-3);margin-top:2px">'+(d.count||0)+' trades</div></div>';
+    }
+    h+='</div>';
+  } else{h+='<div class="emp" style="padding:20px;text-align:center;color:var(--text-3)">No hourly data yet</div>';}
+  h+='</div>';
+
+  /* Equity curve from analytics */
+  const ps=_anaData.pnl_series||[];
+  if(ps.length>1){
+    h+='<div class="cd ana-section"><div class="ct" style="display:flex;align-items:center;gap:8px"><span style="color:var(--gold)">&#x1F4C8;</span> Cumulative P&L Curve</div>';
+    const mn=Math.min(...ps,0),mx=Math.max(...ps,1);
+    const W=680,H=200,pad=10;
+    h+='<svg viewBox="0 0 '+W+' '+H+'" style="width:100%;height:auto;display:block">';
+    h+='<defs><linearGradient id="aFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="'+(ps[ps.length-1]>=0?'rgba(0,230,138,.3)':'rgba(255,77,94,.3)')+'"/><stop offset="1" stop-color="transparent"/></linearGradient></defs>';
+    const rng=mx-mn||1;
+    const pts=ps.map((v,i)=>{
+      const x=pad+i/(ps.length-1)*(W-2*pad);
+      const y=H-pad-(v-mn)/rng*(H-2*pad);
+      return x.toFixed(1)+','+y.toFixed(1);
+    });
+    const zeroY=H-pad-(0-mn)/rng*(H-2*pad);
+    h+='<line x1="'+pad+'" y1="'+zeroY.toFixed(1)+'" x2="'+(W-pad)+'" y2="'+zeroY.toFixed(1)+'" stroke="var(--border)" stroke-dasharray="4,4"/>';
+    h+='<polygon points="'+pad+','+zeroY.toFixed(1)+' '+pts.join(' ')+' '+(W-pad)+','+zeroY.toFixed(1)+'" fill="url(#aFill)"/>';
+    h+='<polyline points="'+pts.join(' ')+'" fill="none" stroke="'+(ps[ps.length-1]>=0?'var(--profit)':'var(--loss)')+'" stroke-width="2"/>';
+    h+='</svg></div>';
+  }
+
+  el.innerHTML=h;
+}
 
 /* ── FETCH LOOP ── */
 let _lastGoodPoll=Date.now();
@@ -1673,6 +2088,8 @@ window.closeModal=closeModal;
 window.exportCSV=exportCSV;
 window.saveNote=saveNote;
 window.showToast=showToast;
+window.loadChain=loadChain;
+window._chainUl=_chainUl;
 })();
 </script>
 </body>
@@ -1681,4 +2098,4 @@ window.showToast=showToast;
 
 @router.get("/dashboard", response_class=HTMLResponse)
 async def dashboard():
-    return HTMLResponse(content=_HTML)
+    return HTMLResponse(content=_HTML.replace("__CSRF_TOKEN__", _CSRF_TOKEN))

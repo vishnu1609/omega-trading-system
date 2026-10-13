@@ -15,9 +15,14 @@ credentials.*
 .vscode/
 *.swp
 
-# Data files (can be large)
+# Data files (contain trading state and secrets)
 data/*.csv
+data/*.db
+data/*.db-shm
+data/*.db-wal
+data/*.json
 data/instruments/
+data/ml/
 
 # Logs
 logs/
@@ -29,4 +34,3 @@ backtest/optimization_results.csv
 # OS
 .DS_Store
 Thumbs.db
-data/dashboard_state.json

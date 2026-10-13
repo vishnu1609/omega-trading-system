@@ -63,8 +63,8 @@ def _is_rate_limited(ip: str) -> bool:
 def verify_signature(raw_body: bytes, signature: str) -> bool:
     secret = _get_webhook_secret()
     if not secret:
-        log.warning("No webhook secret configured — accepting all requests")
-        return True
+        log.warning("No webhook secret configured — rejecting request (set TV_WEBHOOK_SECRET)")
+        return False
     expected = hmac.new(secret.encode(), raw_body, hashlib.sha256).hexdigest()
     return hmac.compare_digest(signature, expected)
 

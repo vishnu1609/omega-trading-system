@@ -1,5 +1,5 @@
 """
-Omega Trading System — Main Entry Point
+Omega Trading Company — Main Entry Point
 
 Paper mode by default. Live mode requires explicit --live flag.
 Never trades real money unless you confirm twice.
@@ -30,6 +30,8 @@ from core.risk_engine import RiskEngine
 from core.daily_report import generate_daily_report, save_daily_report
 from core.guardrails import Guardrails
 from core.live_feed import LiveFeed, EXCHANGE_SEG_MAP
+from core.chain_collector import ChainCollector
+from core.greeks import compute_greeks, dte_from_expiry
 from core.option_chain import OptionChainResolver
 from core.signal_generator import SignalGenerator
 from core.trade_memory import TradeMemory
@@ -75,7 +77,7 @@ def create_broker(mode: str, broker_cfg: dict) -> BrokerBase:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Omega Trading System")
+    parser = argparse.ArgumentParser(description="Omega Trading Company")
     parser.add_argument("--live", action="store_true",
                         help="Run in LIVE mode (real money). Requires confirmation.")
     parser.add_argument("--webhook-only", action="store_true",
@@ -105,7 +107,7 @@ def main() -> None:
     log = logging.getLogger("omega.main")
 
     log.info("=" * 60)
-    log.info("OMEGA TRADING SYSTEM — %s MODE", mode.upper())
+    log.info("OMEGA TRADING COMPANY (OTC) — %s MODE", mode.upper())
     log.info("=" * 60)
 
     broker = create_broker(mode, settings.get("broker", {}))
@@ -236,6 +238,7 @@ def main() -> None:
     log.info("LiveFeed started — WebSocket subscribed to %d index instruments", len(index_instruments))
 
     wallet = Wallet(starting_capital=200_000.0)
+    wallet.reconcile_in_trade(pm.open_positions)
     log.info("Wallet loaded: balance=₹%.2f available=₹%.2f", wallet.balance, wallet.available)
 
     strategy = OmegaStrategy(
@@ -318,7 +321,7 @@ def main() -> None:
         target=uvicorn.run,
         kwargs={
             "app": app,
-            "host": webhook_cfg.get("host", "0.0.0.0"),
+            "host": webhook_cfg.get("host", "127.0.0.1"),
             "port": webhook_cfg.get("port", 8000),
             "log_level": "warning",
         },
@@ -372,6 +375,29 @@ def main() -> None:
         log.info("Signal generator started — watching: %s", ", ".join(watch))
     else:
         log.info("Webhook-only mode — waiting for TradingView signals")
+
+    chain_collector = ChainCollector(option_chain, interval_minutes=5)
+    chain_collector.start()
+
+    _IDX_SEC = {"NIFTY": "13", "BANKNIFTY": "25", "SENSEX": "51",
+                "FINNIFTY": "27", "BANKEX": "12"}
+
+    def _greeks_for_pos(p) -> dict:
+        try:
+            if not p.expiry or not p.strike or p.iv <= 0:
+                return {}
+            sec_id = _IDX_SEC.get((p.underlying or "").upper())
+            if not sec_id:
+                return {}
+            spot = live_feed.get_ltp(sec_id, "IDX_I")
+            if spot <= 0:
+                return {}
+            dte = dte_from_expiry(p.expiry)
+            g = compute_greeks(spot, p.strike, dte, p.iv, p.option_type)
+            return {"delta": g.delta, "gamma": g.gamma, "theta": g.theta,
+                    "vega": g.vega, "dte": round(dte, 1)}
+        except Exception:
+            return {}
 
     _signals_frozen = threading.Event()
     _sessions_ended = False
@@ -526,9 +552,10 @@ def main() -> None:
                 "SENSEX": live_feed.get_ltp("51", "IDX_I"),
             }
 
-            update_state(
-                system="indices",
-                index_prices=index_ltps,
+            try:
+                update_state(
+                    system="indices",
+                    index_prices=index_ltps,
                 positions=[{
                     "symbol": p.symbol,
                     "security_id": p.security_id,
@@ -544,6 +571,17 @@ def main() -> None:
                     "entry_time": p.entry_time.isoformat(),
                     "tranche_exits": p.tranche_exits,
                     "option_type": p.option_type,
+                    "quantity": p.quantity,
+                    "expiry": p.expiry,
+                    "is_spread": p.is_spread,
+                    "hedge_trade_symbol": p.hedge_trade_symbol,
+                    "hedge_strike": p.hedge_strike,
+                    "spread_width": p.spread_width,
+                    "net_credit": p.net_credit,
+                    "max_loss": p.max_loss,
+                    "hedge_entry_price": p.hedge_entry_price,
+                    "hedge_current_price": p.hedge_current_price,
+                    **(_greeks_for_pos(p)),
                 } for p in pm.open_positions],
                 closed_trades=[{
                     "symbol": t.symbol,
@@ -571,7 +609,9 @@ def main() -> None:
                 wallet=wallet.snapshot(),
                 consecutive_losses=getattr(strategy, "_consecutive_losses", 0),
                 loss_cooldown_remaining=max(0, 900 - (time.time() - getattr(strategy, "_last_loss_time", 0))) if getattr(strategy, "_consecutive_losses", 0) >= 3 else 0,
-            )
+                )
+            except Exception as dash_err:
+                log.debug("Dashboard state update failed: %s", dash_err)
 
             if re.all_sessions_done():
                 if not _sessions_ended:
@@ -616,7 +656,7 @@ def main() -> None:
         log.critical("Unhandled exception: %s", exc, exc_info=True)
         tg.error("main_loop", exc)
     finally:
-        log.info("Omega Trading System stopped")
+        log.info("Omega Trading Company stopped")
 
 
 if __name__ == "__main__":
