@@ -1,4 +1,11 @@
-# Omega Trading System
+# Response Style
+
+- Be maximally concise. No preamble, no trailing summaries, no restatements.
+- Prefer bullet points and code over prose paragraphs.
+- Explain only the non-obvious. Skip what the code already says.
+- One sentence end-of-turn summary max.
+
+# Omega Trading Company
 
 Algo trading bot for Indian index options (Nifty 50, Bank Nifty, Sensex).
 Paper-trading-first. Built by Vishnu with Claude.
