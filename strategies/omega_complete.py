@@ -429,6 +429,16 @@ class OmegaStrategy:
                 quantity = atr_qty
                 signal.quantity = quantity
 
+        if contract and hasattr(self.broker, "cache_contract"):
+            underlying_price_for_slip = sl * 1.01 if sl > 0 else entry_price * 100
+            moneyness = abs(contract.strike - underlying_price_for_slip) / underlying_price_for_slip * 100 if underlying_price_for_slip > 0 else 0
+            self.broker.cache_contract(
+                contract.security_id,
+                bid=contract.bid, ask=contract.ask, oi=contract.oi,
+                moneyness_pct=moneyness,
+                dte_days=dte_from_expiry(contract.expiry) if contract.expiry else 30,
+            )
+
         resp = self.om.place_entry(signal, self.re, instrument=inst_name)
         if not resp:
             return
@@ -692,6 +702,17 @@ class OmegaStrategy:
             if not risk_check:
                 log.warning("Spread blocked by guardrail: %s", risk_check.reason)
                 return
+
+        if hasattr(self.broker, "cache_contract"):
+            underlying_price = sell_contract.strike
+            for c in (sell_contract, hedge_contract):
+                mn = abs(c.strike - underlying_price) / underlying_price * 100 if underlying_price > 0 else 0
+                self.broker.cache_contract(
+                    c.security_id,
+                    bid=c.bid, ask=c.ask, oi=c.oi,
+                    moneyness_pct=mn,
+                    dte_days=dte_from_expiry(c.expiry) if c.expiry else 30,
+                )
 
         sell_signal = Signal(
             strategy="omega_spread", symbol=sell_contract.trade_symbol,
