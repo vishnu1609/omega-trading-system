@@ -146,6 +146,11 @@ def _token_hours_remaining() -> float:
         return -1
 
 
+@router.get("/health")
+async def health():
+    return {"status": "ok"}
+
+
 @router.get("/api/state")
 async def api_state():
     state = _read_state()
@@ -848,7 +853,16 @@ main{padding:24px;max-width:1440px;margin:0 auto;position:relative;z-index:1}
 .xdf{height:100%;border-radius:3px;transition:width .3s;box-shadow:0 0 6px currentColor}
 .xdv{min-width:22px;text-align:right;font-weight:600;font-size:10px}
 
+/* REVERSE ENGINE CARDS */
+.sc2{background:var(--glass);border:1px solid rgba(201,168,76,.06);border-radius:10px;padding:14px 12px;text-align:center}
+.tbl{border-collapse:collapse;font-size:12px}
+.tbl th{text-align:left;font-size:10px;color:var(--gold);text-transform:uppercase;letter-spacing:.6px;
+  padding:8px 10px;border-bottom:1px solid rgba(201,168,76,.1);font-weight:700}
+.tbl td{padding:8px 10px;border-bottom:1px solid var(--border-dim);font-size:12px;white-space:nowrap}
+.tbl tr:hover td{background:rgba(201,168,76,.02)}
+
 /* TRADES TABLE */
+.ttb-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
 .ttb{width:100%;border-collapse:collapse;font-size:13px}
 .ttb th{text-align:left;font-size:10px;color:var(--gold);text-transform:uppercase;
   letter-spacing:.8px;padding:12px 14px;border-bottom:1px solid rgba(201,168,76,.1);font-weight:700}
@@ -1073,30 +1087,117 @@ main{padding:24px;max-width:1440px;margin:0 auto;position:relative;z-index:1}
   display:inline-block;margin-top:6px}
 .donut-w{width:120px;height:120px;margin:0 auto 8px}
 
-/* RESPONSIVE */
+/* RESPONSIVE — TABLET */
 @media(max-width:768px){
   .hdr{padding:0 16px;height:56px}
-  .sbar{padding:7px 16px;gap:16px}
+  .hdr-r{gap:8px}
+  .brand-i{width:36px;height:36px;font-size:18px;border-radius:10px}
+  .brand-n{font-size:15px;letter-spacing:1.5px}
+  .pill{padding:4px 10px;font-size:9px}
+  .clock{font-size:11px}
+  .sess-timer{font-size:10px}
+  .sbar{padding:7px 16px;gap:12px;font-size:10px}
+  .idx-ticker{gap:16px;padding:8px 16px;flex-wrap:wrap;justify-content:flex-start}
+  .idx-price{font-size:13px}
+  .idx-name{font-size:9px}
+  .wlt{flex-wrap:wrap}
+  .wlt-i{padding:12px 16px;min-width:calc(33.33% - 1px);flex:1 1 auto}
+  .wlt-v{font-size:15px}
+  .wlt-l{font-size:8px;letter-spacing:1.5px}
+  .tabs{padding:0 16px;gap:0}
+  .tab{padding:11px 18px;font-size:12px}
   main{padding:16px}
   .tc{grid-template-columns:1fr}
   .sg{grid-template-columns:repeat(3,1fr);gap:8px}
-  .brand-n{font-size:15px;letter-spacing:1.5px}
-  .wlt-i{padding:12px 16px;min-width:130px}
-  .wlt-v{font-size:15px}
-  .tabs{padding:0 16px}
-  .tab{padding:11px 18px;font-size:12px}
-  .xd{grid-template-columns:1fr}
-  .ana-grid{grid-template-columns:1fr}
-  .ana-stats{min-width:auto;gap:10px}
-  .ana-lbl{min-width:70px;font-size:11px}
-  .pc-p{flex-direction:column;gap:4px}
+  .sc{padding:14px 10px;border-radius:10px}
+  .sv{font-size:20px}
+  .sl{font-size:8px;letter-spacing:1px}
   .hero{padding:28px 0 8px}
   .hero-val{font-size:40px}
+  .hero-sub{font-size:14px}
+  .hero-lbl{font-size:9px;letter-spacing:3px}
+  .cd{padding:16px;border-radius:12px}
+  .pc{padding:18px;border-radius:12px}
+  .pc-h{flex-direction:column;align-items:flex-start;gap:8px}
+  .pc-p{flex-direction:column;gap:4px}
+  .xd{grid-template-columns:1fr}
+  .xc{padding:16px}
+  .ttb{font-size:12px}
+  .ttb th{padding:8px 8px;font-size:9px}
+  .ttb td{padding:8px 8px}
+  .oc-tbl{font-size:10px}
+  .oc-tbl th{padding:6px 4px;font-size:8px}
+  .oc-tbl td{padding:4px 4px}
+  .ana-grid{grid-template-columns:1fr}
+  .ana-bar-row{flex-wrap:wrap;gap:6px}
+  .ana-stats{min-width:auto;gap:8px;width:100%}
+  .ana-lbl{min-width:70px;font-size:11px}
+  .ana-vs-val{font-size:24px}
+  .rg{grid-template-columns:repeat(2,1fr);gap:10px}
+  .riv{font-size:16px}
+  .modal-box{padding:22px;min-width:auto;width:94%}
+  .pnl-alert{right:16px;left:16px;font-size:12px}
+  .ftr{padding:24px 16px}
+  .token-ban{padding:8px 16px;font-size:11px}
 }
+/* RESPONSIVE — PHONE */
 @media(max-width:480px){
-  .sg{grid-template-columns:repeat(2,1fr)}
+  .hdr{height:52px;padding:0 12px}
+  .hdr-r{gap:6px}
+  .brand-i{width:32px;height:32px;font-size:16px;border-radius:8px}
+  .brand-n{font-size:13px;letter-spacing:1px}
+  .pill{padding:3px 8px;font-size:8px}
+  .clock{display:none}
+  .sess-timer{display:none}
+  .mkt-st{font-size:8px;padding:3px 8px}
+  .sbar{padding:6px 12px;gap:8px;font-size:9px}
+  .idx-ticker{gap:10px;padding:6px 12px}
+  .idx-price{font-size:12px}
+  .wlt-i{min-width:calc(50% - 1px);padding:10px 12px}
+  .wlt-v{font-size:14px}
+  .tabs{padding:0 8px}
+  .tab{padding:10px 14px;font-size:11px}
+  main{padding:12px}
+  .sg{grid-template-columns:repeat(2,1fr);gap:6px}
+  .sc{padding:12px 8px;border-radius:8px}
   .sv{font-size:18px}
+  .sl{font-size:7px;letter-spacing:.8px}
   .hero-val{font-size:32px}
+  .hero-sub{font-size:13px}
+  .cd{padding:14px;margin-bottom:12px}
+  .ct{font-size:10px;letter-spacing:1px;margin-bottom:12px;padding-bottom:10px}
+  .pc{padding:14px}
+  .db{font-size:9px;padding:2px 8px}
+  .sym{min-width:70px;font-size:12px}
+  .ttb{font-size:11px}
+  .ttb th{padding:6px 6px;font-size:8px;letter-spacing:.5px}
+  .ttb td{padding:6px 6px;font-size:11px}
+  .oc-controls{padding:8px 12px;gap:8px}
+  .oc-btn{padding:5px 12px;font-size:11px}
+  .oc-tbl{font-size:9px}
+  .oc-tbl th{padding:5px 3px;font-size:7px}
+  .oc-tbl td{padding:3px 3px}
+  .oc-wrap{max-height:400px}
+  .ana-bar-row{padding:6px 0}
+  .ana-lbl{min-width:55px;font-size:10px}
+  .ana-vs-val{font-size:20px}
+  .donut-w{width:90px;height:90px}
+  .rg{grid-template-columns:1fr 1fr;gap:8px}
+  .riv{font-size:14px}
+  .modal-box{padding:18px;border-radius:14px}
+  .modal-title{font-size:15px}
+  .modal-inp{padding:10px 12px;font-size:13px}
+  .export-btn{padding:6px 14px;font-size:10px}
+  .abtn{padding:5px 12px;font-size:11px}
+  .sltp-row{flex-wrap:wrap}
+  .ftr{padding:20px 12px;font-size:10px}
+}
+/* TABLE + OPTION CHAIN MOBILE SCROLL */
+@media(max-width:640px){
+  .ttb-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;margin:0 -12px;padding:0 12px}
+  .ttb{min-width:600px}
+  .oc-wrap{margin:0 -12px;border-radius:0;border-left:none;border-right:none}
+  .oc-tbl{min-width:500px}
 }
 </style>
 </head>
@@ -1720,7 +1821,7 @@ function rTrades(){
     (closed.length?'<button class="export-btn" onclick="exportCSV()">&#x1F4E5; Export CSV</button>':'')+'</div>';
   if(!closed.length) h+='<div class="emp">No trades yet</div>';
   else{
-    h+='<div style="overflow-x:auto"><table class="ttb"><thead><tr>'+
+    h+='<div class="ttb-wrap"><table class="ttb"><thead><tr>'+
       '<th>Instrument</th><th>Side</th><th>Qty</th><th>Entry</th><th>Exit</th><th>P&L</th><th>%</th><th>Reason</th><th>Hold</th><th>Notes</th></tr></thead><tbody>';
     [...closed].reverse().forEach((t,i)=>{
       const e=t.entry||0,x=t.exit||0;
@@ -2363,6 +2464,7 @@ window._chainUl=_chainUl;
 </html>"""
 
 
+@router.get("/", response_class=HTMLResponse)
 @router.get("/dashboard", response_class=HTMLResponse)
 async def dashboard():
     return HTMLResponse(content=_HTML.replace("__CSRF_TOKEN__", _CSRF_TOKEN))

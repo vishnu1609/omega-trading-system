@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: otc-dashboard
+    runtime: docker
+    plan: free
+    envVars:
+      - key: DHAN_CLIENT_ID
+        sync: false
+      - key: DHAN_ACCESS_TOKEN
+        sync: false
+      - key: TV_WEBHOOK_SECRET
+        sync: false
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: TELEGRAM_CHAT_ID
+        sync: false
