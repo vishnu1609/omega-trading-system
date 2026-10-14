@@ -432,7 +432,7 @@ class SignalGenerator:
         self._trade_dir: dict[str, int] = {}
         self._exit_dir: dict[str, int] = {}
         self._exit_time: dict[str, float] = {}
-        self.flip_cooldown_sec = 1800
+        self.flip_cooldown_sec = 300
         self._scan_count: int = 0
         self._cycle_lock = Lock()
         self._orb_levels: dict[str, tuple[float, float]] = {}
@@ -616,8 +616,10 @@ class SignalGenerator:
                     time.sleep(2 * (attempt + 1))
                     continue
                 if resp.status_code != 200:
+                    log.warning("Dhan candle API status %d for %s", resp.status_code, security_id)
                     return []
                 data = resp.json()
+                log.info("Dhan candle API returned %d candles for securityId=%s", len(data.get("timestamp", [])), security_id)
                 break
             except Exception as exc:
                 if attempt < 2:
@@ -1357,7 +1359,7 @@ class SignalGenerator:
                             )
                             scored.append(sc)
 
-                        best = select_best_signals(scored, max_positions=3, min_score=40)
+                        best = select_best_signals(scored, max_positions=10, min_score=35, skip_correlation=True)
 
                         for pick in best:
                             signal_queue.put(pick.raw_signal)

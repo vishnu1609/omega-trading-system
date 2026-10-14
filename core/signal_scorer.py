@@ -383,8 +383,9 @@ def score_signal(
 
 def select_best_signals(
     scored_signals: list[ScoredSignal],
-    max_positions: int = 3,
-    min_score: float = 40.0,
+    max_positions: int = 10,
+    min_score: float = 35.0,
+    skip_correlation: bool = False,
 ) -> list[ScoredSignal]:
     viable = [s for s in scored_signals if s.total_score >= min_score]
     viable.sort(key=lambda s: s.total_score, reverse=True)
@@ -395,12 +396,13 @@ def select_best_signals(
     for sig in viable:
         if len(selected) >= max_positions:
             break
-        if sig.correlation_group in used_groups:
+        if not skip_correlation and sig.correlation_group in used_groups:
             log.info("Skipping %s (correlated with already selected %s group)",
                      sig.symbol, sig.correlation_group)
             continue
         selected.append(sig)
-        used_groups.add(sig.correlation_group)
+        if not skip_correlation:
+            used_groups.add(sig.correlation_group)
 
     return selected
 

@@ -359,6 +359,7 @@ def main() -> None:
             orb_minutes=sig_cfg.get("orb_minutes", 30),
         )
         sig_gen.set_guardrails(guardrails)
+        register_bot(sig_gen=sig_gen)
 
         calendar = MarketCalendar(base_path=base_path)
         sig_gen.set_calendar(calendar)

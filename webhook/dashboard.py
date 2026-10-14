@@ -191,6 +191,7 @@ async def api_state():
         "feed_health": idx.get("feed_health", {}),
         "consecutive_losses": idx.get("consecutive_losses", 0),
         "loss_cooldown_remaining": idx.get("loss_cooldown_remaining", 0),
+        "csrf": _CSRF_TOKEN,
     }
 
 
@@ -626,6 +627,22 @@ async def api_trade_analytics():
         by_reason[reason]["pnl"] = round(by_reason[reason]["pnl"] + pnl, 2)
     return {"hourly": hourly, "by_symbol": by_symbol, "by_reason": by_reason,
             "pnl_series": pnl_series, "total_trades": len(closed)}
+
+
+@router.get("/api/reverse_engine")
+async def api_reverse_engine():
+    from core.reverse_engine import ReverseEngine
+    sig_gen = _bot.get("sig_gen")
+    engine = ReverseEngine(sig_gen)
+    report = engine.run_full_analysis()
+    # Load autopsy details
+    autopsy_file = Path("data/autopsy_results.json")
+    autopsies = []
+    if autopsy_file.exists():
+        import json as _j
+        autopsies = _j.loads(autopsy_file.read_text())
+    report["autopsies"] = autopsies
+    return report
 
 
 _HTML = """<!DOCTYPE html>
@@ -1112,6 +1129,7 @@ main{padding:24px;max-width:1440px;margin:0 auto;position:relative;z-index:1}
   <button class="tab" data-t="sigs">Signals</button>
   <button class="tab" data-t="chain">Option Chain</button>
   <button class="tab" data-t="analytics">Analytics</button>
+  <button class="tab" data-t="reverse">Reverse Engine</button>
 </nav>
 
 <main>
@@ -1121,6 +1139,7 @@ main{padding:24px;max-width:1440px;margin:0 auto;position:relative;z-index:1}
   <div class="tp" id="tp-sigs"></div>
   <div class="tp" id="tp-chain"><div class="loading">Select an index to load option chain</div></div>
   <div class="tp" id="tp-analytics"><div class="loading">Loading analytics...</div></div>
+  <div class="tp" id="tp-reverse"><div class="loading">Click "Run Analysis" to start reverse engineering</div></div>
 </main>
 
 <div class="ftr"><span class="serif" style="color:var(--gold);font-size:13px;letter-spacing:2px">Omega Trading Company</span><br><span style="margin-top:4px;display:inline-block">Precision. Performance. Profit.</span></div>
@@ -1129,7 +1148,7 @@ main{padding:24px;max-width:1440px;margin:0 auto;position:relative;z-index:1}
 
 <script>
 (function(){
-const _csrf='__CSRF_TOKEN__';
+let _csrf='__CSRF_TOKEN__';
 let S=null,tab='dash';
 
 function fmt(n,d){
@@ -1179,6 +1198,7 @@ document.querySelectorAll('.tab').forEach(b=>{
     document.getElementById('tp-'+tab).classList.add('on');
     if(tab==='chain'){rChain();if(!_chainData)loadChain('NIFTY');}
     if(tab==='analytics'){_anaLoaded=false;rAnalytics();}
+    if(tab==='reverse'){rReverse();}
   };
 });
 
@@ -1278,6 +1298,7 @@ function renderTab(){
 
 /* ── DASHBOARD ── */
 function rDash(){
+  if(Object.keys(_confirmTimers).length>0||_acting)return;
   const s=S.stats||{};
   const pos=S.positions||[];
   const sigs=S.signals||[];
@@ -1299,6 +1320,13 @@ function rDash(){
     '<span style="color:'+pc(s.total_pnl||0)+'">'+fpnl(s.total_pnl||0)+' realised</span> &nbsp;+&nbsp; '+
     '<span style="color:'+pc(s.unrealised||0)+'">'+fpnl(s.unrealised||0)+' open</span></div></div>';
 
+  const buyT=closed.filter(t=>t.direction==='LONG');
+  const sellT=closed.filter(t=>t.direction!=='LONG');
+  const buyPnl=buyT.reduce((a,t)=>a+(t.pnl||0),0);
+  const sellPnl=sellT.reduce((a,t)=>a+(t.pnl||0),0);
+  const buyW=buyT.filter(t=>(t.pnl||0)>=0).length;
+  const sellW=sellT.filter(t=>(t.pnl||0)>=0).length;
+
   h+='<div class="sg">'+
     sc2(fpnl(s.total_pnl||0),'Realised P&L',pc(s.total_pnl||0),'border-top:3px solid '+pc(s.total_pnl||0),'',(s.total_pnl||0)>=0?'sc-hl':'sc-hl-loss')+
     sc2(fpnl(s.unrealised||0),'Unrealised',pc(s.unrealised||0),'','',(s.unrealised||0)>=0?'sc-hl':'sc-hl-loss')+
@@ -1315,6 +1343,13 @@ function rDash(){
     '</div>';
 
   if(closed.length>0){
+    h+='<div class="sg" style="margin-top:12px">'+
+      sc2(fpnl(buyPnl),'BUY P&L',pc(buyPnl),'border-left:3px solid var(--profit)',''+buyT.length+' trades ('+buyW+'W/'+(buyT.length-buyW)+'L)')+
+      sc2(fpnl(sellPnl),'SELL P&L',pc(sellPnl),'border-left:3px solid var(--loss)',''+sellT.length+' trades ('+sellW+'W/'+(sellT.length-sellW)+'L)')+
+    '</div>';
+  }
+
+  if(closed.length>0){
     h+='<div class="cd"><div class="ct">Equity Curve</div><div class="eq-w"><canvas id="eq-cv"></canvas></div></div>';
   }
 
@@ -1322,12 +1357,13 @@ function rDash(){
   if(!pos.length)h+='<div class="emp">No open positions</div>';
   else pos.forEach(p=>{
     const e=p.entry||0,c=p.current||0;
+    const isShort=p.direction!=='LONG';
     let pct=e>0?((c-e)/e*100):0;
-    if(p.direction==='SHORT')pct=-pct;
+    if(isShort)pct=-pct;
     const sid=p.security_id||'';
     const reason=(p.pnl||0)>=0?'BOOK_PROFIT':'BOOK_LOSS';
     h+='<div class="pr">'+
-      '<span class="db '+(p.direction==='LONG'?'db-l':'db-s')+'">'+(p.direction==='LONG'?'BUY':'SELL')+'</span>'+
+      '<span class="db '+(isShort?'db-s':'db-l')+'">'+(isShort?'SELL':'BUY')+'</span>'+
       '<span class="sym">'+parseSym(p.symbol||'').label+'</span>'+
       '<span class="mono" style="font-size:12px">'+R+fmt(e)+' &rarr; '+R+fmt(c)+'</span>'+
       '<span class="mono" style="color:'+pc(p.pnl||0)+';font-weight:600">'+fpnl(p.pnl||0)+'</span>'+
@@ -1519,6 +1555,7 @@ function showToast(msg,type){
 
 /* ── POSITIONS ── */
 function rPos(){
+  if(Object.keys(_confirmTimers).length>0||_acting)return;
   const pos=S.positions||[];
   const R=String.fromCharCode(8377);
   if(!pos.length){
@@ -1535,8 +1572,9 @@ function rPos(){
     const sid=p.security_id||'';
     const tp=p.tp||0;
     const conf=p.confidence||'';
+    const isShort=p.direction!=='LONG';
     let pct=e>0?((c-e)/e*100):0;
-    if(p.direction==='SHORT')pct=-pct;
+    if(isShort)pct=-pct;
     const estTp=tp>0?tp:e+(e-sl)*1.5;
     const lo=Math.min(sl,e,c),hi=Math.max(estTp,e,c);
     const pad=(hi-lo)*0.1||1;
@@ -1555,45 +1593,112 @@ function rPos(){
 
     const il=instrLabel(p.symbol||'',p.expiry||'',p.direction||'',ot,p.quantity||0);
     const isSpr=p.is_spread||false;
-    h+='<div class="pc"><div class="pc-h"><div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">'+
-      (isSpr?'<span style="padding:2px 8px;border-radius:4px;font-size:10px;font-weight:700;background:rgba(168,85,247,.12);color:#a855f7;border:1px solid rgba(168,85,247,.2)">SPREAD</span>':'')+
-      '<span class="db '+(p.direction==='LONG'?'db-l':'db-s')+'">'+(p.direction==='LONG'?'BUY':'SELL')+' '+(ot||'')+'</span>'+
-      '<span style="font-weight:700;font-size:16px">'+(isSpr?esc(parseSym(p.symbol||'').label)+' / '+esc(parseSym(p.hedge_trade_symbol||'').label):esc(parseSym(p.symbol||'').label))+'</span>'+
-      (p.expiry?'<span style="padding:2px 8px;border-radius:4px;font-size:10px;font-weight:600;background:rgba(59,130,246,.1);color:#60a5fa;border:1px solid rgba(59,130,246,.15)">'+esc(fmtExpiry(p.expiry))+'</span>':'')+
-      (conf?'<span class="cb '+cc(conf)+'">'+esc(conf)+'</span>':'')+
-      '<span style="padding:2px 8px;border-radius:4px;font-size:10px;font-weight:700;background:rgba(201,168,76,.08);color:var(--gold);border:1px solid rgba(201,168,76,.12)">L'+dl+'</span>'+
-      (holdStr?'<span style="font-size:11px;color:var(--text-3)">'+holdStr+'</span>':'')+'</div>'+
-      '<div style="display:flex;gap:8px">'+
-      '<button class="abtn '+(pnlVal>=0?'abtn-profit':'abtn-loss')+'" onclick="doAction(\\'/api/close_position\\','+
-      '{security_id:\\''+sid+'\\',reason:\\''+reason+'\\'},null,this)">'+
-      (pnlVal>=0?'Book Profit':'Close Loss')+'</button></div></div>'+
-      '<div class="pc-p">'+
-      '<span style="color:var(--text-2);font-size:14px">'+R+fmt(e)+'</span>'+
-      '<span style="color:var(--text-3)">&rarr;</span>'+
-      '<span class="mono" style="font-size:20px;font-weight:700;color:'+pc(pnlVal)+'">'+R+fmt(c)+'</span>'+
-      '<span class="mono" style="font-size:18px;font-weight:700;color:'+pc(pnlVal)+'">'+fpnl(pnlVal)+'</span>'+
-      '<span style="color:'+pc(pnlVal)+';font-size:13px">('+(pct>=0?'+':'')+pct.toFixed(1)+'%)</span></div>'+
-      '<div class="stb"><div class="stb-f" style="left:'+fL+'%;width:'+fW+'%;background:'+fc+'"></div>'+
-      '<div class="stb-m" style="left:'+slP+'%;background:var(--loss);width:2px" title="Stop Loss"></div>'+
-      '<div class="stb-m" style="left:'+eP+'%;background:var(--text-3);width:1px" title="Entry"></div>'+
-      (tpP>0?'<div class="stb-m" style="left:'+tpP+'%;background:var(--profit);width:2px" title="Take Profit"></div>':'')+
-      '<div class="stb-m" style="left:'+cP+'%;background:'+fc+';width:3px" title="Current"></div></div>'+
-      '<div class="stb-l"><span style="color:var(--loss)">SL '+R+fmt(sl)+'</span>'+
-      '<span>Entry '+R+fmt(e)+'</span>'+
-      (tp>0?'<span style="color:var(--profit)">TP '+R+fmt(tp)+'</span>':'<span>Current</span>')+'</div>'+
-      '<div class="sltp-row">'+
-      '<span class="sltp-val" style="color:var(--loss)" onclick="editSL(\\''+sid+'\\',\\''+(p.symbol||'').replace(/'/g,"")+'\\','+sl+')">SL: '+R+fmt(sl)+'</span>'+
-      '<span class="sltp-edit" onclick="editSL(\\''+sid+'\\',\\''+(p.symbol||'').replace(/'/g,"")+'\\','+sl+')">Edit</span>'+
-      '<span class="sltp-val" style="color:var(--profit)" onclick="editTP(\\''+sid+'\\',\\''+(p.symbol||'').replace(/'/g,"")+'\\','+tp+')">TP: '+(tp>0?R+fmt(tp):'Not set')+'</span>'+
-      '<span class="sltp-edit" onclick="editTP(\\''+sid+'\\',\\''+(p.symbol||'').replace(/'/g,"")+'\\','+tp+')">Edit</span>'+
-      '</div>'+
-      (isSpr?'<div style="display:flex;gap:16px;padding:6px 12px;background:rgba(168,85,247,.06);border-radius:6px;font-size:12px;margin-top:4px">'+
-        '<span style="color:var(--text-2)">Credit: <b style="color:var(--profit)">'+R+fmt(p.net_credit||0)+'</b></span>'+
-        '<span style="color:var(--text-2)">Max Loss: <b style="color:var(--loss)">'+R+fmt(p.max_loss||0)+'</b>/unit</span>'+
-        '<span style="color:var(--text-2)">Width: <b>'+(p.spread_width||0)+'</b></span>'+
-        '<span style="color:var(--text-2)">Hedge: <b>'+R+fmt(p.hedge_entry_price||0)+'</b>&rarr;<b>'+R+fmt(p.hedge_current_price||0)+'</b></span>'+
-      '</div>':'')+
-      (p.delta!=null?'<div style="display:flex;gap:16px;padding:6px 12px;background:rgba(59,130,246,.06);border-radius:6px;font-size:12px;margin-top:4px">'+
+    if(isSpr){
+      const sellSym=parseSym(p.symbol||'').label;
+      const hedgeSym=parseSym(p.hedge_trade_symbol||'').label;
+      const nc=p.net_credit||0;
+      const ml=p.max_loss||0;
+      const sw=p.spread_width||0;
+      const hep=p.hedge_entry_price||0;
+      const hcp=p.hedge_current_price||0;
+      const sellEntry=e;
+      const sellCurr=c;
+      const netEntry=nc;
+      const netCurr=(sellCurr-hcp);
+      const sprPnl=pnlVal;
+      const maxProfit=nc*p.quantity;
+      const maxLoss=ml*p.quantity;
+      const profitPct=nc>0?((nc-netCurr)/nc*100):0;
+      h+='<div class="pc" style="border-left:3px solid #a855f7"><div class="pc-h"><div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">'+
+        '<span style="padding:3px 10px;border-radius:4px;font-size:11px;font-weight:700;background:rgba(168,85,247,.18);color:#c084fc;border:1px solid rgba(168,85,247,.3);letter-spacing:.5px">CREDIT SPREAD</span>'+
+        '<span class="db db-s">SELL '+(ot||'')+'</span>'+
+        (p.expiry?'<span style="padding:2px 8px;border-radius:4px;font-size:10px;font-weight:600;background:rgba(59,130,246,.1);color:#60a5fa;border:1px solid rgba(59,130,246,.15)">'+esc(fmtExpiry(p.expiry))+'</span>':'')+
+        (conf?'<span class="cb '+cc(conf)+'">'+esc(conf)+'</span>':'')+
+        '<span style="padding:2px 8px;border-radius:4px;font-size:10px;font-weight:700;background:rgba(201,168,76,.08);color:var(--gold);border:1px solid rgba(201,168,76,.12)">L'+dl+'</span>'+
+        (holdStr?'<span style="font-size:11px;color:var(--text-3)">'+holdStr+'</span>':'')+'</div>'+
+        '<div style="display:flex;gap:8px">'+
+        '<button class="abtn '+(pnlVal>=0?'abtn-profit':'abtn-loss')+'" onclick="doAction(\\'/api/close_position\\','+
+        '{security_id:\\''+sid+'\\',reason:\\''+reason+'\\'},null,this)">'+
+        (pnlVal>=0?'Book Profit':'Close Loss')+'</button></div></div>'+
+        '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:8px 12px;background:rgba(168,85,247,.05);border-radius:8px;margin:4px 0">'+
+        '<div style="display:flex;flex-direction:column;gap:4px;padding:8px;border-radius:6px;background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.15)">'+
+          '<span style="font-size:10px;font-weight:700;color:#ef4444;letter-spacing:.5px">SELL LEG</span>'+
+          '<span style="font-weight:700;font-size:14px;color:var(--text-1)">'+esc(sellSym)+'</span>'+
+          '<span style="font-size:12px;color:var(--text-2)">'+R+fmt(sellEntry)+' <span style="color:var(--text-3)">&rarr;</span> <b style="color:var(--text-1)">'+R+fmt(sellCurr)+'</b></span>'+
+        '</div>'+
+        '<div style="display:flex;flex-direction:column;gap:4px;padding:8px;border-radius:6px;background:rgba(34,197,94,.08);border:1px solid rgba(34,197,94,.15)">'+
+          '<span style="font-size:10px;font-weight:700;color:#22c55e;letter-spacing:.5px">BUY HEDGE</span>'+
+          '<span style="font-weight:700;font-size:14px;color:var(--text-1)">'+esc(hedgeSym)+'</span>'+
+          '<span style="font-size:12px;color:var(--text-2)">'+R+fmt(hep)+' <span style="color:var(--text-3)">&rarr;</span> <b style="color:var(--text-1)">'+R+fmt(hcp)+'</b></span>'+
+        '</div></div>'+
+        '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;padding:8px 0">'+
+          '<div style="text-align:center;padding:6px;border-radius:6px;background:rgba(34,197,94,.06)">'+
+            '<div style="font-size:10px;color:var(--text-3)">Net Credit</div>'+
+            '<div style="font-size:16px;font-weight:700;color:var(--profit)">'+R+fmt(nc)+'</div></div>'+
+          '<div style="text-align:center;padding:6px;border-radius:6px;background:rgba(239,68,68,.06)">'+
+            '<div style="font-size:10px;color:var(--text-3)">Max Loss</div>'+
+            '<div style="font-size:16px;font-weight:700;color:var(--loss)">'+R+fmt(ml)+'<span style="font-size:10px">/unit</span></div></div>'+
+          '<div style="text-align:center;padding:6px;border-radius:6px;background:rgba(59,130,246,.06)">'+
+            '<div style="font-size:10px;color:var(--text-3)">Width</div>'+
+            '<div style="font-size:16px;font-weight:700;color:var(--cyan)">'+sw+'</div></div>'+
+          '<div style="text-align:center;padding:6px;border-radius:6px;background:'+(sprPnl>=0?'rgba(34,197,94,.06)':'rgba(239,68,68,.06)')+'">'+
+            '<div style="font-size:10px;color:var(--text-3)">Spread P&L</div>'+
+            '<div style="font-size:16px;font-weight:700;color:'+pc(sprPnl)+'">'+fpnl(sprPnl)+'</div></div>'+
+        '</div>'+
+        '<div class="pc-p" style="justify-content:center;gap:12px">'+
+        '<span style="font-size:12px;color:var(--text-3)">Net Premium:</span>'+
+        '<span style="color:var(--text-2);font-size:14px">'+R+fmt(nc)+'</span>'+
+        '<span style="color:var(--text-3)">&rarr;</span>'+
+        '<span class="mono" style="font-size:20px;font-weight:700;color:'+pc(pnlVal)+'">'+R+fmt(netCurr>0?netCurr:c)+'</span>'+
+        '<span style="color:'+pc(pnlVal)+';font-size:13px">('+(pct>=0?'+':'')+pct.toFixed(1)+'%)</span></div>'+
+        '<div class="stb"><div class="stb-f" style="left:'+fL+'%;width:'+fW+'%;background:'+fc+'"></div>'+
+        '<div class="stb-m" style="left:'+slP+'%;background:var(--loss);width:2px" title="Stop Loss"></div>'+
+        '<div class="stb-m" style="left:'+eP+'%;background:var(--text-3);width:1px" title="Entry"></div>'+
+        (tpP>0?'<div class="stb-m" style="left:'+tpP+'%;background:var(--profit);width:2px" title="Take Profit"></div>':'')+
+        '<div class="stb-m" style="left:'+cP+'%;background:'+fc+';width:3px" title="Current"></div></div>'+
+        '<div class="stb-l"><span style="color:var(--loss)">SL '+R+fmt(sl)+'</span>'+
+        '<span>Entry '+R+fmt(e)+'</span>'+
+        (tp>0?'<span style="color:var(--profit)">TP '+R+fmt(tp)+'</span>':'<span>Current</span>')+'</div>'+
+        '<div class="sltp-row">'+
+        '<span class="sltp-val" style="color:var(--loss)" onclick="editSL(\\''+sid+'\\',\\''+(p.symbol||'').replace(/'/g,"")+'\\','+sl+')">SL: '+R+fmt(sl)+'</span>'+
+        '<span class="sltp-edit" onclick="editSL(\\''+sid+'\\',\\''+(p.symbol||'').replace(/'/g,"")+'\\','+sl+')">Edit</span>'+
+        '<span class="sltp-val" style="color:var(--profit)" onclick="editTP(\\''+sid+'\\',\\''+(p.symbol||'').replace(/'/g,"")+'\\','+tp+')">TP: '+(tp>0?R+fmt(tp):'Not set')+'</span>'+
+        '<span class="sltp-edit" onclick="editTP(\\''+sid+'\\',\\''+(p.symbol||'').replace(/'/g,"")+'\\','+tp+')">Edit</span>'+
+        '</div>';
+    } else {
+      h+='<div class="pc"><div class="pc-h"><div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">'+
+        '<span class="db '+(isShort?'db-s':'db-l')+'">'+(isShort?'SELL':'BUY')+' '+(ot||'')+'</span>'+
+        '<span style="font-weight:700;font-size:16px">'+esc(parseSym(p.symbol||'').label)+'</span>'+
+        (p.expiry?'<span style="padding:2px 8px;border-radius:4px;font-size:10px;font-weight:600;background:rgba(59,130,246,.1);color:#60a5fa;border:1px solid rgba(59,130,246,.15)">'+esc(fmtExpiry(p.expiry))+'</span>':'')+
+        (conf?'<span class="cb '+cc(conf)+'">'+esc(conf)+'</span>':'')+
+        '<span style="padding:2px 8px;border-radius:4px;font-size:10px;font-weight:700;background:rgba(201,168,76,.08);color:var(--gold);border:1px solid rgba(201,168,76,.12)">L'+dl+'</span>'+
+        (holdStr?'<span style="font-size:11px;color:var(--text-3)">'+holdStr+'</span>':'')+'</div>'+
+        '<div style="display:flex;gap:8px">'+
+        '<button class="abtn '+(pnlVal>=0?'abtn-profit':'abtn-loss')+'" onclick="doAction(\\'/api/close_position\\','+
+        '{security_id:\\''+sid+'\\',reason:\\''+reason+'\\'},null,this)">'+
+        (pnlVal>=0?'Book Profit':'Close Loss')+'</button></div></div>'+
+        '<div class="pc-p">'+
+        '<span style="color:var(--text-2);font-size:14px">'+R+fmt(e)+'</span>'+
+        '<span style="color:var(--text-3)">&rarr;</span>'+
+        '<span class="mono" style="font-size:20px;font-weight:700;color:'+pc(pnlVal)+'">'+R+fmt(c)+'</span>'+
+        '<span class="mono" style="font-size:18px;font-weight:700;color:'+pc(pnlVal)+'">'+fpnl(pnlVal)+'</span>'+
+        '<span style="color:'+pc(pnlVal)+';font-size:13px">('+(pct>=0?'+':'')+pct.toFixed(1)+'%)</span></div>'+
+        '<div class="stb"><div class="stb-f" style="left:'+fL+'%;width:'+fW+'%;background:'+fc+'"></div>'+
+        '<div class="stb-m" style="left:'+slP+'%;background:var(--loss);width:2px" title="Stop Loss"></div>'+
+        '<div class="stb-m" style="left:'+eP+'%;background:var(--text-3);width:1px" title="Entry"></div>'+
+        (tpP>0?'<div class="stb-m" style="left:'+tpP+'%;background:var(--profit);width:2px" title="Take Profit"></div>':'')+
+        '<div class="stb-m" style="left:'+cP+'%;background:'+fc+';width:3px" title="Current"></div></div>'+
+        '<div class="stb-l"><span style="color:var(--loss)">SL '+R+fmt(sl)+'</span>'+
+        '<span>Entry '+R+fmt(e)+'</span>'+
+        (tp>0?'<span style="color:var(--profit)">TP '+R+fmt(tp)+'</span>':'<span>Current</span>')+'</div>'+
+        '<div class="sltp-row">'+
+        '<span class="sltp-val" style="color:var(--loss)" onclick="editSL(\\''+sid+'\\',\\''+(p.symbol||'').replace(/'/g,"")+'\\','+sl+')">SL: '+R+fmt(sl)+'</span>'+
+        '<span class="sltp-edit" onclick="editSL(\\''+sid+'\\',\\''+(p.symbol||'').replace(/'/g,"")+'\\','+sl+')">Edit</span>'+
+        '<span class="sltp-val" style="color:var(--profit)" onclick="editTP(\\''+sid+'\\',\\''+(p.symbol||'').replace(/'/g,"")+'\\','+tp+')">TP: '+(tp>0?R+fmt(tp):'Not set')+'</span>'+
+        '<span class="sltp-edit" onclick="editTP(\\''+sid+'\\',\\''+(p.symbol||'').replace(/'/g,"")+'\\','+tp+')">Edit</span>'+
+        '</div>';
+    }
+    h+=(p.delta!=null?'<div style="display:flex;gap:16px;padding:6px 12px;background:rgba(59,130,246,.06);border-radius:6px;font-size:12px;margin-top:4px">'+
         '<span style="color:var(--text-2)">Δ <b style="color:var(--cyan)">'+(p.delta||0).toFixed(3)+'</b></span>'+
         '<span style="color:var(--text-2)">Γ <b>'+(p.gamma||0).toFixed(5)+'</b></span>'+
         '<span style="color:var(--text-2)">Θ <b style="color:'+(p.theta<0?'var(--loss)':'var(--profit)')+'">'+((p.theta||0)>=0?'+':'')+(p.theta||0).toFixed(2)+'</b>/day</span>'+
@@ -1619,16 +1724,17 @@ function rTrades(){
       '<th>Instrument</th><th>Side</th><th>Qty</th><th>Entry</th><th>Exit</th><th>P&L</th><th>%</th><th>Reason</th><th>Hold</th><th>Notes</th></tr></thead><tbody>';
     [...closed].reverse().forEach((t,i)=>{
       const e=t.entry||0,x=t.exit||0;
+      const tShort=t.direction!=='LONG';
       let pct=e>0?((x-e)/e*100):0;
-      if(t.direction==='SHORT')pct=-pct;
+      if(tShort)pct=-pct;
       const key=(t.symbol||'')+'_'+(t.exit_time||i);
       const note=notes[key]||'';
       let holdStr='';
       if(t.entry_time&&t.exit_time){try{const d=new Date(t.exit_time)-new Date(t.entry_time);const m=Math.floor(d/60000);holdStr=m>=60?Math.floor(m/60)+'h '+m%60+'m':m+'m';}catch(e){}}
       const ps=parseSym(t.symbol||'');
-      const side=t.direction==='LONG'?'BUY':'SELL';
+      const side=tShort?'SELL':'BUY';
       h+='<tr><td style="font-weight:600;white-space:nowrap">'+esc(ps.label)+'</td>'+
-        '<td><span class="db '+(t.direction==='LONG'?'db-l':'db-s')+'">'+esc(side)+'</span></td>'+
+        '<td><span class="db '+(tShort?'db-s':'db-l')+'">'+esc(side)+'</span></td>'+
         '<td class="mono" style="font-size:12px">'+(t.quantity||'')+'</td>'+
         '<td class="mono">'+R+fmt(e)+'</td><td class="mono">'+R+fmt(x)+'</td>'+
         '<td class="mono" style="color:'+pc(t.pnl||0)+';font-weight:600">'+fpnl(t.pnl||0)+'</td>'+
@@ -1653,7 +1759,7 @@ function rTrades(){
     best.forEach((t,i)=>{
       const ps=parseSym(t.symbol||'');
       h+='<div class="lr"><span class="lr-r">'+medals[i]+(i+1)+'</span>'+
-        '<span class="lr-s">'+(t.direction==='LONG'?'BUY':'SELL')+' '+esc(ps.label)+'</span>'+
+        '<span class="lr-s">'+(t.direction!=='LONG'?'SELL':'BUY')+' '+esc(ps.label)+'</span>'+
         '<span class="mono" style="color:'+pc(t.pnl||0)+';font-weight:700">'+fpnl(t.pnl||0)+'</span>'+
         '<span class="lr-re">'+esc(t.reason||'')+'</span></div>';
     });
@@ -1661,7 +1767,7 @@ function rTrades(){
     worst.forEach((t,i)=>{
       const ps=parseSym(t.symbol||'');
       h+='<div class="lr"><span class="lr-r">'+(i===0?'&#x1F480;':'')+(i+1)+'</span>'+
-        '<span class="lr-s">'+(t.direction==='LONG'?'BUY':'SELL')+' '+esc(ps.label)+'</span>'+
+        '<span class="lr-s">'+(t.direction!=='LONG'?'SELL':'BUY')+' '+esc(ps.label)+'</span>'+
         '<span class="mono" style="color:'+pc(t.pnl||0)+';font-weight:700">'+fpnl(t.pnl||0)+'</span>'+
         '<span class="lr-re">'+esc(t.reason||'')+'</span></div>';
     });
@@ -2053,6 +2159,166 @@ function rAnalytics(){
   el.innerHTML=h;
 }
 
+/* ── REVERSE ENGINE TAB ── */
+let _revData=null;
+let _revLoading=false;
+async function rReverse(){
+  const el=document.getElementById('tp-reverse');
+  if(tab!=='reverse')return;
+  if(_revLoading){el.innerHTML='<div class="loading">Running reverse engine analysis... this may take 30-60 seconds</div>';return;}
+  if(!_revData){
+    el.innerHTML='<div style="text-align:center;padding:40px"><button onclick="runReverse()" class="btn-action" style="padding:12px 32px;font-size:15px;background:var(--gold);color:var(--bg-0);border:none;border-radius:8px;cursor:pointer;font-weight:700">Run Analysis</button><p style="color:var(--text-3);margin-top:12px;font-size:13px">Analyzes all closed trades: indicator accuracy, optimal SL/TP, pattern mining</p></div>';
+    return;
+  }
+  const R=_revData;
+  let h='';
+
+  /* Autopsy Summary */
+  const a=R.autopsy||{};
+  if(a.valid_trades>0){
+    h+='<div class="cd"><div class="ct" style="display:flex;align-items:center;gap:8px"><span style="color:var(--gold)">&#x1F52C;</span> Trade Autopsy</div>';
+    h+='<div class="sg">';
+    h+='<div class="sc2"><div class="sl">Trades Analyzed</div><div class="sv">'+a.valid_trades+'</div></div>';
+    h+='<div class="sc2"><div class="sl">Win Rate</div><div class="sv">'+(a.win_rate*100).toFixed(0)+'%</div></div>';
+    const capC=a.avg_capture_ratio>=0.5?'var(--profit)':'var(--loss)';
+    h+='<div class="sc2"><div class="sl">Avg Capture</div><div class="sv" style="color:'+capC+'">'+(a.avg_capture_ratio*100).toFixed(0)+'%</div></div>';
+    const leftC=a.total_pnl_left_on_table>0?'var(--warn)':'var(--profit)';
+    h+='<div class="sc2"><div class="sl">P&L Left on Table</div><div class="sv" style="color:'+leftC+'">'+fpnl(a.total_pnl_left_on_table)+'</div></div>';
+    h+='<div class="sc2"><div class="sl">Optimal SL</div><div class="sv">'+a.avg_optimal_sl_pct.toFixed(1)+'%</div></div>';
+    h+='<div class="sc2"><div class="sl">Optimal TP</div><div class="sv">'+a.avg_optimal_tp_pct.toFixed(1)+'%</div></div>';
+    h+='</div>';
+
+    /* Indicator accuracy */
+    const ind=a.indicator_accuracy||{};
+    const indArr=Object.entries(ind).sort((a,b)=>b[1].accuracy-a[1].accuracy);
+    if(indArr.length){
+      h+='<div style="margin-top:16px"><div class="sl" style="margin-bottom:8px;font-size:12px">INDICATOR ACCURACY</div>';
+      indArr.forEach(([name,d])=>{
+        const pct=(d.accuracy*100).toFixed(0);
+        const barW=Math.max(pct,5);
+        const barC=d.accuracy>=0.6?'var(--profit)':d.accuracy>=0.4?'var(--warn)':'var(--loss)';
+        h+='<div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">';
+        h+='<span style="width:100px;font-size:12px;color:var(--text-2)">'+name+'</span>';
+        h+='<div style="flex:1;height:16px;background:var(--bg-2);border-radius:4px;overflow:hidden"><div style="width:'+barW+'%;height:100%;background:'+barC+';border-radius:4px;transition:width 0.3s"></div></div>';
+        h+='<span style="width:55px;text-align:right;font-size:12px;font-weight:600;color:'+barC+'">'+pct+'%</span>';
+        h+='</div>';
+      });
+      h+='</div>';
+    }
+
+    /* Component scores */
+    const comp=a.component_scores||{};
+    const compArr=Object.entries(comp).sort((a,b)=>b[1]-a[1]);
+    if(compArr.length){
+      h+='<div style="margin-top:16px"><div class="sl" style="margin-bottom:8px;font-size:12px">COMPONENT SCORES (avg)</div>';
+      compArr.forEach(([name,score])=>{
+        const c=score>0?'var(--profit)':'var(--loss)';
+        const sign=score>0?'+':'';
+        h+='<div style="display:flex;justify-content:space-between;padding:4px 0;font-size:13px">';
+        h+='<span style="color:var(--text-2)">'+name+'</span>';
+        h+='<span style="color:'+c+';font-weight:600;font-family:JetBrains Mono,monospace">'+sign+score.toFixed(2)+'</span></div>';
+      });
+      h+='</div>';
+    }
+
+    h+='</div>';
+  }
+
+  /* Pattern Mining */
+  const p=R.patterns||{};
+  if(p.total_patterns>0){
+    h+='<div class="cd" style="margin-top:12px"><div class="ct" style="display:flex;align-items:center;gap:8px"><span style="color:var(--gold)">&#x26CF;</span> Pattern Mining</div>';
+    h+='<div class="sg">';
+    h+='<div class="sc2"><div class="sl">Patterns Found</div><div class="sv">'+p.total_patterns+'</div></div>';
+    h+='<div class="sc2" style="border-left:2px solid var(--profit)"><div class="sl">Boosters</div><div class="sv" style="color:var(--profit)">'+p.boosters+'</div></div>';
+    h+='<div class="sc2" style="border-left:2px solid var(--loss)"><div class="sl">Penalties</div><div class="sv" style="color:var(--loss)">'+p.penalties+'</div></div>';
+    h+='<div class="sc2" style="border-left:2px solid var(--warn)"><div class="sl">Blockers</div><div class="sv" style="color:var(--warn)">'+p.blockers+'</div></div>';
+    h+='</div>';
+
+    /* Top boosters */
+    const boost=p.top_boosters||[];
+    if(boost.length){
+      h+='<div style="margin-top:16px"><div class="sl" style="margin-bottom:8px;font-size:12px;color:var(--profit)">BOOSTERS (winning patterns)</div>';
+      boost.forEach(b=>{
+        h+='<div style="display:flex;justify-content:space-between;align-items:center;padding:8px;margin-bottom:4px;background:var(--profit-bg);border-radius:6px;border-left:3px solid var(--profit)">';
+        h+='<span style="font-size:12px;color:var(--text-1)">'+b.name.replace(/_/g,' ')+'</span>';
+        h+='<span style="font-size:12px;color:var(--profit);font-family:JetBrains Mono,monospace">WR='+(b.wr*100).toFixed(0)+'% n='+b.n+' z='+b.z.toFixed(1)+' adj='+b.adj.toFixed(0)+'</span></div>';
+      });
+      h+='</div>';
+    }
+
+    /* Top penalties */
+    const pen=p.top_penalties||[];
+    if(pen.length){
+      h+='<div style="margin-top:12px"><div class="sl" style="margin-bottom:8px;font-size:12px;color:var(--loss)">PENALTIES (losing patterns)</div>';
+      pen.forEach(b=>{
+        h+='<div style="display:flex;justify-content:space-between;align-items:center;padding:8px;margin-bottom:4px;background:var(--loss-bg);border-radius:6px;border-left:3px solid var(--loss)">';
+        h+='<span style="font-size:12px;color:var(--text-1)">'+b.name.replace(/_/g,' ')+'</span>';
+        h+='<span style="font-size:12px;color:var(--loss);font-family:JetBrains Mono,monospace">WR='+(b.wr*100).toFixed(0)+'% n='+b.n+' z='+b.z.toFixed(1)+' adj='+b.adj.toFixed(0)+'</span></div>';
+      });
+      h+='</div>';
+    }
+
+    /* Blockers */
+    const blk=p.blockers_list||[];
+    if(blk.length){
+      h+='<div style="margin-top:12px"><div class="sl" style="margin-bottom:8px;font-size:12px;color:var(--warn)">BLOCKED PATTERNS (auto-reject)</div>';
+      blk.forEach(b=>{
+        h+='<div style="display:flex;justify-content:space-between;align-items:center;padding:8px;margin-bottom:4px;background:var(--warn-bg);border-radius:6px;border-left:3px solid var(--warn)">';
+        h+='<span style="font-size:12px;color:var(--text-1)">'+b.name.replace(/_/g,' ')+'</span>';
+        h+='<span style="font-size:12px;color:var(--warn);font-family:JetBrains Mono,monospace">WR='+(b.wr*100).toFixed(0)+'% n='+b.n+'</span></div>';
+      });
+      h+='</div>';
+    }
+
+    h+='</div>';
+  }
+
+  /* Per-trade autopsy details */
+  const auts=(R.autopsies||[]).filter(a=>a.data_quality==='OK');
+  if(auts.length){
+    h+='<div class="cd" style="margin-top:12px"><div class="ct" style="display:flex;align-items:center;gap:8px"><span style="color:var(--gold)">&#x1F4CB;</span> Trade-by-Trade Autopsy</div>';
+    h+='<div style="overflow-x:auto"><table class="tbl" style="width:100%"><thead><tr>';
+    h+='<th>ID</th><th>Symbol</th><th>Dir</th><th>P&L</th><th>Optimal</th><th>Capture</th><th>Left</th><th>Accuracy</th><th>Exit</th>';
+    h+='</tr></thead><tbody>';
+    auts.sort((a,b)=>b.trade_id-a.trade_id).forEach(t=>{
+      const pC=t.actual_pnl>=0?'var(--profit)':'var(--loss)';
+      const capC=t.capture_ratio>=0.5?'var(--profit)':'var(--loss)';
+      const accC=t.indicator_accuracy>=0.6?'var(--profit)':t.indicator_accuracy>=0.4?'var(--warn)':'var(--loss)';
+      h+='<tr>';
+      h+='<td>'+t.trade_id+'</td>';
+      h+='<td style="font-size:11px">'+t.symbol.substring(0,18)+'</td>';
+      h+='<td>'+(t.direction!=='LONG'?'SELL':'BUY')+'</td>';
+      h+='<td style="color:'+pC+'">'+fpnl(t.actual_pnl)+'</td>';
+      h+='<td style="color:var(--profit)">'+fpnl(t.optimal_pnl)+'</td>';
+      h+='<td style="color:'+capC+'">'+(t.capture_ratio*100).toFixed(0)+'%</td>';
+      h+='<td style="color:var(--warn)">'+fpnl(t.pnl_left_on_table)+'</td>';
+      h+='<td style="color:'+accC+'">'+(t.indicator_accuracy*100).toFixed(0)+'%</td>';
+      h+='<td style="font-size:11px">'+t.exit_reason+'</td>';
+      h+='</tr>';
+    });
+    h+='</tbody></table></div></div>';
+  }
+
+  h+='<div style="text-align:center;margin-top:16px"><span style="color:var(--text-3);font-size:12px">Rules injected: '+R.rules_injected+'</span>';
+  h+='<button onclick="runReverse()" style="margin-left:16px;padding:6px 16px;font-size:12px;background:var(--bg-3);color:var(--text-2);border:1px solid var(--border);border-radius:6px;cursor:pointer">Re-run</button></div>';
+
+  el.innerHTML=h;
+}
+async function runReverse(){
+  _revLoading=true;
+  rReverse();
+  try{
+    const r=await fetch('/api/reverse_engine');
+    _revData=await r.json();
+  }catch(e){
+    showToast('Reverse engine failed: '+e.message,'error');
+  }
+  _revLoading=false;
+  rReverse();
+}
+window.runReverse=runReverse;
+
 /* ── FETCH LOOP ── */
 let _lastGoodPoll=Date.now();
 let _pollFails=0;
@@ -2063,6 +2329,7 @@ async function poll(){
     const r=await fetch('/api/state',{signal:ac.signal});
     clearTimeout(tm);
     S=await r.json();
+    if(S.csrf)_csrf=S.csrf;
     _lastGoodPoll=Date.now();
     _pollFails=0;
     document.getElementById('live-dot').style.background='#10b981';

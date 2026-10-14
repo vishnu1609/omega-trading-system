@@ -4,14 +4,14 @@ broker:
   access_token: "${DHAN_ACCESS_TOKEN}"
 
 risk:
-  max_daily_loss: 3000          # 3% of 1L — hard stop. At 5% you need 5.26% to recover, 3% needs only 3.09%
-  max_concurrent_positions: 2   # max 2 positions at a time
-  max_daily_trades: 999         # no hard cap — let the system trade freely
-  sl_buffer_pct: 0.3            # 0.3% SL for underlying index prices (~₹70 NIFTY, ~₹170 BANKNIFTY)
-  trail_pct: 0.15               # continuous trailing: 0.15% behind current price once in profit zone
-  cooldown_after_losses: 2      # consecutive losses before 30-min pause
-  cooldown_minutes: 30
-  margin_buffer_pct: 15         # require 15% extra margin headroom
+  max_daily_loss: 20000         # 10% of 2L — paper mode: let it rip to stress-test
+  max_concurrent_positions: 10  # paper mode: trade all 3 indices simultaneously + spreads
+  max_daily_trades: 999         # no hard cap
+  sl_buffer_pct: 0.3
+  trail_pct: 0.15
+  cooldown_after_losses: 99     # paper mode: effectively no loss cooldown
+  cooldown_minutes: 2           # paper mode: minimal cooldown
+  margin_buffer_pct: 5          # paper mode: tight margin buffer
 
 session:
   start_time: "09:16"           # 1 min after open to skip auction noise
@@ -24,7 +24,7 @@ category_toggle:
 strategy:
   name: "omega_complete"
   mode: "paper"                 # "paper" or "live" — start paper always
-  default_qty_lots: 1           # always 1 lot until you're profitable for 2 weeks
+  default_qty_lots: 3           # paper mode: 3 lots per trade to stress-test with real capital allocation
 
 webhook:
   host: "0.0.0.0"
@@ -43,7 +43,7 @@ telegram:
 signal_generator:
   watch: ["NIFTY", "BANKNIFTY", "SENSEX"]
   poll_interval: 30               # seconds between scans (30s balances signal freshness vs API rate limits)
-  signal_cooldown_sec: 600        # 10 min cooldown between signals per instrument (prevents whipsaw)
+  signal_cooldown_sec: 120        # paper mode: 2 min cooldown — faster signal cycling
   st_period: 10                   # SuperTrend period
   st_mult: 3.0                   # SuperTrend multiplier
   adx_len: 14                    # ADX length
@@ -63,8 +63,8 @@ signal_generator:
 
 guardrails:
   capital: 200000                   # 2 lakh capital
-  max_risk_per_trade_pct: 5.0        # 5% = ₹10,000 max risk in paper mode. Wider SL from ATR floor needs more room. Tighten to 3% for live.
-  nse_allocation_cap: 0.70          # max 70% = ₹70K in NSE indices
+  max_risk_per_trade_pct: 8.0        # paper mode: 8% = ₹16K per trade — room for multi-lot spreads
+  nse_allocation_cap: 0.90          # paper mode: 90% allocation to NSE indices
   adx_min_threshold: 10             # suppress signals if ADX < 10 (truly dead market — 14 was blocking valid options moves)
   vwap_warmup_time: "09:30"         # wait for 3 candles before trusting VWAP
   candle_max_staleness_sec: 330     # reject signal if candle > 5.5 min old

@@ -99,7 +99,7 @@ SHORT_DYNAMIC_SLTP_LEVELS = {
     ],
 }
 
-SL_GRACE_SECONDS = 120
+SL_GRACE_SECONDS = 0
 MIN_OPTION_ATR_PCT = 5.0
 BREAKEVEN_PROFIT_PCT = 5.0
 
@@ -226,24 +226,25 @@ class OmegaStrategy:
             payload["score"] = score
             log.info("CE BOOST: +3 score for CE trade (CE historically outperforms PE, score=%.0f)", score)
 
-        min_score = 45 if self.mode == "paper" else 55
-        if self._consecutive_losses >= 2:
-            elapsed = time.time() - self._last_loss_time
-            if elapsed < 900:
-                remaining = int((900 - elapsed) / 60)
-                log.info("LOSS COOLDOWN: %d consecutive losses — %d min cooldown remaining, blocking %s %s",
-                         self._consecutive_losses, remaining, side, symbol)
-                return
-            if confidence == "LOW":
-                log.info("LOSS FILTER: %d consecutive losses — skipping LOW confidence %s %s (only MEDIUM/HIGH allowed)",
-                         self._consecutive_losses, side, symbol)
-                return
-            min_score = max(min_score, 55)
-        if self._consecutive_losses >= 4:
-            min_score = max(min_score, 60)
-        if "BANKNIFTY" in symbol:
-            min_score += 10
-            log.info("BANKNIFTY GATE: +10 min_score (net loser historically, need higher conviction, min_score=%d)", min_score)
+        min_score = 35 if self.mode == "paper" else 55
+        if self.mode != "paper":
+            if self._consecutive_losses >= 2:
+                elapsed = time.time() - self._last_loss_time
+                if elapsed < 900:
+                    remaining = int((900 - elapsed) / 60)
+                    log.info("LOSS COOLDOWN: %d consecutive losses — %d min cooldown remaining, blocking %s %s",
+                             self._consecutive_losses, remaining, side, symbol)
+                    return
+                if confidence == "LOW":
+                    log.info("LOSS FILTER: %d consecutive losses — skipping LOW confidence %s %s (only MEDIUM/HIGH allowed)",
+                             self._consecutive_losses, side, symbol)
+                    return
+                min_score = max(min_score, 55)
+            if self._consecutive_losses >= 4:
+                min_score = max(min_score, 60)
+            if "BANKNIFTY" in symbol:
+                min_score += 10
+                log.info("BANKNIFTY GATE: +10 min_score (net loser historically, need higher conviction, min_score=%d)", min_score)
         if score < min_score:
             log.info("Signal rejected: %s %s — confidence=%s score=%.0f (need score>=%.0f, mode=%s)",
                      side, symbol, confidence, score, min_score, self.mode)
@@ -256,7 +257,8 @@ class OmegaStrategy:
 
         inst_cfg = self.instruments.get(inst_name, {})
         lot_size = inst_cfg.get("lot_size", 75)
-        quantity = lot_size * self.default_qty_lots
+        conf_lots = {"HIGH": 3, "MEDIUM": 2, "LOW": 1}.get(confidence, 1) if self.mode == "paper" else self.default_qty_lots
+        quantity = lot_size * conf_lots
         direction = "LONG" if side.startswith("BUY") else "SHORT"
 
         option_type = "CE" if side.endswith("CE") else "PE"
@@ -396,20 +398,22 @@ class OmegaStrategy:
             if adj_reasons:
                 log.info("Memory adjustments: %s", "; ".join(adj_reasons))
 
-            size_mod = self.memory.get_position_size_modifier(trade_symbol)
-            if size_mod < 1.0:
-                original_qty = quantity
-                quantity = max(int(quantity * size_mod), inst_cfg.get("lot_size", 75))
-                signal.quantity = quantity
-                log.info("Position size reduced by memory: %d → %d", original_qty, quantity)
+            if self.mode != "paper":
+                size_mod = self.memory.get_position_size_modifier(trade_symbol)
+                if size_mod < 1.0:
+                    original_qty = quantity
+                    quantity = max(int(quantity * size_mod), inst_cfg.get("lot_size", 75))
+                    signal.quantity = quantity
+                    log.info("Position size reduced by memory: %d → %d", original_qty, quantity)
 
-        regime_size_mult = {"HIGH_VOL": 0.5, "CHOPPY": 0.7, "NORMAL": 1.0, "TRENDING": 1.2}.get(vol_regime, 1.0)
-        if regime_size_mult != 1.0:
-            original_qty = quantity
-            quantity = max(lot_size, int(quantity * regime_size_mult) // lot_size * lot_size)
-            signal.quantity = quantity
-            if quantity != original_qty:
-                log.info("REGIME sizing (%s): %d → %d (×%.1f)", vol_regime, original_qty, quantity, regime_size_mult)
+        if self.mode != "paper":
+            regime_size_mult = {"HIGH_VOL": 0.5, "CHOPPY": 0.7, "NORMAL": 1.0, "TRENDING": 1.2}.get(vol_regime, 1.0)
+            if regime_size_mult != 1.0:
+                original_qty = quantity
+                quantity = max(lot_size, int(quantity * regime_size_mult) // lot_size * lot_size)
+                signal.quantity = quantity
+                if quantity != original_qty:
+                    log.info("REGIME sizing (%s): %d → %d (×%.1f)", vol_regime, original_qty, quantity, regime_size_mult)
 
         score = payload.get("score", 0)
         atr_for_sizing = payload.get("atr", 0)
@@ -457,18 +461,19 @@ class OmegaStrategy:
         sl_pct = levels[0]["sl_pct"]
         tp_pct = levels[0]["tp_pct"]
 
-        if self._consecutive_losses >= 4:
-            quantity = max(lot_size, (quantity // 3) // lot_size * lot_size)
-            signal.quantity = quantity
-            sl_pct = max(sl_pct - 2.0, 3.0)
-            log.info("LOSS RECOVERY SEVERE: %d losses — qty to 1/3 (%d), SL tightened to %.1f%%",
-                     self._consecutive_losses, quantity, sl_pct)
-        elif self._consecutive_losses >= 3:
-            quantity = max(lot_size, (quantity // 2) // lot_size * lot_size)
-            signal.quantity = quantity
-            sl_pct = max(sl_pct - 1.0, 3.0)
-            log.info("LOSS RECOVERY: %d losses — qty halved to %d, SL tightened to %.1f%%",
-                     self._consecutive_losses, quantity, sl_pct)
+        if self.mode != "paper":
+            if self._consecutive_losses >= 4:
+                quantity = max(lot_size, (quantity // 3) // lot_size * lot_size)
+                signal.quantity = quantity
+                sl_pct = max(sl_pct - 2.0, 3.0)
+                log.info("LOSS RECOVERY SEVERE: %d losses — qty to 1/3 (%d), SL tightened to %.1f%%",
+                         self._consecutive_losses, quantity, sl_pct)
+            elif self._consecutive_losses >= 3:
+                quantity = max(lot_size, (quantity // 2) // lot_size * lot_size)
+                signal.quantity = quantity
+                sl_pct = max(sl_pct - 1.0, 3.0)
+                log.info("LOSS RECOVERY: %d losses — qty halved to %d, SL tightened to %.1f%%",
+                         self._consecutive_losses, quantity, sl_pct)
 
         india_vix = payload.get("india_vix", 0)
         if india_vix > 0 and india_vix < 12 and direction == "SHORT":
@@ -476,7 +481,7 @@ class OmegaStrategy:
             signal.quantity = quantity
             log.info("LOW VIX SIZING: VIX=%.1f < 12, SELL qty reduced to %d (low premium)", india_vix, quantity)
 
-        if "PE" in side:
+        if "PE" in side and self.mode != "paper":
             quantity = max(lot_size, (quantity * 8 // 10) // lot_size * lot_size)
             signal.quantity = quantity
             log.info("PE SIZE REDUCTION: PE qty reduced to %d (PE historically underperforms CE)", quantity)
@@ -602,7 +607,7 @@ class OmegaStrategy:
         for pos in self.pm.open_positions:
             if symbol in pos.symbol or pos.strategy == strategy:
                 hold_minutes = (now - pos.entry_time).total_seconds() / 60
-                if hold_minutes < 10:
+                if self.mode != "paper" and hold_minutes < 10:
                     log.info("SIGNAL_EXIT blocked for %s — held only %.0f min (need 10 min minimum hold)",
                              pos.symbol, hold_minutes)
                     continue
@@ -655,7 +660,9 @@ class OmegaStrategy:
 
         inst_cfg = self.instruments.get(inst_name, {})
         lot_size = inst_cfg.get("lot_size", 75)
-        quantity = lot_size * self.default_qty_lots
+        spread_conf = payload.get("confidence", "MEDIUM")
+        conf_lots = {"HIGH": 3, "MEDIUM": 2, "LOW": 1}.get(spread_conf, 1) if self.mode == "paper" else self.default_qty_lots
+        quantity = lot_size * conf_lots
         strike_step = inst_cfg.get("strike_step", 50)
 
         if not self.option_chain:
@@ -674,7 +681,7 @@ class OmegaStrategy:
             underlying_price=underlying_price,
             option_type=option_type,
             sell_otm_steps=2,
-            hedge_otm_steps=6,
+            hedge_otm_steps=4,
             lot_size=lot_size,
             strike_step=strike_step,
         )
@@ -692,9 +699,10 @@ class OmegaStrategy:
                         max_loss_per_unit, spread_width, net_credit)
             return
 
+        max_spreads = 8 if self.mode == "paper" else 2
         spread_count = sum(1 for p in self.pm.open_positions if p.is_spread)
-        if spread_count >= 2:
-            log.warning("Max 2 concurrent spreads reached — blocking %s %s", side, inst_name)
+        if spread_count >= max_spreads:
+            log.warning("Max %d concurrent spreads reached — blocking %s %s", max_spreads, side, inst_name)
             return
 
         if self.guardrails:
@@ -956,7 +964,10 @@ class OmegaStrategy:
             )
             pos.peak_price = trail_eval["peak"]
 
-            new_trail = trail_eval["sl"]
+            if self.mode == "paper":
+                new_trail = pos.trail_sl
+            else:
+                new_trail = trail_eval["sl"]
             old_trail = pos.trail_sl
 
             if past_all_levels:
@@ -972,7 +983,7 @@ class OmegaStrategy:
                         new_trail = atr_trail
 
             # --- 1. BREAKEVEN LOCKDOWN ---
-            if not pos.breakeven_locked and profit_pct >= BREAKEVEN_PROFIT_PCT:
+            if self.mode != "paper" and not pos.breakeven_locked and profit_pct >= BREAKEVEN_PROFIT_PCT:
                 be_buffer = max(premium_atr * 0.5, pos.entry_price * 0.015)
                 if pos.is_long:
                     be_price = round(pos.entry_price + be_buffer, 2)
@@ -1017,7 +1028,7 @@ class OmegaStrategy:
             tranche_1_pct = {"HIGH": 5.0, "MEDIUM": 4.0, "LOW": 3.5}.get(pos.confidence, 3.5)
             tranche_2_pct = {"HIGH": 9.0, "MEDIUM": 7.0, "LOW": 5.5}.get(pos.confidence, 5.5)
 
-            if pos.tranche_exits == 0 and profit_pct >= tranche_1_pct:
+            if self.mode != "paper" and pos.tranche_exits == 0 and profit_pct >= tranche_1_pct:
                 exit_qty = max(lot_size, (pos.quantity // 3) // lot_size * lot_size)
                 if exit_qty < pos.quantity:
                     log.info("TRANCHE 1: %s %s profit=%.1f%% ≥ %.0f%% — exit %d of %d @ %.2f",
@@ -1026,7 +1037,7 @@ class OmegaStrategy:
                     self._partial_exit(pos, exit_qty, ltp)
                     pos.tranche_exits = 1
 
-            elif pos.tranche_exits == 1 and profit_pct >= tranche_2_pct:
+            elif self.mode != "paper" and pos.tranche_exits == 1 and profit_pct >= tranche_2_pct:
                 exit_qty = max(lot_size, (pos.quantity // 2) // lot_size * lot_size)
                 if exit_qty < pos.quantity:
                     log.info("TRANCHE 2: %s %s profit=%.1f%% ≥ %.0f%% — exit %d of %d @ %.2f",
