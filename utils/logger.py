@@ -20,7 +20,7 @@ def setup_logging(level: str = "INFO", log_file: str = "logs/omega.log") -> None
     file_handler.setFormatter(logging.Formatter(fmt, datefmt=datefmt))
 
     console_handler = logging.StreamHandler(sys.stdout)
-    console_handler.setLevel(logging.WARNING)
+    console_handler.setLevel(logging.INFO)
     console_handler.setFormatter(logging.Formatter(fmt, datefmt=datefmt))
 
     root.addHandler(file_handler)

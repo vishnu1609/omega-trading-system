@@ -531,16 +531,16 @@ class RiskEngine:
         detail = ""
 
         if hold_seconds < 600:
-            trail_width = 3.0
+            trail_width = 3.5
         elif hold_seconds < 1800:
-            trail_width = 2.5
+            trail_width = 3.0
         elif hold_seconds < 3600:
-            trail_width = 2.0
+            trail_width = 2.5
         else:
-            trail_width = 1.5
+            trail_width = 2.0
 
         if atr_multiples >= 5.0:
-            trail_width = min(trail_width, 1.5)
+            trail_width = min(trail_width, 2.0)
             if is_long:
                 candidate = peak - (trail_width * atr)
             else:
@@ -552,14 +552,15 @@ class RiskEngine:
             else:
                 candidate = peak + (trail_width * atr)
             detail = f"trail ({atr_multiples:.1f}×ATR, {trail_width}×w): {sl:.2f} → {candidate:.2f}"
-        elif atr_multiples >= 1.5:
-            candidate = entry_price
-            detail = f"breakeven (1.5×ATR): {sl:.2f} → {candidate:.2f}"
+        elif atr_multiples >= 2.5:
+            be_buffer = atr * 0.7
+            candidate = entry_price + be_buffer if is_long else entry_price - be_buffer
+            detail = f"breakeven+ (2.5×ATR): {sl:.2f} → {candidate:.2f} (buffer={be_buffer:.2f})"
         else:
             candidate = sl
 
         candidate = round(candidate, 2)
-        min_distance = entry_price * 0.03
+        min_distance = entry_price * 0.08
         if is_long:
             floor_sl = round(peak - min_distance, 2) if _is_valid_price(peak) else candidate
             if _is_valid_price(candidate) and candidate > floor_sl:

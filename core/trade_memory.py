@@ -537,7 +537,7 @@ class TradeMemory:
                                        volatility_regime=volatility_regime):
                 age = self._rule_age_days(rule, now)
                 decay = math.exp(-0.693 * age / (DECAY_HALF_LIFE_DAYS * 2))
-                weighted_mod = rule.score_modifier * rule.confidence * decay
+                weighted_mod = rule.score_modifier * abs(rule.confidence) * decay
                 total += weighted_mod
                 reasons.append(f"[AUTO] {rule.pattern} (WR={rule.win_rate:.0%}, "
                                f"eff={rule.effectiveness:.0%}): {weighted_mod:+.1f}")

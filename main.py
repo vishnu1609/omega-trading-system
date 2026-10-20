@@ -48,7 +48,7 @@ from utils.market_calendar import MarketCalendar
 from webhook.tv_receiver import app, signal_queue
 
 IST = ZoneInfo("Asia/Kolkata")
-load_dotenv()
+load_dotenv(override=True)
 
 
 def load_config() -> tuple[dict, dict]:
@@ -237,7 +237,7 @@ def main() -> None:
     live_feed.start(index_instruments)
     log.info("LiveFeed started — WebSocket subscribed to %d index instruments", len(index_instruments))
 
-    wallet = Wallet(starting_capital=200_000.0)
+    wallet = Wallet(starting_capital=100_000.0)
     wallet.reconcile_in_trade(pm.open_positions)
     log.info("Wallet loaded: balance=₹%.2f available=₹%.2f", wallet.balance, wallet.available)
 

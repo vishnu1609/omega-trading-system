@@ -228,15 +228,57 @@ class IMessageAlert:
         self.send("\n".join(lines))
 
     def signal_detected(self, symbol: str, side: str, score: int,
-                        adx: float, strike: int = 0, premium: float = 0) -> None:
+                        adx: float, strike: int = 0, premium: float = 0,
+                        **kw) -> None:
+        conf = kw.get("confidence", "")
+        regime = kw.get("regime", "")
+        rsi = kw.get("rsi", 0)
+        supertrend = kw.get("supertrend", "")
+        vwap_rel = kw.get("vwap", "")
+        chop = kw.get("choppiness", 0)
+        atr = kw.get("atr", 0)
+        close = kw.get("close", 0)
+        mem_adj = kw.get("memory_adj", 0)
+        blocked = kw.get("blocked", False)
+        block_reason = kw.get("block_reason", "")
+        oi = kw.get("oi", 0)
+        iv = kw.get("iv", 0)
+
+        direction = "BULL" if ("BUY" in side and "CE" in side) or ("SELL" in side and "PE" in side) else "BEAR"
+        status = "BLOCKED" if blocked else "LIVE"
+        conf_tag = f"  [{conf}]" if conf else ""
+
         lines = [
-            f"  SIGNAL DETECTED",
-            f"  {side} {symbol}",
-            f"  Score: {score}/100  |  ADX: {adx:.1f}",
+            f"{'='*28}",
+            f"  SIGNAL  {side}{conf_tag}",
+            f"{'='*28}",
+            f"  {symbol}  |  {direction}",
+            f"  Score: {score}/100  |  {status}",
         ]
         if strike:
-            lines.append(f"  Strike: {strike}  |  Premium: Rs.{premium:.2f}")
-        lines.append(f"  {datetime.now(IST).strftime('%H:%M:%S IST')}")
+            lines.append(f"  Strike: {strike}  |  Rs.{premium:,.2f}")
+        if close:
+            lines.append(f"  Index: {close:,.2f}")
+        lines.append(f"")
+        if adx:
+            lines.append(f"  ADX {adx:.1f}  |  RSI {rsi:.1f}")
+        if supertrend:
+            lines.append(f"  ST: {supertrend}  |  VWAP: {vwap_rel}")
+        if chop:
+            lines.append(f"  Chop: {chop:.1f}  |  ATR: {atr:.2f}")
+        if regime:
+            lines.append(f"  Regime: {regime}")
+        if iv > 0:
+            lines.append(f"  IV: {iv:.1f}%  |  OI: {oi:,}")
+        if mem_adj:
+            lines.append(f"  Memory: {mem_adj:+.0f}")
+        if blocked and block_reason:
+            lines.append(f"  Reason: {block_reason}")
+        lines.extend([
+            f"",
+            f"  {datetime.now(IST).strftime('%H:%M:%S IST')}",
+            f"{'='*28}",
+        ])
         self.send("\n".join(lines))
 
     def position_update(self, symbol: str, direction: str, entry: float,

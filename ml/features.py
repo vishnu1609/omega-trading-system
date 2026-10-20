@@ -128,6 +128,38 @@ def extract_features(candles: list[Candle], lookback: int = 50) -> dict[str, flo
     chop = _choppiness(highs[-14:], lows[-14:], closes[-14:], 14)
     features["choppiness"] = chop
 
+    # === ADDITIONAL FEATURES (6) ===
+    vwap = float(np.sum(closes * volumes) / np.sum(volumes)) if np.sum(volumes) > 0 else c.close
+    features["vwap_distance_pct"] = (c.close - vwap) / vwap * 100 if vwap > 0 else 0
+
+    consec_green = 0
+    for i in range(len(closes) - 1, max(0, len(closes) - 6), -1):
+        if closes[i] > opens[i]:
+            consec_green += 1
+        else:
+            break
+    consec_red = 0
+    for i in range(len(closes) - 1, max(0, len(closes) - 6), -1):
+        if closes[i] < opens[i]:
+            consec_red += 1
+        else:
+            break
+    features["consec_green"] = float(consec_green)
+    features["consec_red"] = float(consec_red)
+
+    if len(closes) >= 10:
+        momentum_5 = (closes[-1] - closes[-6]) / closes[-6] * 100 if closes[-6] > 0 else 0
+        momentum_10 = (closes[-1] - closes[-11]) / closes[-11] * 100 if len(closes) >= 11 and closes[-11] > 0 else 0
+        features["momentum_5"] = momentum_5
+        features["price_acceleration"] = momentum_5 - momentum_10
+    else:
+        features["momentum_5"] = 0.0
+        features["price_acceleration"] = 0.0
+
+    avg_range_20 = float(np.mean(highs[-20:] - lows[-20:])) if len(highs) >= 20 else float(np.mean(highs - lows))
+    current_range = float(highs[-1] - lows[-1]) if len(highs) > 0 else 0
+    features["range_expansion"] = current_range / avg_range_20 if avg_range_20 > 0 else 1.0
+
     return features
 
 
@@ -141,14 +173,17 @@ FEATURE_NAMES = [
     "adx_14", "adx_slope_5", "atr_14", "atr_pct", "atr_ratio_5_20",
     "avg_bar_range_5", "bb_position", "bb_squeeze", "bb_width",
     "body_pct", "choppiness", "close_position", "close_vs_prev_high",
+    "consec_green", "consec_red",
     "day_of_week", "di_spread", "ema9", "ema21", "ema_cross",
     "ema_spread_pct", "gap_pct", "higher_high", "hour_cos", "hour_sin",
     "hurst_exponent", "is_first_hour", "is_last_hour", "lower_low",
-    "lower_wick_pct", "macd_histogram", "minutes_from_open", "obv_slope",
-    "price_vs_ema50_pct", "price_vs_sma200_pct", "range_pct",
+    "lower_wick_pct", "macd_histogram", "minutes_from_open", "momentum_5",
+    "obv_slope", "price_acceleration", "price_vs_ema50_pct",
+    "price_vs_sma200_pct", "range_expansion", "range_pct",
     "return_kurtosis", "return_skew", "rsi_14", "rsi_zone",
     "supertrend_dir", "trend_strength", "upper_wick_pct",
     "volume_price_corr", "volume_ratio", "volume_trend_5",
+    "vwap_distance_pct",
 ]
 
 

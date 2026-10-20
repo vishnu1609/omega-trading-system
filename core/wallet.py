@@ -15,7 +15,7 @@ from core.database import OmegaDB
 
 log = logging.getLogger(__name__)
 IST = ZoneInfo("Asia/Kolkata")
-DEFAULT_CAPITAL = 200_000.0
+DEFAULT_CAPITAL = 100_000.0
 
 
 class Wallet:
@@ -29,8 +29,27 @@ class Wallet:
         self._today_pnl = w.get("today_pnl", 0.0)
         self._today_trades = w.get("today_trades", 0)
         self._today_date = w.get("trade_date", datetime.now(IST).strftime("%Y-%m-%d"))
-        log.info("Wallet loaded: balance=%.2f in_trade=%.2f today_pnl=%.2f",
-                 self._balance, self._in_trade, self._today_pnl)
+        self._reconcile_today_pnl()
+        log.info("Wallet loaded: balance=%.2f in_trade=%.2f today_pnl=%.2f trades=%d",
+                 self._balance, self._in_trade, self._today_pnl, self._today_trades)
+
+    def _reconcile_today_pnl(self):
+        try:
+            today = datetime.now(IST).strftime("%Y-%m-%d")
+            rows = self._db.get_trades(limit=200, date=today)
+            db_pnl = sum(r.get("pnl", 0) for r in rows)
+            db_count = len(rows)
+            if db_count > 0 and (abs(self._today_pnl - db_pnl) > 0.01
+                                 or self._today_trades != db_count):
+                log.warning("WALLET RECONCILE PNL: today_pnl ₹%.2f → ₹%.2f, "
+                            "trades %d → %d (from DB)",
+                            self._today_pnl, db_pnl,
+                            self._today_trades, db_count)
+                self._today_pnl = round(db_pnl, 2)
+                self._today_trades = db_count
+                self._sync_to_db()
+        except Exception as e:
+            log.warning("Wallet PnL reconcile failed: %s", e)
 
     def _sync_to_db(self):
         self._db.update_wallet(

@@ -232,6 +232,42 @@ class OmegaMLEngine:
                 "notes": "Choppy — tight everything, reduce exposure, many false signals",
             }
 
+    def record_signal(self, payload: dict, status: str, candles: list[Candle] | None = None) -> None:
+        """Record every signal (blocked or executed) for ML learning."""
+        signal_record = {
+            "symbol": payload.get("symbol", ""),
+            "side": payload.get("side", ""),
+            "score": float(payload.get("score", 0)),
+            "confidence": payload.get("confidence", "LOW"),
+            "adx": payload.get("adx", 0),
+            "rsi": payload.get("rsi", 50),
+            "vwap_position": payload.get("vwap_position", ""),
+            "supertrend_dir": payload.get("supertrend_dir", ""),
+            "volatility_regime": payload.get("volatility_regime", "NORMAL"),
+            "volume_ratio": payload.get("volume_ratio", 1.0),
+            "status": status,
+            "timestamp": time.time(),
+            "entry_time": datetime.now(IST).isoformat(),
+            "regime": REGIME_NAMES[self._last_regime],
+        }
+        if candles and len(candles) >= 50:
+            features = extract_features(candles, lookback=50)
+            if features:
+                signal_record["features"] = features_to_array(features, FEATURE_NAMES).tolist()
+
+        signal_log_path = DATA_DIR / "signal_log.json"
+        try:
+            existing = json.loads(signal_log_path.read_text()) if signal_log_path.exists() else []
+        except Exception:
+            existing = []
+        existing.append(signal_record)
+        if len(existing) > 5000:
+            existing = existing[-5000:]
+        signal_log_path.write_text(json.dumps(existing, indent=1))
+        log.info("Signal logged for ML: %s %s %s score=%.0f (total=%d)",
+                 status, payload.get("side", ""), payload.get("symbol", ""),
+                 signal_record["score"], len(existing))
+
     def get_current_regime(self) -> dict:
         return {
             "regime": REGIME_NAMES[self._last_regime],

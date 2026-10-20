@@ -4,14 +4,14 @@ broker:
   access_token: "${DHAN_ACCESS_TOKEN}"
 
 risk:
-  max_daily_loss: 20000         # 10% of 2L — paper mode: let it rip to stress-test
-  max_concurrent_positions: 10  # paper mode: trade all 3 indices simultaneously + spreads
-  max_daily_trades: 999         # no hard cap
+  max_daily_loss: 10000         # 10% of 1L — paper mode: let it rip to stress-test
+  max_concurrent_positions: 3   # disciplined: max 3 positions at once
+  max_daily_trades: 12          # cap overtrading — quality over quantity
   sl_buffer_pct: 0.3
   trail_pct: 0.15
-  cooldown_after_losses: 99     # paper mode: effectively no loss cooldown
-  cooldown_minutes: 2           # paper mode: minimal cooldown
-  margin_buffer_pct: 5          # paper mode: tight margin buffer
+  cooldown_after_losses: 3      # cooldown after 3 consecutive losses
+  cooldown_minutes: 15          # 15 min cooldown to let market settle
+  margin_buffer_pct: 10         # keep 10% buffer for safety
 
 session:
   start_time: "09:16"           # 1 min after open to skip auction noise
@@ -24,7 +24,7 @@ category_toggle:
 strategy:
   name: "omega_complete"
   mode: "paper"                 # "paper" or "live" — start paper always
-  default_qty_lots: 3           # paper mode: 3 lots per trade to stress-test with real capital allocation
+  default_qty_lots: 1           # conservative: 1 lot per trade, scale up on winners
 
 webhook:
   host: "0.0.0.0"
@@ -62,8 +62,8 @@ signal_generator:
   orb_minutes: 30                 # Opening Range Breakout window (9:15 + 30 min = 9:45)
 
 guardrails:
-  capital: 200000                   # 2 lakh capital
-  max_risk_per_trade_pct: 8.0        # paper mode: 8% = ₹16K per trade — room for multi-lot spreads
+  capital: 100000                   # 1 lakh capital
+  max_risk_per_trade_pct: 8.0        # paper mode: 8% = ₹8K per trade — room for multi-lot spreads
   nse_allocation_cap: 0.90          # paper mode: 90% allocation to NSE indices
   adx_min_threshold: 10             # suppress signals if ADX < 10 (truly dead market — 14 was blocking valid options moves)
   vwap_warmup_time: "09:30"         # wait for 3 candles before trusting VWAP

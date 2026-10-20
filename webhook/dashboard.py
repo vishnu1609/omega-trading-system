@@ -1262,7 +1262,7 @@ function esc(s){if(!s)return '';return String(s).replace(/&/g,'&amp;').replace(/
 function cc(c){return c==='HIGH'?'cb-h':c==='MEDIUM'?'cb-m':'cb-lo'}
 function scc(s){return s>=70?'var(--profit)':s>=45?'var(--warn)':'var(--loss)'}
 function parseSym(sym){
-  const m=sym.match(/^(NIFTY|BANKNIFTY|SENSEX|FINNIFTY|MIDCPNIFTY)(\d+)(CE|PE)$/i);
+  const m=sym.match(/^(NIFTY|BANKNIFTY|SENSEX|FINNIFTY|MIDCPNIFTY)(\\d+)(CE|PE)$/i);
   if(!m) return {idx:sym,strike:'',type:'',label:sym};
   return {idx:m[1],strike:m[2],type:m[3],label:m[1]+' '+m[2]+' '+m[3]};
 }
@@ -1371,7 +1371,7 @@ function renderIdx(){
 function renderWlt(){
   const w=S.wallet||{};
   const b=w.balance||0,a=w.available||0,it=w.in_trade||0,tp=w.today_pnl||0;
-  const sc=w.starting_capital||200000;
+  const sc=w.starting_capital||100000;
   const tot=b-sc;
   const pct=sc>0?(tot/sc*100):0;
   document.getElementById('wallet').innerHTML=

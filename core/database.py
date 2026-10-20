@@ -22,11 +22,11 @@ DB_PATH = Path(__file__).parent.parent / "data" / "omega.db"
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS wallet (
     id INTEGER PRIMARY KEY CHECK (id = 1),
-    balance REAL NOT NULL DEFAULT 200000,
+    balance REAL NOT NULL DEFAULT 100000,
     in_trade REAL NOT NULL DEFAULT 0,
     today_pnl REAL NOT NULL DEFAULT 0,
     today_trades INTEGER NOT NULL DEFAULT 0,
-    starting_capital REAL NOT NULL DEFAULT 200000,
+    starting_capital REAL NOT NULL DEFAULT 100000,
     trade_date TEXT NOT NULL,
     updated_at TEXT NOT NULL
 );
@@ -45,6 +45,17 @@ CREATE TABLE IF NOT EXISTS trades (
     exit_reason TEXT,
     strategy TEXT,
     balance_after REAL,
+    signal_score REAL DEFAULT 0,
+    signal_confidence TEXT DEFAULT 'LOW',
+    volatility_regime TEXT DEFAULT 'NORMAL',
+    adx_value REAL DEFAULT 0,
+    rsi_value REAL DEFAULT 50,
+    atr_value REAL DEFAULT 0,
+    volume_ratio REAL DEFAULT 1.0,
+    supertrend_dir TEXT DEFAULT '',
+    vwap_position TEXT DEFAULT '',
+    hold_minutes REAL DEFAULT 0,
+    r_multiple REAL DEFAULT 0,
     created_at TEXT NOT NULL
 );
 
@@ -102,10 +113,24 @@ class OmegaDB:
         self._local = threading.local()
         conn = self._conn()
         conn.executescript(_SCHEMA)
-        try:
-            conn.execute("ALTER TABLE positions ADD COLUMN dynamic_level INTEGER DEFAULT 1")
-        except sqlite3.OperationalError:
-            pass
+        for alter in [
+            "ALTER TABLE positions ADD COLUMN dynamic_level INTEGER DEFAULT 1",
+            "ALTER TABLE trades ADD COLUMN signal_score REAL DEFAULT 0",
+            "ALTER TABLE trades ADD COLUMN signal_confidence TEXT DEFAULT 'LOW'",
+            "ALTER TABLE trades ADD COLUMN volatility_regime TEXT DEFAULT 'NORMAL'",
+            "ALTER TABLE trades ADD COLUMN adx_value REAL DEFAULT 0",
+            "ALTER TABLE trades ADD COLUMN rsi_value REAL DEFAULT 50",
+            "ALTER TABLE trades ADD COLUMN atr_value REAL DEFAULT 0",
+            "ALTER TABLE trades ADD COLUMN volume_ratio REAL DEFAULT 1.0",
+            "ALTER TABLE trades ADD COLUMN supertrend_dir TEXT DEFAULT ''",
+            "ALTER TABLE trades ADD COLUMN vwap_position TEXT DEFAULT ''",
+            "ALTER TABLE trades ADD COLUMN hold_minutes REAL DEFAULT 0",
+            "ALTER TABLE trades ADD COLUMN r_multiple REAL DEFAULT 0",
+        ]:
+            try:
+                conn.execute(alter)
+            except sqlite3.OperationalError:
+                pass
         conn.commit()
         log.info("Database ready: %s", self._db_path)
 
@@ -134,7 +159,7 @@ class OmegaDB:
             return {}
         return dict(row)
 
-    def init_wallet(self, starting_capital: float = 200_000) -> dict:
+    def init_wallet(self, starting_capital: float = 100_000) -> dict:
         now = datetime.now(IST)
         conn = self._conn()
         existing = conn.execute("SELECT * FROM wallet WHERE id=1").fetchone()
@@ -179,14 +204,22 @@ class OmegaDB:
                      quantity: int, entry_price: float, exit_price: float,
                      pnl: float, entry_time: str, exit_time: str,
                      exit_reason: str, strategy: str,
-                     balance_after: float) -> int:
+                     balance_after: float, **kwargs) -> int:
         cur = self._conn().execute(
             "INSERT INTO trades (symbol, direction, option_type, quantity, "
             "entry_price, exit_price, pnl, entry_time, exit_time, exit_reason, "
-            "strategy, balance_after, created_at) "
-            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            "strategy, balance_after, signal_score, signal_confidence, "
+            "volatility_regime, adx_value, rsi_value, atr_value, volume_ratio, "
+            "supertrend_dir, vwap_position, hold_minutes, r_multiple, created_at) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (symbol, direction, option_type, quantity, entry_price, exit_price,
              pnl, entry_time, exit_time, exit_reason, strategy, balance_after,
+             kwargs.get("signal_score", 0), kwargs.get("signal_confidence", "LOW"),
+             kwargs.get("volatility_regime", "NORMAL"), kwargs.get("adx_value", 0),
+             kwargs.get("rsi_value", 50), kwargs.get("atr_value", 0),
+             kwargs.get("volume_ratio", 1.0), kwargs.get("supertrend_dir", ""),
+             kwargs.get("vwap_position", ""), kwargs.get("hold_minutes", 0),
+             kwargs.get("r_multiple", 0),
              datetime.now(IST).isoformat()))
         self._conn().commit()
         return cur.lastrowid

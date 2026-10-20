@@ -64,6 +64,9 @@ class Guardrails:
         step_trail_breakeven_pct: float = 20.0,
         step_trail_lock_pct: float = 40.0,
         step_trail_tight_pct: float = 60.0,
+        chop_lockout_start: str = "10:00",
+        chop_lockout_end: str = "13:15",
+        chop_lockout_min_score: float = 53.0,
     ):
         self.capital = capital
         self.max_risk_per_trade_pct = max_risk_per_trade_pct
@@ -84,6 +87,12 @@ class Guardrails:
         self.step_breakeven = step_trail_breakeven_pct
         self.step_lock = step_trail_lock_pct
         self.step_tight = step_trail_tight_pct
+
+        ch_s, cm_s = map(int, chop_lockout_start.split(":"))
+        ch_e, cm_e = map(int, chop_lockout_end.split(":"))
+        self.chop_start = dt_time(ch_s, cm_s, tzinfo=IST)
+        self.chop_end = dt_time(ch_e, cm_e, tzinfo=IST)
+        self.chop_min_score = chop_lockout_min_score
 
         self._event_blackouts: list[datetime] = []
         self._allocated_nse: float = 0.0
@@ -279,6 +288,26 @@ class Guardrails:
 
         return existing_sl
 
+    # ── Scenario 20: Mid-Morning Chop Lockout ─────────────────────────────
+
+    def is_chop_window(self, now: datetime | None = None) -> bool:
+        dt_now = now.astimezone(IST) if (now and now.tzinfo) else (now.replace(tzinfo=IST) if now else datetime.now(IST))
+        if dt_now.weekday() >= 5:
+            return False
+        t = dt_now.timetz()
+        return self.chop_start <= t <= self.chop_end
+
+    def check_chop_window(self, symbol: str, score: float = 0.0,
+                          now: datetime | None = None) -> GuardrailResult:
+        if self.is_chop_window(now=now) and score < self.chop_min_score:
+            return GuardrailResult(
+                False,
+                f"Chop Regime Lockout ({self.chop_start.strftime('%H:%M')}-{self.chop_end.strftime('%H:%M')} IST): "
+                f"{symbol} score={score:.1f} < {self.chop_min_score:.0f} required during mid-morning chop window",
+                "chop_regime_lockout",
+            )
+        return PASS
+
     # ── Scenario 19: Time-of-Day Filter ────────────────────────────────────
 
     def check_time_of_day(self, symbol: str) -> GuardrailResult:
@@ -312,12 +341,15 @@ class Guardrails:
 
     def pre_signal_check(self, symbol: str, adx_value: float = 0,
                          candle_time: datetime | None = None,
-                         is_spread: bool = False) -> GuardrailResult:
+                         is_spread: bool = False,
+                         score: float | None = None) -> GuardrailResult:
         checks = [
             self.check_time_of_day(symbol),
             self.check_vwap_warmup(symbol),
             self.check_session_killswitch(symbol),
         ]
+        if score is not None:
+            checks.append(self.check_chop_window(symbol, score=score))
         if not is_spread:
             checks.append(self.check_adx_regime(adx_value, symbol))
         if candle_time:

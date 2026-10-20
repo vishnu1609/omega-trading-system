@@ -766,7 +766,7 @@ class SignalGenerator:
             return None
 
         ghost_pct = self._ghost_pct.get(inst_name, 0)
-        if ghost_pct > 50:
+        if ghost_pct > 40:
             if self._scan_count <= 1 or self._scan_count % 20 == 0:
                 log.warning("GHOST GUARD: %s has %.0f%% ghost data — skipping signal gen", inst_name, ghost_pct)
             return None
@@ -1009,6 +1009,18 @@ class SignalGenerator:
         first_scan = inst_name not in self._last_signal
         buy_signal = bull_entry and (not prev_bull or first_scan)
         sell_signal = bear_entry and (not prev_bear or first_scan)
+
+        # --- Candle confirmation: current candle must close in direction (relaxed from 2-candle) ---
+        if buy_signal and i >= 1:
+            curr_close_up = candles[i].close > candles[i].open
+            if not curr_close_up:
+                log.info("CANDLE CONFIRM: %s BUY blocked — current candle is red", inst_name)
+                buy_signal = False
+        if sell_signal and i >= 1:
+            curr_close_dn = candles[i].close < candles[i].open
+            if not curr_close_dn:
+                log.info("CANDLE CONFIRM: %s SELL blocked — current candle is green", inst_name)
+                sell_signal = False
 
         if vol_regime in ("CHOPPY", "NORMAL"):
             if rsi_overbought and buy_signal:
