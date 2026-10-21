@@ -319,19 +319,19 @@ class OmegaStrategy:
             payload["score"] = score
             log.info("CE BOOST: +3 score for CE trade (CE historically outperforms PE, score=%.0f)", score)
 
-        min_score = 55 if self.mode == "paper" else 58
+        min_score = 48 if self.mode == "paper" else 55
         vol_regime = payload.get("volatility_regime", "NORMAL")
 
-        if confidence == "LOW" and score < 65:
-            log.info("LOW CONFIDENCE BLOCKED: %s %s score=%.0f < 65 — LOW needs higher score",
+        if confidence == "LOW" and score < 55:
+            log.info("LOW CONFIDENCE BLOCKED: %s %s score=%.0f < 55 — LOW needs higher score",
                      side, symbol, score)
             self._record_signal_audit(payload, "BLOCKED_LOW_CONFIDENCE", f"LOW conf score={score:.0f}")
             return
 
         if self._consecutive_losses >= 3:
             elapsed = time.time() - self._last_loss_time
-            if elapsed < 600:
-                remaining = int((600 - elapsed) / 60)
+            if elapsed < 300:
+                remaining = int((300 - elapsed) / 60)
                 log.info("LOSS COOLDOWN: %d consecutive losses — %d min cooldown remaining, blocking %s %s",
                          self._consecutive_losses, remaining, side, symbol)
                 return

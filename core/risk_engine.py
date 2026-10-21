@@ -44,12 +44,12 @@ class RiskEngine:
         position_manager: PositionManager,
         broker: BrokerBase | None = None,
         max_daily_loss: float = 3000,
-        max_concurrent_positions: int = 2,
-        max_daily_trades: int = 6,
+        max_concurrent_positions: int = 3,
+        max_daily_trades: int = 10,
         sl_buffer_pct: float = 1.5,
         trail_pct: float = 0.15,
-        cooldown_after_losses: int = 2,
-        cooldown_minutes: int = 30,
+        cooldown_after_losses: int = 3,
+        cooldown_minutes: int = 15,
         margin_buffer_pct: float = 10,
         session_start: str = "09:16",
         square_off_time: str = "15:10",
@@ -77,7 +77,7 @@ class RiskEngine:
         self._instrument_sessions: dict[str, tuple[dt_time, dt_time]] = {}
 
         self.max_exposure_pct: float = 80.0
-        self.symbol_cooldown_minutes: int = 15
+        self.symbol_cooldown_minutes: int = 10
 
         self.last_reason: str = ""
         self._cooldown_until: datetime | None = None

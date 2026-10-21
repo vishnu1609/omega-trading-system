@@ -55,7 +55,7 @@ class Guardrails:
         capital: float = 100_000,
         max_risk_per_trade_pct: float = 2.0,
         nse_allocation_cap: float = 0.70,
-        adx_min_threshold: float = 22.0,
+        adx_min_threshold: float = 18.0,
         vwap_warmup_time: str = "09:30",
         candle_max_staleness_sec: float = 330,
         expiry_day_cutoff: str = "12:30",
