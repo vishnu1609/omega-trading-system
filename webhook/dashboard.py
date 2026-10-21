@@ -117,6 +117,16 @@ def register_bot(**refs):
     _bot.update(refs)
 
 
+def _get_ml_info() -> dict:
+    strategy = _bot.get("strategy")
+    if not strategy or not hasattr(strategy, "ml_engine") or not strategy.ml_engine:
+        return {}
+    try:
+        return strategy.ml_engine.get_model_stats()
+    except Exception:
+        return {}
+
+
 def _market_status() -> str:
     now = datetime.now(IST)
     if now.weekday() >= 5:
@@ -197,6 +207,7 @@ async def api_state():
         "consecutive_losses": idx.get("consecutive_losses", 0),
         "loss_cooldown_remaining": idx.get("loss_cooldown_remaining", 0),
         "csrf": _CSRF_TOKEN,
+        "ml": _get_ml_info(),
     }
 
 
@@ -1199,6 +1210,48 @@ main{padding:24px;max-width:1440px;margin:0 auto;position:relative;z-index:1}
   .oc-wrap{margin:0 -12px;border-radius:0;border-left:none;border-right:none}
   .oc-tbl{min-width:500px}
 }
+
+/* ── ARCHITECTURE / ML / RISK / GOAL ── */
+.g3{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px}
+.g4{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px}
+.g2{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:12px}
+.arch{padding:16px;background:var(--bg2);border:1px solid var(--bdr);border-radius:10px}
+.arch h3{font-size:13px;font-weight:700;margin:8px 0 4px}
+.arch p{font-size:10px;color:var(--t3);line-height:1.5}
+.arch-i{width:36px;height:36px;border-radius:8px;display:flex;align-items:center;justify-content:center;
+  font-size:18px;font-weight:900}
+.ic-g{background:rgba(0,230,138,.1);color:var(--profit)}
+.ic-p{background:rgba(168,85,247,.1);color:var(--purple)}
+.ic-c{background:rgba(255,77,94,.1);color:var(--loss)}
+.ic-gr{background:rgba(78,205,196,.1);color:var(--cyan)}
+.ic-b{background:rgba(59,130,246,.1);color:var(--blue)}
+.ic-w{background:rgba(240,185,11,.1);color:var(--warn)}
+.tech{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+.tech span{padding:2px 8px;border-radius:10px;font-size:8px;background:var(--bg3);color:var(--t2);
+  border:1px solid var(--bdr)}
+.ml-a{display:flex;align-items:center;justify-content:center;gap:6px;padding:16px 0;flex-wrap:wrap}
+.ml-n{text-align:center;background:var(--bg3);border-radius:8px;padding:12px 18px;border:1px solid var(--bdr)}
+.nv{font-size:22px;font-weight:800;font-family:'JetBrains Mono',monospace}
+.nl{font-size:9px;color:var(--t3);margin-top:2px}
+.ml-ar{color:var(--t3);font-size:18px}
+.rg{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:8px}
+.rg-l{font-size:10px;color:var(--t3);margin-bottom:3px}
+.rg-v{font-size:14px;font-weight:700}
+.pgb{height:6px;background:var(--bg3);border-radius:3px;overflow:hidden;margin-top:4px}
+.pgf{height:100%;border-radius:3px;transition:width .3s}
+.rzb{padding:4px 12px;border-radius:12px;font-size:10px;font-weight:700;letter-spacing:.5px}
+.sebi{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:8px}
+.sebi-i{display:flex;gap:8px;padding:10px;background:var(--bg3);border-radius:8px;align-items:flex-start}
+.sebi-ck{color:var(--profit);font-weight:700;font-size:14px;flex-shrink:0}
+.sebi-i h4{font-size:11px;font-weight:700;margin-bottom:2px}
+.sebi-i p{font-size:10px;color:var(--t3)}
+.goal{display:flex;align-items:center;justify-content:center;gap:8px;flex-wrap:wrap;padding:20px 0}
+.goal-s{padding:14px 20px;border:1px solid var(--bdr);border-radius:10px;text-align:center;
+  background:var(--bg3);min-width:80px}
+.goal-s.now{border-color:var(--gold);box-shadow:0 0 12px rgba(201,168,76,.15)}
+.goal-l{font-size:9px;color:var(--t3);margin-bottom:4px;text-transform:uppercase;letter-spacing:1px}
+.goal-v{font-size:18px;font-weight:800}
+.goal-a{color:var(--t3);font-size:16px}
 </style>
 </head>
 <body>
@@ -1230,6 +1283,10 @@ main{padding:24px;max-width:1440px;margin:0 auto;position:relative;z-index:1}
   <button class="tab" data-t="sigs">Signals</button>
   <button class="tab" data-t="chain">Option Chain</button>
   <button class="tab" data-t="analytics">Analytics</button>
+  <button class="tab" data-t="arch">Architecture</button>
+  <button class="tab" data-t="ml">ML Engine</button>
+  <button class="tab" data-t="risk">Risk</button>
+  <button class="tab" data-t="goal">Goal</button>
   <button class="tab" data-t="reverse">Reverse Engine</button>
 </nav>
 
@@ -1240,6 +1297,10 @@ main{padding:24px;max-width:1440px;margin:0 auto;position:relative;z-index:1}
   <div class="tp" id="tp-sigs"></div>
   <div class="tp" id="tp-chain"><div class="loading">Select an index to load option chain</div></div>
   <div class="tp" id="tp-analytics"><div class="loading">Loading analytics...</div></div>
+  <div class="tp" id="tp-arch"></div>
+  <div class="tp" id="tp-ml"></div>
+  <div class="tp" id="tp-risk"></div>
+  <div class="tp" id="tp-goal"></div>
   <div class="tp" id="tp-reverse"><div class="loading">Click "Run Analysis" to start reverse engineering</div></div>
 </main>
 
@@ -1297,9 +1358,9 @@ document.querySelectorAll('.tab').forEach(b=>{
     b.classList.add('on');
     document.querySelectorAll('.tp').forEach(x=>x.classList.remove('on'));
     document.getElementById('tp-'+tab).classList.add('on');
-    if(tab==='chain'){rChain();if(!_chainData)loadChain('NIFTY');}
-    if(tab==='analytics'){_anaLoaded=false;rAnalytics();}
-    if(tab==='reverse'){rReverse();}
+    renderTab();
+    if(tab==='chain'&&!_chainData)loadChain('NIFTY');
+    if(tab==='analytics'){_anaLoaded=false;}
   };
 });
 
@@ -1394,6 +1455,10 @@ function renderTab(){
     case'sigs':rSigs();break;
     case'chain':rChain();break;
     case'analytics':rAnalytics();break;
+    case'arch':rArch();break;
+    case'ml':rML();break;
+    case'risk':rRisk();break;
+    case'goal':rGoal();break;
   }
 }
 
@@ -2257,6 +2322,192 @@ function rAnalytics(){
     h+='</svg></div>';
   }
 
+  el.innerHTML=h;
+}
+
+/* ── ARCHITECTURE TAB ── */
+function rArch(){
+  const el=document.getElementById('tp-arch');
+  if(tab!=='arch')return;
+  const ml=S.ml||{};const sig=ml.signal_classifier||{};const reg=ml.regime_detector||{};
+  const buf=ml.trade_buffer||{};
+  let h='<div class="g3" style="margin-bottom:16px">';
+  h+='<div class="arch"><div class="arch-i ic-g">&Omega;</div><h3>Omega Strategy</h3><p>Confluence scoring: SuperTrend, VWAP, ADX, EMA, RSI, ORB, Divergence. Dynamic SL/TP with 4-level escalation.</p><div class="tech"><span>Python</span><span>FastAPI</span><span>ATR SL</span></div></div>';
+  h+='<div class="arch"><div class="arch-i ic-p">&#9881;</div><h3>ML Engine</h3><p>50-feature neural network (50&rarr;32&rarr;16&rarr;2). Auto-retrains on trades. K-Means regime detection for market adaptation.</p><div class="tech"><span>NumPy</span><span>Neural Net</span><span>K-Means</span></div></div>';
+  h+='<div class="arch"><div class="arch-i ic-c">&#9878;</div><h3>Risk Engine</h3><p>7-gate safety layer. Loss limits, position caps, ATR trailing stops, Kelly sizing, cooldown periods.</p><div class="tech"><span>&#8377;1,500/trade</span><span>3% daily cap</span></div></div>';
+  h+='<div class="arch"><div class="arch-i ic-gr">&#9733;</div><h3>Trade Memory</h3><p>4-trade pattern memory. Auto-blocks poor symbols. Adjusts sizing by instrument expectancy.</p><div class="tech"><span>SQLite</span><span>JSON</span><span>4 trades</span></div></div>';
+  h+='<div class="arch"><div class="arch-i ic-b">&#9889;</div><h3>Live Feed</h3><p>Dhan WebSocket real-time prices. REST+Yahoo fallback. ATM option chain resolution.</p><div class="tech"><span>WebSocket</span><span>REST</span><span>Dhan</span></div></div>';
+  h+='<div class="arch"><div class="arch-i ic-w">&#9888;</div><h3>Guardrails</h3><p>Chop lockout, VIX-adjusted SL, session sizing caps, loss cooldowns. Prevents overtrading.</p><div class="tech"><span>VIX</span><span>Choppiness</span></div></div>';
+  h+='</div>';
+  h+='<div class="cd"><div class="ct">Data Pipeline</div><div class="g4">';
+  const sigs=S.signals||[];const closed=S.closed_trades||[];
+  h+='<div style="text-align:center;padding:14px;background:var(--bg3);border-radius:8px"><div class="mono" style="font-size:20px;font-weight:700;color:var(--cyan)">Signals</div><div style="font-size:9px;color:var(--t3);margin-top:3px">'+sigs.length+' logged &rarr; signal_log.json</div></div>';
+  h+='<div style="text-align:center;padding:14px;background:var(--bg3);border-radius:8px"><div class="mono" style="font-size:20px;font-weight:700;color:var(--profit)">Trades</div><div style="font-size:9px;color:var(--t3);margin-top:3px">'+closed.length+' fields &rarr; SQLite</div></div>';
+  h+='<div style="text-align:center;padding:14px;background:var(--bg3);border-radius:8px"><div class="mono" style="font-size:20px;font-weight:700;color:var(--purple)">ML Buffer</div><div style="font-size:9px;color:var(--t3);margin-top:3px">'+(buf.size||0)+' entries</div></div>';
+  h+='<div style="text-align:center;padding:14px;background:var(--bg3);border-radius:8px"><div class="mono" style="font-size:20px;font-weight:700;color:var(--gold)">50 Features</div><div style="font-size:9px;color:var(--t3);margin-top:3px">Extracted per signal</div></div>';
+  h+='</div></div>';
+  el.innerHTML=h;
+}
+
+/* ── ML ENGINE TAB ── */
+function rML(){
+  const el=document.getElementById('tp-ml');
+  if(tab!=='ml')return;
+  const ml=S.ml||{};const sig=ml.signal_classifier||{};const reg=ml.regime_detector||{};
+  const buf=ml.trade_buffer||{};const layers=(sig.layers||[50,64,32,16,2]);
+  const names=['Input','Hidden 1','Hidden 2','Hidden 3','Output'];
+  const colors=['var(--cyan)','var(--gold)','var(--purple)','var(--warn)','var(--profit)'];
+  let h='<div class="cd" style="margin-bottom:16px"><div class="ct">Neural Network</div><div class="ml-a">';
+  layers.forEach((n,i)=>{
+    if(i>0)h+='<div class="ml-ar">&rarr;</div>';
+    h+='<div class="ml-n"><div class="nv" style="color:'+colors[i%colors.length]+'">'+n+'</div><div class="nl">'+(names[i]||'Layer '+i)+'</div></div>';
+  });
+  h+='</div>';
+  h+='<div style="text-align:center;font-size:11px;color:var(--t3);margin-top:6px">Sigmoid &bull; Binary cross-entropy &bull; Auto-retrain after '+(buf.auto_retrain_at||20)+' new trades</div></div>';
+  const acc=((buf.wins||0)/Math.max(1,(buf.wins||0)+(buf.losses||0))*100).toFixed(1);
+  h+='<div class="sg" style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:16px">';
+  h+='<div class="sc"><div class="sv mono" style="color:var(--profit)">'+acc+'%</div><div class="sl">Accuracy</div></div>';
+  h+='<div class="sc"><div class="sv mono" style="color:var(--cyan)">'+(buf.size||0).toLocaleString()+'</div><div class="sl">Buffer</div></div>';
+  h+='<div class="sc"><div class="sv mono" style="color:var(--gold)">'+(ml.confidence_threshold||0.55)+'</div><div class="sl">Threshold</div></div>';
+  h+='<div class="sc"><div class="sv mono" style="color:var(--purple)">'+(sig.iterations_trained||0)+'</div><div class="sl">Iterations</div></div>';
+  h+='</div>';
+  h+='<div class="g2">';
+  h+='<div class="cd"><div class="ct">50 Features</div><div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;font-size:10px">';
+  h+='<div style="padding:7px;background:var(--bg3);border-radius:5px"><b style="color:var(--cyan)">Price</b><br><span style="color:var(--t3)">close_norm, high_low_range, body_ratio, upper_wick, lower_wick</span></div>';
+  h+='<div style="padding:7px;background:var(--bg3);border-radius:5px"><b style="color:var(--gold)">Trend</b><br><span style="color:var(--t3)">ema_fast_slope, ema_slow_slope, supertrend, ema_cross, adx</span></div>';
+  h+='<div style="padding:7px;background:var(--bg3);border-radius:5px"><b style="color:var(--purple)">Momentum</b><br><span style="color:var(--t3)">rsi, rsi_slope, macd_hist, momentum_5, price_acceleration</span></div>';
+  h+='<div style="padding:7px;background:var(--bg3);border-radius:5px"><b style="color:var(--profit)">Volume</b><br><span style="color:var(--t3)">volume_ratio, vwap_dist, obv_slope, consec_green, consec_red</span></div>';
+  h+='<div style="padding:7px;background:var(--bg3);border-radius:5px"><b style="color:var(--warn)">Volatility</b><br><span style="color:var(--t3)">bb_width, bb_position, atr, range_expansion, choppiness</span></div>';
+  h+='<div style="padding:7px;background:var(--bg3);border-radius:5px"><b style="color:var(--loss)">Context</b><br><span style="color:var(--t3)">hour_sin, hour_cos, day_sin, day_cos, session_progress</span></div>';
+  h+='</div></div>';
+  const curReg=(reg.current_regime||'UNKNOWN');
+  h+='<div class="cd"><div class="ct">Regime Detection (K-Means)</div><div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">';
+  const regimes=[{n:'TRENDING',c:'var(--profit)',d:'ADX > 25'},{n:'RANGING',c:'var(--cyan)',d:'ADX < 20'},{n:'VOLATILE',c:'var(--warn)',d:'High ATR'},{n:'CHOPPY',c:'var(--loss)',d:'CI > 61.8'}];
+  regimes.forEach(r=>{
+    const act=curReg.toUpperCase()===r.n;
+    h+='<div style="padding:14px;background:rgba('+(act?'201,168,76,.08':'255,255,255,.02')+');border:1px solid '+(act?'var(--gold)':'var(--bdr)')+';border-radius:8px;text-align:center'+(act?';box-shadow:0 0 12px rgba(201,168,76,.15)':'')+'">';
+    h+='<div style="font-size:16px;font-weight:800;color:'+r.c+'">'+r.n+'</div>';
+    h+='<div style="font-size:9px;color:var(--t3);margin-top:3px">'+r.d+'</div></div>';
+  });
+  h+='</div>';
+  h+='<div style="text-align:center;font-size:11px;color:var(--t2);margin-top:12px">Current: <span style="color:var(--warn);font-weight:700">'+curReg+'</span> &bull; '+(reg.n_clusters||4)+' clusters &bull; Auto-adapts parameters</div>';
+  h+='</div></div>';
+  el.innerHTML=h;
+}
+
+/* ── RISK TAB ── */
+function rRisk(){
+  const el=document.getElementById('tp-risk');
+  if(tab!=='risk')return;
+  const s=S.stats||{};const w=S.wallet||{};
+  const dailyLoss=Math.min(0,s.realised_pnl||0);
+  const cap=w.balance||100000;
+  const lossPct=Math.abs(dailyLoss/cap*100).toFixed(1);
+  const lossBarW=Math.min(100,Math.abs(dailyLoss/cap*100/3*100));
+  const consLoss=s.consecutive_losses||0;
+  const trades=s.trade_count||0;
+  const maxTrades=8;
+  const riskLevel=lossPct>2?'HIGH':(lossPct>1?'ELEVATED':'NORMAL');
+  const riskCol=riskLevel==='HIGH'?'var(--loss)':(riskLevel==='ELEVATED'?'var(--warn)':'var(--profit)');
+
+  let h='<div class="cd rp" style="margin-bottom:16px"><div class="ct">Risk Monitor</div>';
+  h+='<div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap">';
+  h+='<span class="rzb" style="background:rgba('+(riskLevel==='NORMAL'?'0,230,138':'255,77,94')+', .1);color:'+riskCol+';border:1px solid '+riskCol+'">'+riskLevel+'</span>';
+  h+='<span class="mono" style="color:var(--t3);font-weight:700;font-size:15px">'+fpnl(dailyLoss)+'</span>';
+  h+='<span style="color:var(--t3);font-size:11px">('+lossPct+'%)</span></div>';
+  h+='<div class="rg">';
+  h+='<div><div class="rg-l">Daily Loss Used</div><div class="pgb"><div class="pgf" style="width:'+lossBarW+'%;background:'+riskCol+'"></div></div><div class="mono" style="font-size:11px;font-weight:600;margin-top:2px">'+lossPct+'%</div></div>';
+  h+='<div><div class="rg-l">Trades Today</div><div class="rg-v mono">'+trades+' <span style="color:var(--t3);font-size:11px">/ '+maxTrades+'</span></div></div>';
+  h+='<div><div class="rg-l">Consecutive Losses</div><div class="rg-v mono" style="color:'+(consLoss>=3?'var(--loss)':'var(--t3)')+'">'+consLoss+'</div></div>';
+  h+='<div><div class="rg-l">Recovery Needed</div><div class="rg-v mono" style="color:var(--t3)">'+(lossPct>0?(lossPct*100/(100-lossPct)).toFixed(1):0)+'%</div></div>';
+  h+='<div><div class="rg-l">Drawdown Protection</div><div class="rg-v mono" style="color:var(--profit)">'+(100-parseFloat(lossPct)).toFixed(0)+'%</div></div>';
+  h+='<div><div class="rg-l">Max Risk/Trade</div><div class="rg-v mono">'+String.fromCharCode(8377)+'1,500</div></div>';
+  h+='</div></div>';
+
+  h+='<div class="cd" style="margin-bottom:16px"><div class="ct">7-Gate Safety Layer</div>';
+  h+='<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:10px">';
+  const gates=[
+    {n:'1. Capital Preservation',d:'Max 8% capital risk/trade. 3% daily loss cap.',c:'var(--profit)'},
+    {n:'2. Position Sizing',d:'Kelly criterion. Drawdown halves size to 50%.',c:'var(--cyan)'},
+    {n:'3. ADX Filter',d:'Min ADX 10 for directional trades.',c:'var(--gold)'},
+    {n:'4. VIX-Adjusted Stops',d:'SL widens when VIX elevated.',c:'var(--purple)'},
+    {n:'5. Loss Cooldown',d:'5-min cooldown after 3 consecutive losses.',c:'var(--warn)'},
+    {n:'6. Chop Lockout',d:'CI > 61.8 blocks directional entries.',c:'var(--loss)'},
+    {n:'7. Session Guards',d:'Early caps, no trades in last 15 min.',c:'var(--blue)'}
+  ];
+  gates.forEach(g=>{
+    h+='<div style="padding:12px;background:var(--bg3);border-radius:8px;border-left:3px solid '+g.c+'"><div style="font-size:11px;font-weight:700;margin-bottom:3px">'+g.n+'</div><div style="font-size:10px;color:var(--t3)">'+g.d+'</div></div>';
+  });
+  h+='</div></div>';
+
+  h+='<div class="cd"><div class="ct">ATR Trailing Stops</div><div class="g4">';
+  const phases=[
+    {t:'0-10 MIN',v:'4.0&times;',c:'var(--profit)',bg:'0,230,138'},
+    {t:'10-30 MIN',v:'3.5&times;',c:'var(--cyan)',bg:'78,205,196'},
+    {t:'30-60 MIN',v:'3.0&times;',c:'var(--gold)',bg:'201,168,76'},
+    {t:'60+ MIN',v:'2.5&times;',c:'var(--warn)',bg:'240,185,11'}
+  ];
+  phases.forEach(p=>{
+    h+='<div style="text-align:center;padding:14px;background:rgba('+p.bg+',.03);border:1px solid rgba('+p.bg+',.08);border-radius:8px"><div style="font-size:9px;color:var(--t3)">'+p.t+'</div><div class="mono" style="font-size:20px;font-weight:700;color:'+p.c+'">'+p.v+'</div><div style="font-size:9px;color:var(--t3)">ATR width</div></div>';
+  });
+  h+='</div>';
+  h+='<div style="text-align:center;margin-top:10px;font-size:11px;color:var(--t3)">Min distance: 8% from peak &bull; Breakeven at 3.0&times; ATR &bull; Buffer: 0.5&times; ATR</div></div>';
+  el.innerHTML=h;
+}
+
+/* ── GOAL TAB ── */
+function rGoal(){
+  const el=document.getElementById('tp-goal');
+  if(tab!=='goal')return;
+  const w=S.wallet||{};const bal=w.balance||100000;
+  const stages=[
+    {l:'Start',v:String.fromCharCode(8377)+'1L',t:100000},
+    {l:'Double 1',v:String.fromCharCode(8377)+'2L',t:200000},
+    {l:'Double 2',v:String.fromCharCode(8377)+'4L',t:400000},
+    {l:'Double 3',v:String.fromCharCode(8377)+'8L',t:800000},
+    {l:'Target',v:'Go Live',t:800001}
+  ];
+  let currentIdx=0;
+  stages.forEach((s,i)=>{if(bal>=s.t)currentIdx=i;});
+
+  let h='<div class="cd" style="margin-bottom:16px"><div class="ct">Compound Doubling Path</div><div class="goal">';
+  stages.forEach((s,i)=>{
+    if(i>0)h+='<div class="goal-a">&rarr;</div>';
+    const isCur=i===currentIdx;
+    const done=i<currentIdx;
+    h+='<div class="goal-s'+(isCur?' now':'')+'" style="'+(done?'border-color:var(--profit);opacity:.7':'')+(i===stages.length-1?';border-color:var(--profit)':'')+'">';
+    h+='<div class="goal-l">'+s.l+'</div>';
+    h+='<div class="goal-v mono" style="color:'+(isCur?'var(--gold)':(done?'var(--profit)':'var(--t2)'))+'">'+s.v+'</div></div>';
+  });
+  h+='</div>';
+  h+='<p style="text-align:center;color:var(--t3);font-size:11px;margin-top:8px">Current: '+String.fromCharCode(8377)+fmt(bal)+' &bull; No fixed timeline. Prove the edge is real, then deploy real capital.</p></div>';
+
+  h+='<div class="cd" style="margin-bottom:16px"><div class="ct">SEBI Algo Trading Compliance (April 2026)</div><div class="sebi">';
+  const sebi=[
+    {t:'Strategy Tagging',d:'Each order tagged with strategy ID'},
+    {t:'Static IP Ready',d:'Fixed IP for broker API'},
+    {t:'Order Rate Cap',d:'10 orders/sec enforced'},
+    {t:'2FA Auth',d:'Daily JWT token with expiry'},
+    {t:'Audit Trail',d:'Full signal + trade logging'},
+    {t:'Kill Switch',d:'Auto-kill on critical risk'}
+  ];
+  sebi.forEach(s=>{
+    h+='<div class="sebi-i"><span class="sebi-ck">&#10003;</span><div><h4>'+s.t+'</h4><p>'+s.d+'</p></div></div>';
+  });
+  h+='</div></div>';
+
+  h+='<div class="cd"><div class="ct">Arthashastra Principles</div>';
+  h+='<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:10px">';
+  const principles=[
+    {t:'Kosha (Treasury)',d:'Capital preservation above all. Never risk more than you can afford to lose.'},
+    {t:'Saptanga (7 Pillars)',d:'7 confluence factors mirror the 7 pillars of statecraft. All must align.'},
+    {t:'Anvikshiki (Analysis)',d:'ML-driven analysis before action. No trade without systematic evaluation.'},
+    {t:'Dandaniti (Discipline)',d:'Guardrails enforce discipline even when emotions fail. Rules are non-negotiable.'}
+  ];
+  principles.forEach(p=>{
+    h+='<div style="padding:12px;background:var(--bg3);border-radius:8px"><div style="font-size:11px;font-weight:700;color:var(--gold);margin-bottom:3px">'+p.t+'</div><div style="font-size:10px;color:var(--t3)">'+p.d+'</div></div>';
+  });
+  h+='</div></div>';
   el.innerHTML=h;
 }
 

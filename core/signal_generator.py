@@ -1010,17 +1010,17 @@ class SignalGenerator:
         buy_signal = bull_entry and (not prev_bull or first_scan)
         sell_signal = bear_entry and (not prev_bear or first_scan)
 
-        # --- Candle confirmation: current candle must close in direction (relaxed from 2-candle) ---
-        if buy_signal and i >= 1:
-            curr_close_up = candles[i].close > candles[i].open
-            if not curr_close_up:
-                log.info("CANDLE CONFIRM: %s BUY blocked — current candle is red", inst_name)
-                buy_signal = False
-        if sell_signal and i >= 1:
-            curr_close_dn = candles[i].close < candles[i].open
-            if not curr_close_dn:
-                log.info("CANDLE CONFIRM: %s SELL blocked — current candle is green", inst_name)
-                sell_signal = False
+        # --- Candle confirmation: DISABLED — was blocking too many valid signals ---
+        # if buy_signal and i >= 1:
+        #     curr_close_up = candles[i].close > candles[i].open
+        #     if not curr_close_up:
+        #         log.info("CANDLE CONFIRM: %s BUY blocked — current candle is red", inst_name)
+        #         buy_signal = False
+        # if sell_signal and i >= 1:
+        #     curr_close_dn = candles[i].close < candles[i].open
+        #     if not curr_close_dn:
+        #         log.info("CANDLE CONFIRM: %s SELL blocked — current candle is green", inst_name)
+        #         sell_signal = False
 
         if vol_regime in ("CHOPPY", "NORMAL"):
             if rsi_overbought and buy_signal:
@@ -1034,30 +1034,30 @@ class SignalGenerator:
         ibs_val = self._calc_ibs(candles)
 
         if india_vix > 0 and (buy_signal or sell_signal):
-            if india_vix > 25 and buy_signal:
-                log.info("VIX GATE: %s VIX=%.1f > 25 — blocking BUY (premiums expensive, whipsaw risk)", inst_name, india_vix)
+            if india_vix > 30 and buy_signal:
+                log.info("VIX GATE: %s VIX=%.1f > 30 — blocking BUY (premiums expensive, whipsaw risk)", inst_name, india_vix)
                 buy_signal = False
             if india_vix < 12 and sell_signal:
                 log.info("VIX GATE: %s VIX=%.1f < 12 — low premium environment, SELL size will be reduced", inst_name, india_vix)
 
-        if buy_signal and ibs_val > 0.8:
-            log.info("IBS FILTER: %s IBS=%.2f > 0.8 — overbought intraday, blocking BUY", inst_name, ibs_val)
+        if buy_signal and ibs_val > 0.92:
+            log.info("IBS FILTER: %s IBS=%.2f > 0.92 — extreme overbought, blocking BUY", inst_name, ibs_val)
             buy_signal = False
-        if sell_signal and ibs_val < 0.2:
-            log.info("IBS FILTER: %s IBS=%.2f < 0.2 — oversold intraday, blocking SELL", inst_name, ibs_val)
+        if sell_signal and ibs_val < 0.08:
+            log.info("IBS FILTER: %s IBS=%.2f < 0.08 — extreme oversold, blocking SELL", inst_name, ibs_val)
             sell_signal = False
 
         if buy_signal or sell_signal:
             _avg_v = sum(c.volume for c in candles[max(0, i-19):i+1]) / min(20, i+1) if i >= 0 else 1
             _cur_v = candles[i].volume if candles[i].volume > 0 else 0
             _vol_r = _cur_v / _avg_v if _avg_v > 0 else 0
-            if _vol_r < 0.4:
-                log.info("VOLUME FILTER: %s vol_ratio=%.2f < 0.4 — low volume, blocking signal", inst_name, _vol_r)
+            if _vol_r < 0.1:
+                log.info("VOLUME FILTER: %s vol_ratio=%.2f < 0.1 — extremely low volume, blocking signal", inst_name, _vol_r)
                 buy_signal = False
                 sell_signal = False
 
             vwap_dist_pct = abs(close - vwap_vals[i]) / vwap_vals[i] * 100 if vwap_vals[i] > 0 else 0
-            if vwap_dist_pct < 0.03:
+            if vwap_dist_pct < 0.01:
                 log.info("VWAP DISTANCE: %s price too close to VWAP (%.3f%%) — weak conviction, blocking signal", inst_name, vwap_dist_pct)
                 buy_signal = False
                 sell_signal = False

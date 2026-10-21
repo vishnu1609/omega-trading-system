@@ -531,31 +531,31 @@ class RiskEngine:
         detail = ""
 
         if hold_seconds < 600:
-            trail_width = 3.5
+            trail_width = 4.0
         elif hold_seconds < 1800:
-            trail_width = 3.0
+            trail_width = 3.5
         elif hold_seconds < 3600:
-            trail_width = 2.5
+            trail_width = 3.0
         else:
-            trail_width = 2.0
+            trail_width = 2.5
 
-        if atr_multiples >= 5.0:
-            trail_width = min(trail_width, 2.0)
+        if atr_multiples >= 6.0:
+            trail_width = min(trail_width, 2.5)
             if is_long:
                 candidate = peak - (trail_width * atr)
             else:
                 candidate = peak + (trail_width * atr)
-            detail = f"strong trail (5×ATR, {trail_width}×w): {sl:.2f} → {candidate:.2f}"
-        elif atr_multiples >= 3.0:
+            detail = f"strong trail (6×ATR, {trail_width}×w): {sl:.2f} → {candidate:.2f}"
+        elif atr_multiples >= 4.0:
             if is_long:
                 candidate = peak - (trail_width * atr)
             else:
                 candidate = peak + (trail_width * atr)
             detail = f"trail ({atr_multiples:.1f}×ATR, {trail_width}×w): {sl:.2f} → {candidate:.2f}"
-        elif atr_multiples >= 2.5:
-            be_buffer = atr * 0.7
+        elif atr_multiples >= 3.0:
+            be_buffer = atr * 0.5
             candidate = entry_price + be_buffer if is_long else entry_price - be_buffer
-            detail = f"breakeven+ (2.5×ATR): {sl:.2f} → {candidate:.2f} (buffer={be_buffer:.2f})"
+            detail = f"breakeven+ (3.0×ATR): {sl:.2f} → {candidate:.2f} (buffer={be_buffer:.2f})"
         else:
             candidate = sl
 

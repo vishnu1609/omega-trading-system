@@ -26,7 +26,7 @@ _IST = ZoneInfo("Asia/Kolkata")
 
 log = logging.getLogger(__name__)
 
-POSITIONS_FILE = "data/paper_positions.json"
+POSITIONS_FILE = str(Path(__file__).parent.parent / "data" / "paper_positions.json")
 
 
 @dataclass

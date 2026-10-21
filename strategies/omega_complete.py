@@ -101,12 +101,10 @@ SHORT_DYNAMIC_SLTP_LEVELS = {
 
 SL_GRACE_SECONDS = 120
 MIN_OPTION_ATR_PCT = 5.0
-BREAKEVEN_PROFIT_PCT = 10.0
+BREAKEVEN_PROFIT_PCT = 18.0
 MAX_RISK_PER_TRADE = 1500.0
 ATR_SL_MULTIPLIER = 1.5
 ATR_SL_FLOOR = {"NIFTY": 15.0, "BANKNIFTY": 35.0, "SENSEX": 20.0, "FINNIFTY": 15.0, "BANKEX": 15.0}
-STAGNATION_EXIT_MINUTES = 20
-STAGNATION_MIN_PROFIT_PCT = 1.0
 
 
 class OmegaStrategy:
@@ -1112,6 +1110,11 @@ class OmegaStrategy:
             new_trail = trail_eval["sl"]
             old_trail = pos.trail_sl
 
+            if hold_minutes < 15 and new_trail != old_trail:
+                log.info("TRAIL DIAG: %s ltp=%.2f entry=%.2f trail %.2f→%.2f profit=%.1f%% hold=%.0fm detail=%s",
+                         pos.symbol, ltp, pos.entry_price, old_trail, new_trail, profit_pct, hold_minutes,
+                         trail_eval.get("detail", ""))
+
             # Early trail freeze removed — let trades breathe with wider trail widths instead
 
             if past_all_levels:
@@ -1126,9 +1129,9 @@ class OmegaStrategy:
                     if new_trail <= 0 or atr_trail < new_trail:
                         new_trail = atr_trail
 
-            # --- PROFIT PROTECTION: if we were up 5%+, guarantee at least 1% profit ---
-            if pos.peak_profit_pct >= 8.0 and not pos.breakeven_locked:
-                min_profit_sl = pos.entry_price * (1.01 if pos.is_long else 0.99)
+            # --- PROFIT PROTECTION: if we were up 15%+, guarantee at least 3% profit ---
+            if pos.peak_profit_pct >= 15.0 and not pos.breakeven_locked:
+                min_profit_sl = pos.entry_price * (1.03 if pos.is_long else 0.97)
                 if pos.is_long and new_trail < min_profit_sl:
                     new_trail = round(min_profit_sl, 2)
                 elif not pos.is_long and (new_trail > min_profit_sl or new_trail <= 0):
@@ -1136,7 +1139,7 @@ class OmegaStrategy:
 
             # --- 1. BREAKEVEN LOCKDOWN ---
             if not pos.breakeven_locked and profit_pct >= BREAKEVEN_PROFIT_PCT:
-                be_buffer = max(premium_atr * 0.5, pos.entry_price * 0.015)
+                be_buffer = pos.entry_price * 0.03
                 if pos.is_long:
                     be_price = round(pos.entry_price + be_buffer, 2)
                     if be_price > new_trail:
@@ -1198,22 +1201,8 @@ class OmegaStrategy:
                     self._partial_exit(pos, exit_qty, ltp)
                     pos.tranche_exits = 2
 
-            # --- 3. TIME-DECAY TARGETS (theta awareness) ---
+            # --- 3. TIME-DECAY TARGETS: disabled — let trades reach full TP ---
             effective_tp = pos.tp_price
-            if pos.tp_price > 0 and hold_minutes > 60:
-                if hold_minutes > 120:
-                    decay_tp = pos.entry_price + (pos.tp_price - pos.entry_price) * 0.50 if pos.is_long else \
-                        pos.entry_price - (pos.entry_price - pos.tp_price) * 0.50
-                else:
-                    decay_tp = pos.entry_price + (pos.tp_price - pos.entry_price) * 0.75 if pos.is_long else \
-                        pos.entry_price - (pos.entry_price - pos.tp_price) * 0.75
-                active_sl = pos.trail_sl if pos.trail_sl > 0 else pos.sl_price
-                if pos.is_long:
-                    min_tp = active_sl + premium_atr * 0.5
-                    effective_tp = max(decay_tp, min_tp)
-                else:
-                    max_tp = active_sl - premium_atr * 0.5
-                    effective_tp = min(decay_tp, max_tp) if max_tp > 0 else decay_tp
 
             # --- GREED EXTENSION: disabled when dynamic levels handle escalation ---
             if past_all_levels and not pos.tp_extended and pos.confidence in ("HIGH", "MEDIUM"):
@@ -1238,14 +1227,7 @@ class OmegaStrategy:
                              pos.direction, pos.symbol, profit_pct, pos.peak_profit_pct)
                     tp_hit = False
 
-            # --- STAGNATION EXIT: no movement after 8 min ---
-            is_bought_opt = pos.direction == "LONG" and ("CE" in pos.symbol or "PE" in pos.symbol)
-            if is_bought_opt and hold_minutes >= STAGNATION_EXIT_MINUTES and profit_pct < STAGNATION_MIN_PROFIT_PCT and pos.tranche_exits == 0:
-                if not pos.breakeven_locked and profit_pct > -2.0:
-                    log.info("STAGNATION EXIT: %s %s hold=%.0fmin profit=%.1f%% < %.0f%% — no momentum, exiting",
-                             pos.direction, pos.symbol, hold_minutes, profit_pct, STAGNATION_MIN_PROFIT_PCT)
-                    self._exit_position(pos, ltp, "STAGNATION_EXIT")
-                    continue
+            # --- STAGNATION EXIT: disabled — let trades breathe ---
 
             # --- EXIT CHECKS ---
             if pos.is_sl_hit and hold_seconds >= SL_GRACE_SECONDS:

@@ -77,6 +77,20 @@ def create_broker(mode: str, broker_cfg: dict) -> BrokerBase:
 
 
 def main() -> None:
+    import os as _os, atexit as _atexit
+    _pid_file = Path(__file__).parent / "data" / "omega.pid"
+    _pid_file.parent.mkdir(parents=True, exist_ok=True)
+    if _pid_file.exists():
+        try:
+            old_pid = int(_pid_file.read_text().strip())
+            _os.kill(old_pid, 0)
+            print(f"Another bot instance (PID {old_pid}) is already running. Kill it first or delete data/omega.pid")
+            sys.exit(1)
+        except (OSError, ValueError):
+            pass
+    _pid_file.write_text(str(_os.getpid()))
+    _atexit.register(lambda: _pid_file.unlink(missing_ok=True))
+
     parser = argparse.ArgumentParser(description="Omega Trading Company")
     parser.add_argument("--live", action="store_true",
                         help="Run in LIVE mode (real money). Requires confirmation.")
