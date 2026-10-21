@@ -1,0 +1,659 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Omega Trading Company</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&display=swap">
+<style>
+:root{
+  --bg:#04060c;--bg1:#080c18;--bg2:#0d1220;--bg3:#141c34;
+  --bdr:#1c2848;--bdr2:rgba(28,40,72,.3);
+  --t1:#eef1f8;--t2:#8894b8;--t3:#4a5578;
+  --gold:#c9a84c;--gold2:#e8d48b;--gold3:rgba(201,168,76,.06);
+  --profit:#00e68a;--loss:#ff4d5e;--warn:#f0b90b;
+  --cyan:#4ecdc4;--purple:#a855f7;--blue:#3b82f6;
+  --glass:rgba(10,15,28,.72);
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--t1);
+  min-height:100vh;-webkit-font-smoothing:antialiased;overflow-x:hidden}
+body::before{content:'';position:fixed;inset:0;z-index:0;pointer-events:none;
+  background:radial-gradient(ellipse 120% 60% at 50% -20%,rgba(201,168,76,.06),transparent 60%),
+  radial-gradient(ellipse 80% 50% at 100% 80%,rgba(78,205,196,.025),transparent 50%)}
+.mono{font-family:'JetBrains Mono',monospace;font-variant-numeric:tabular-nums}
+.serif{font-family:'DM Serif Display',Georgia,serif}
+::-webkit-scrollbar{width:5px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:rgba(201,168,76,.2);border-radius:10px}
+a{color:var(--t2);text-decoration:none;transition:color .2s}
+a:hover{color:var(--gold)}
+
+/* ─── HEADER ─── */
+.hdr{position:sticky;top:0;z-index:100;display:flex;align-items:center;justify-content:space-between;
+  padding:0 28px;height:60px;background:rgba(4,6,12,.92);backdrop-filter:blur(20px);
+  border-bottom:1px solid rgba(201,168,76,.06)}
+.hdr::after{content:'';position:absolute;bottom:-1px;left:0;right:0;height:1px;
+  background:linear-gradient(90deg,transparent 5%,var(--gold) 30%,var(--gold2) 50%,var(--gold) 70%,transparent 95%);opacity:.35}
+.brand{display:flex;align-items:center;gap:12px}
+.brand-i{width:40px;height:40px;background:linear-gradient(145deg,#dbb85c,var(--gold),#a88832);
+  border-radius:11px;display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:900;
+  color:#1a1400;box-shadow:0 0 24px rgba(201,168,76,.25),0 3px 10px rgba(0,0,0,.4),
+  inset 0 1px 0 rgba(255,255,255,.2);animation:glow 4s ease-in-out infinite alternate}
+@keyframes glow{0%{box-shadow:0 0 18px rgba(201,168,76,.2),0 3px 10px rgba(0,0,0,.4)}
+  100%{box-shadow:0 0 35px rgba(201,168,76,.3),0 3px 10px rgba(0,0,0,.4)}}
+.brand-n{font-family:'DM Serif Display',serif;font-size:17px;letter-spacing:1.5px;
+  background:linear-gradient(90deg,#f5e6c8,var(--gold),var(--gold2),var(--gold));
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.hdr-r{display:flex;align-items:center;gap:14px;font-size:11px}
+.pill{padding:4px 12px;border-radius:16px;font-size:9px;font-weight:700;letter-spacing:.8px;text-transform:uppercase;
+  background:rgba(0,230,138,.06);color:var(--profit);border:1px solid rgba(0,230,138,.15)}
+.live-d{width:6px;height:6px;border-radius:50%;background:var(--profit);
+  box-shadow:0 0 6px rgba(0,230,138,.5);animation:pulse 2.5s infinite}
+@keyframes pulse{0%,100%{opacity:1;box-shadow:0 0 4px rgba(0,230,138,.3)}
+  50%{opacity:.6;box-shadow:0 0 10px rgba(0,230,138,.5)}}
+.clock{color:var(--t3);letter-spacing:.3px}
+
+/* ─── SBAR ─── */
+.sbar{display:flex;align-items:center;gap:24px;padding:7px 28px;
+  background:rgba(8,12,24,.5);border-bottom:1px solid var(--bdr2);font-size:10px;color:var(--t3);
+  flex-wrap:wrap;letter-spacing:.2px}
+.sbar b{color:var(--t2)}
+
+/* ─── IDX TICKER ─── */
+.idx{display:flex;align-items:center;justify-content:center;gap:36px;padding:10px 28px;
+  background:linear-gradient(180deg,rgba(10,14,28,.7),rgba(6,10,20,.9));
+  border-bottom:1px solid rgba(201,168,76,.06);font-size:12px;flex-wrap:wrap}
+.idx-t{display:flex;align-items:center;gap:8px}
+.idx-nm{color:var(--t3);font-size:9px;text-transform:uppercase;letter-spacing:1.5px;font-weight:600}
+.idx-p{color:var(--gold2);font-size:15px;font-weight:700;letter-spacing:.3px}
+.idx-d{width:5px;height:5px;border-radius:50%;background:var(--profit);box-shadow:0 0 4px var(--profit)}
+
+/* ─── WALLET ─── */
+.wlt{display:flex;border-bottom:1px solid rgba(201,168,76,.05);overflow-x:auto;
+  background:linear-gradient(180deg,rgba(12,18,34,.85),rgba(6,8,16,.95))}
+.wlt-i{flex:1;padding:14px 22px;text-align:center;min-width:140px;
+  border-right:1px solid rgba(201,168,76,.04)}
+.wlt-i:last-child{border-right:none}
+.wlt-l{font-size:8px;color:var(--t3);text-transform:uppercase;letter-spacing:2px;margin-bottom:5px}
+.wlt-v{font-size:16px;font-weight:700}
+
+/* ─── TABS ─── */
+.tabs{display:flex;gap:0;background:rgba(8,12,24,.6);border-bottom:1px solid var(--bdr2);
+  padding:0 28px;overflow-x:auto;-webkit-overflow-scrolling:touch}
+.tab{padding:12px 22px;font-size:12px;font-weight:600;color:var(--t3);background:none;border:none;
+  cursor:pointer;border-bottom:2px solid transparent;transition:all .25s;white-space:nowrap;
+  font-family:inherit;letter-spacing:.2px}
+.tab:hover{color:var(--t2)}
+.tab.on{color:var(--gold2);border-bottom-color:var(--gold);text-shadow:0 0 12px rgba(201,168,76,.2)}
+
+/* ─── MAIN ─── */
+main{padding:24px 28px;max-width:1400px;margin:0 auto;position:relative;z-index:1}
+.tp{display:none}.tp.on{display:block}
+
+/* ─── HERO ─── */
+.hero{text-align:center;padding:40px 0 20px;position:relative}
+.hero::before{content:'';position:absolute;top:0;left:50%;transform:translateX(-50%);
+  width:70%;max-width:500px;height:100%;
+  background:radial-gradient(ellipse at center,rgba(201,168,76,.04),transparent 70%);pointer-events:none}
+.hero-v{font-family:'DM Serif Display',serif;font-size:clamp(32px,7vw,56px);letter-spacing:-1px;
+  line-height:1.1;filter:drop-shadow(0 0 30px currentColor)}
+.hero-sub{font-size:9px;color:var(--t3);text-transform:uppercase;letter-spacing:4px;margin-top:8px}
+.hero-d{font-size:14px;color:var(--t2);margin-top:10px}
+.hero-d span{font-weight:600}
+
+/* ─── CARDS ─── */
+.cd{background:var(--glass);border:1px solid rgba(201,168,76,.05);border-radius:14px;padding:20px;
+  backdrop-filter:blur(10px);transition:all .3s;position:relative;overflow:hidden}
+.cd::before{content:'';position:absolute;top:0;left:15%;right:15%;height:1px;
+  background:linear-gradient(90deg,transparent,rgba(201,168,76,.1),transparent);pointer-events:none}
+.cd:hover{border-color:rgba(201,168,76,.1)}
+.ct{font-size:10px;font-weight:700;color:var(--gold);text-transform:uppercase;letter-spacing:1.5px;
+  margin-bottom:16px;padding-bottom:10px;border-bottom:1px solid var(--bdr2);
+  display:flex;align-items:center;gap:8px}
+.ct::before{content:'';width:3px;height:14px;border-radius:2px;
+  background:linear-gradient(180deg,var(--gold),var(--gold2))}
+
+/* ─── STAT GRID ─── */
+.sg{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;margin-bottom:24px}
+.sc{background:var(--glass);border:1px solid rgba(201,168,76,.05);border-radius:12px;padding:16px 14px;
+  text-align:center;transition:all .3s;position:relative;overflow:hidden}
+.sc::after{content:'';position:absolute;top:0;left:20%;right:20%;height:1px;
+  background:linear-gradient(90deg,transparent,rgba(201,168,76,.12),transparent);pointer-events:none}
+.sc:hover{border-color:rgba(201,168,76,.12);transform:translateY(-2px);
+  box-shadow:0 10px 30px rgba(0,0,0,.3)}
+.sv{font-size:22px;font-weight:700;line-height:1.2}
+.sl{font-size:8px;color:var(--t3);text-transform:uppercase;letter-spacing:1.2px;margin-top:5px}
+.ss{font-size:9px;color:var(--t3);margin-top:3px}
+
+/* ─── GRIDS ─── */
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.g3{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px}
+.g4{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px}
+
+/* ─── FLOW ─── */
+.flow{display:flex;align-items:center;gap:0;overflow-x:auto;padding:6px 0}
+.flow-s{flex-shrink:0;background:var(--glass);border:1px solid rgba(201,168,76,.05);
+  border-radius:10px;padding:12px 16px;text-align:center;min-width:100px;transition:all .3s}
+.flow-s:hover{border-color:rgba(201,168,76,.12);transform:translateY(-2px)}
+.flow-l{font-size:8px;color:var(--t3);text-transform:uppercase;letter-spacing:.8px;margin-bottom:3px}
+.flow-n{font-size:12px;font-weight:700}
+.flow-a{flex-shrink:0;color:var(--gold);font-size:14px;padding:0 5px;opacity:.4}
+
+/* ─── EQUITY CURVE ─── */
+.eq-w{height:160px;margin:8px 0}
+.eq-w canvas{width:100%;height:100%;display:block}
+
+/* ─── ANALYTICS ─── */
+.ana-r{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--bdr2)}
+.ana-r:last-child{border-bottom:none}
+.ana-l{min-width:85px;font-size:11px;font-weight:600;color:var(--t2)}
+.ana-b{flex:1;height:22px;background:var(--bg3);border-radius:5px;overflow:hidden;position:relative}
+.ana-f{height:100%;border-radius:5px;min-width:2px;position:relative}
+.ana-f::after{content:attr(data-v);position:absolute;right:6px;top:50%;transform:translateY(-50%);
+  font-size:9px;font-weight:700;color:rgba(255,255,255,.85)}
+.ana-s{min-width:120px;font-size:10px;color:var(--t3);text-align:right}
+.ana-s b{color:var(--t2)}
+
+/* ─── VS ─── */
+.vs{display:flex;align-items:center;gap:14px;padding:18px 0}
+.vs-s{flex:1;text-align:center}
+.vs-v{font-size:26px;font-weight:800;line-height:1.2}
+.vs-l{font-size:9px;color:var(--t3);text-transform:uppercase;letter-spacing:1.5px;margin-top:3px}
+.vs-sub{font-size:11px;color:var(--t2);margin-top:3px}
+.vs-bd{padding:3px 10px;border-radius:16px;font-size:9px;font-weight:700;display:inline-block;margin-top:5px}
+.vs-d{width:1px;height:70px;background:linear-gradient(180deg,transparent,var(--bdr),transparent)}
+
+/* ─── HEATMAP ─── */
+.hm{display:grid;grid-template-columns:repeat(auto-fill,minmax(65px,1fr));gap:4px}
+.hm-c{padding:10px 4px;text-align:center;border-radius:7px;font-size:10px;font-weight:600}
+
+/* ─── ARCH CARDS ─── */
+.arch{background:var(--glass);border:1px solid rgba(201,168,76,.05);border-radius:12px;padding:20px;
+  transition:all .3s;overflow:hidden}
+.arch:hover{border-color:rgba(201,168,76,.1);transform:translateY(-2px)}
+.arch-i{width:36px;height:36px;border-radius:9px;display:flex;align-items:center;justify-content:center;
+  font-size:18px;margin-bottom:12px}
+.arch h3{font-size:14px;font-weight:700;margin-bottom:5px}
+.arch p{font-size:11px;color:var(--t2);line-height:1.5}
+.arch .tech{margin-top:10px;display:flex;flex-wrap:wrap;gap:4px}
+.arch .tech span{font-size:9px;padding:2px 7px;border-radius:5px;
+  background:rgba(201,168,76,.07);color:var(--gold);border:1px solid rgba(201,168,76,.08)}
+.ic-g{background:rgba(201,168,76,.1);color:var(--gold)}
+.ic-p{background:rgba(168,85,247,.1);color:var(--purple)}
+.ic-c{background:rgba(78,205,196,.1);color:var(--cyan)}
+.ic-gr{background:rgba(0,230,138,.1);color:var(--profit)}
+.ic-b{background:rgba(59,130,246,.1);color:var(--blue)}
+.ic-w{background:rgba(240,185,11,.1);color:var(--warn)}
+
+/* ─── TRADES TABLE ─── */
+.tw{overflow-x:auto;-webkit-overflow-scrolling:touch}
+.ttb{width:100%;border-collapse:collapse;font-size:11px}
+.ttb th{text-align:left;font-size:9px;color:var(--gold);text-transform:uppercase;letter-spacing:.8px;
+  padding:10px 10px;border-bottom:1px solid rgba(201,168,76,.08);font-weight:700}
+.ttb td{padding:9px 10px;border-bottom:1px solid var(--bdr2)}
+.ttb tr:hover td{background:rgba(201,168,76,.015)}
+.db{padding:2px 8px;border-radius:4px;font-size:9px;font-weight:700}
+.db-l{background:rgba(0,230,138,.06);color:var(--profit);border:1px solid rgba(0,230,138,.12)}
+.db-s{background:rgba(255,77,94,.06);color:var(--loss);border:1px solid rgba(255,77,94,.12)}
+
+/* ─── SIGNAL CARD ─── */
+.sig{background:var(--glass);border:1px solid rgba(78,205,196,.06);border-radius:12px;padding:16px;
+  transition:all .3s;overflow:hidden;position:relative}
+.sig::after{content:'';position:absolute;top:0;left:0;right:0;height:1px;
+  background:linear-gradient(90deg,transparent,var(--cyan),transparent);opacity:.2}
+.sig:hover{border-color:rgba(78,205,196,.12)}
+.sig-bars{display:grid;grid-template-columns:1fr 1fr;gap:5px 14px;margin-top:10px}
+.sig-r{display:flex;align-items:center;gap:5px;font-size:10px}
+.sig-l{min-width:36px;color:var(--t3);font-size:9px;text-transform:uppercase;letter-spacing:.3px}
+.sig-b{flex:1;height:4px;background:var(--bg3);border-radius:2px;overflow:hidden}
+.sig-f{height:100%;border-radius:2px}
+.sig-v{min-width:20px;text-align:right;font-weight:600;font-size:9px}
+.cb{font-size:9px;font-weight:700;padding:2px 7px;border-radius:3px}
+.cb-h{color:var(--profit);background:rgba(0,230,138,.06);border:1px solid rgba(0,230,138,.1)}
+.cb-m{color:var(--warn);background:rgba(240,185,11,.06);border:1px solid rgba(240,185,11,.1)}
+.cb-lo{color:var(--loss);background:rgba(255,77,94,.06);border:1px solid rgba(255,77,94,.1)}
+
+/* ─── ML ─── */
+.ml-a{display:flex;align-items:center;justify-content:center;gap:0;padding:16px 0;flex-wrap:wrap}
+.ml-n{padding:12px 18px;border-radius:10px;text-align:center;min-width:70px;
+  border:1px solid rgba(201,168,76,.06);background:var(--glass)}
+.ml-n .nv{font-size:18px;font-weight:800;margin-bottom:2px}
+.ml-n .nl{font-size:8px;color:var(--t3);text-transform:uppercase;letter-spacing:.5px}
+.ml-ar{color:var(--gold);opacity:.35;padding:0 7px;font-size:13px}
+
+/* ─── RISK ─── */
+.rp{border-left:3px solid var(--profit)}
+.rzb{padding:4px 12px;border-radius:16px;font-weight:700;font-size:10px}
+.rg{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:12px;margin-top:12px}
+.rg-l{font-size:8px;color:var(--t3);text-transform:uppercase;letter-spacing:1px}
+.rg-v{font-size:18px;font-weight:700;margin-top:2px}
+.pgb{height:5px;background:var(--bg3);border-radius:3px;overflow:hidden;margin-top:4px}
+.pgf{height:100%;border-radius:3px}
+
+/* ─── GOAL ─── */
+.goal{display:flex;align-items:center;justify-content:center;gap:0;overflow-x:auto;padding:10px 0}
+.goal-s{flex-shrink:0;background:var(--glass);border:1px solid rgba(201,168,76,.05);
+  border-radius:12px;padding:16px 20px;text-align:center;min-width:110px;transition:all .3s}
+.goal-s:hover{transform:translateY(-2px);border-color:rgba(201,168,76,.12)}
+.goal-s.now{border-color:var(--gold);box-shadow:0 0 16px rgba(201,168,76,.12)}
+.goal-l{font-size:8px;color:var(--t3);text-transform:uppercase;letter-spacing:1px;margin-bottom:3px}
+.goal-v{font-size:16px;font-weight:700}
+.goal-a{flex-shrink:0;color:var(--gold);font-size:16px;padding:0 7px;opacity:.35}
+
+/* ─── SEBI ─── */
+.sebi{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:10px}
+.sebi-i{display:flex;align-items:flex-start;gap:8px;padding:12px;background:var(--glass);
+  border:1px solid rgba(201,168,76,.04);border-radius:8px}
+.sebi-ck{color:var(--profit);font-size:14px;flex-shrink:0;margin-top:1px}
+.sebi-i h4{font-size:11px;font-weight:600;margin-bottom:1px}
+.sebi-i p{font-size:10px;color:var(--t3)}
+
+/* ─── FOOTER ─── */
+.ftr{text-align:center;padding:40px 28px 28px;position:relative;z-index:1}
+.ftr::before{content:'';display:block;height:1px;margin-bottom:40px;
+  background:linear-gradient(90deg,transparent,rgba(201,168,76,.1),transparent)}
+.ftr-b{font-family:'DM Serif Display',serif;font-size:14px;color:var(--gold);letter-spacing:2px}
+.ftr-s{font-size:10px;color:var(--t3);margin-top:5px;letter-spacing:1px}
+.ftr-l{margin-top:14px;display:flex;justify-content:center;gap:20px}
+.ftr-l a{font-size:11px}
+
+/* ─── RESPONSIVE ─── */
+@media(max-width:768px){
+  .hdr{padding:0 16px;height:52px}
+  .brand-i{width:34px;height:34px;font-size:18px;border-radius:9px}
+  .brand-n{font-size:14px;letter-spacing:1px}
+  .pill{font-size:8px;padding:3px 9px}
+  .clock{display:none}
+  .sbar{padding:6px 16px;gap:10px;font-size:9px}
+  .idx{gap:16px;padding:8px 16px}
+  .idx-p{font-size:13px}
+  .wlt{flex-wrap:wrap}
+  .wlt-i{min-width:calc(33% - 1px);padding:10px 14px}
+  .wlt-v{font-size:14px}
+  .tabs{padding:0 16px}
+  .tab{padding:10px 16px;font-size:11px}
+  main{padding:16px}
+  .g2{grid-template-columns:1fr}
+  .g3{grid-template-columns:1fr}
+  .sg{grid-template-columns:repeat(3,1fr);gap:6px}
+  .sv{font-size:18px}
+  .vs-v{font-size:20px}
+  .rg{grid-template-columns:1fr 1fr}
+  .ana-r{flex-wrap:wrap;gap:5px}
+  .ana-s{min-width:auto;width:100%}
+  .ttb{min-width:580px}
+}
+@media(max-width:480px){
+  .hdr{padding:0 12px;height:48px}
+  .brand-i{width:30px;height:30px;font-size:16px;border-radius:8px}
+  .brand-n{font-size:12px}
+  .sbar{display:none}
+  .idx{gap:10px;padding:6px 12px}
+  .idx-p{font-size:12px}
+  .wlt-i{min-width:50%}
+  .tabs{padding:0 8px}
+  .tab{padding:8px 12px;font-size:10px}
+  main{padding:10px}
+  .sg{grid-template-columns:1fr 1fr;gap:5px}
+  .sc{padding:10px 8px}
+  .sv{font-size:16px}
+  .sl{font-size:7px}
+  .hero-v{font-size:26px!important}
+  .hm{grid-template-columns:repeat(3,1fr)}
+  .sebi{grid-template-columns:1fr}
+}
+</style>
+</head>
+<body>
+
+<header class="hdr">
+  <div class="brand"><div class="brand-i">&Omega;</div><div class="brand-n">OTC</div></div>
+  <div class="hdr-r">
+    <span class="pill">PAPER</span>
+    <div class="live-d"></div>
+    <span class="clock mono" id="clk"></span>
+  </div>
+</header>
+
+<div class="sbar">
+  <span>Watching: <b>NIFTY, BANKNIFTY, SENSEX</b></span>
+  <span>Trades: <b>56</b></span>
+  <span>Feed: <b style="color:var(--profit)">WS Live</b></span>
+  <span>ML: <b style="color:var(--cyan)">TRAINED</b></span>
+  <span>Regime: <b style="color:var(--warn)">CHOPPY</b></span>
+  <span>Memory: <b>56 trades, 14 rules</b></span>
+</div>
+
+<div class="idx">
+  <div class="idx-t"><span class="idx-d"></span><span class="idx-nm">NIFTY</span><span class="idx-p mono">&#8377;24,854.25</span></div>
+  <div class="idx-t"><span class="idx-d"></span><span class="idx-nm">BANKNIFTY</span><span class="idx-p mono">&#8377;53,217.80</span></div>
+  <div class="idx-t"><span class="idx-d"></span><span class="idx-nm">SENSEX</span><span class="idx-p mono">&#8377;81,344.50</span></div>
+</div>
+
+<div class="wlt">
+  <div class="wlt-i"><div class="wlt-l">Balance</div><div class="wlt-v mono" style="color:var(--t1)">&#8377;98,150</div></div>
+  <div class="wlt-i"><div class="wlt-l">Available</div><div class="wlt-v mono" style="color:var(--gold2)">&#8377;98,150</div></div>
+  <div class="wlt-i"><div class="wlt-l">In Trade</div><div class="wlt-v mono" style="color:var(--warn)">&#8377;0</div></div>
+  <div class="wlt-i"><div class="wlt-l">Today P&L</div><div class="wlt-v mono" style="color:var(--t3)">&#8377;0</div></div>
+  <div class="wlt-i"><div class="wlt-l">Total P&L</div><div class="wlt-v mono" style="color:var(--loss)">&minus;&#8377;1,849 <span style="font-size:10px;opacity:.7">(-1.8%)</span></div></div>
+</div>
+
+<nav class="tabs">
+  <button class="tab on" data-t="dash">Dashboard</button>
+  <button class="tab" data-t="trades">Trades</button>
+  <button class="tab" data-t="sigs">Signals</button>
+  <button class="tab" data-t="analytics">Analytics</button>
+  <button class="tab" data-t="arch">Architecture</button>
+  <button class="tab" data-t="ml">ML Engine</button>
+  <button class="tab" data-t="risk">Risk</button>
+  <button class="tab" data-t="goal">Goal</button>
+</nav>
+
+<main>
+
+<!-- ══ DASHBOARD ══ -->
+<div class="tp on" id="tp-dash">
+  <div class="hero">
+    <div class="hero-v mono" style="color:var(--loss)">&minus;&#8377;15,533</div>
+    <div class="hero-sub">TOTAL P&L (REALISED + UNREALISED)</div>
+    <div class="hero-d"><span style="color:var(--loss)">&minus;&#8377;15,533 realised</span> &nbsp;+&nbsp; <span style="color:var(--t3)">&#8377;0 open</span></div>
+  </div>
+  <div class="sg">
+    <div class="sc" style="border-top:2px solid var(--loss)"><div class="sv mono" style="color:var(--loss)">&minus;&#8377;15,533</div><div class="sl">Realised P&L</div></div>
+    <div class="sc"><div class="sv mono" style="color:var(--t3)">&#8377;0</div><div class="sl">Unrealised</div></div>
+    <div class="sc"><div class="sv mono">56</div><div class="sl">Trades</div><div class="ss">20W / 36L</div></div>
+    <div class="sc"><div class="sv mono">35.7%</div><div class="sl">Win Rate</div></div>
+    <div class="sc"><div class="sv mono" style="color:var(--warn)">0.38</div><div class="sl">Sharpe Ratio</div></div>
+    <div class="sc"><div class="sv mono" style="color:var(--loss)">0.62x</div><div class="sl">Profit Factor</div></div>
+    <div class="sc"><div class="sv mono" style="color:var(--loss)">&#8377;10,460</div><div class="sl">Max Drawdown</div></div>
+    <div class="sc"><div class="sv mono">1.4:1</div><div class="sl">Avg R:R</div><div class="ss">&#8377;1,187 / &#8377;848</div></div>
+    <div class="sc"><div class="sv mono" style="color:var(--loss)">4L</div><div class="sl">Streak</div><div class="ss">Best: 3W &middot; Worst: 8L</div></div>
+    <div class="sc"><div class="sv mono" style="color:var(--loss)">&minus;&#8377;277</div><div class="sl">Expectancy</div></div>
+    <div class="sc"><div class="sv mono" style="color:var(--cyan)">50</div><div class="sl">ML Features</div></div>
+    <div class="sc"><div class="sv mono" style="color:var(--profit)">83.9%</div><div class="sl">ML Accuracy</div></div>
+  </div>
+  <div class="sg" style="grid-template-columns:1fr 1fr">
+    <div class="sc" style="border-left:3px solid var(--profit)"><div class="sv mono" style="color:var(--loss)">&minus;&#8377;12,841</div><div class="sl">BUY P&L</div><div class="ss">42 trades (16W/26L)</div></div>
+    <div class="sc" style="border-left:3px solid var(--loss)"><div class="sv mono" style="color:var(--loss)">&minus;&#8377;2,692</div><div class="sl">SELL P&L</div><div class="ss">14 trades (4W/10L)</div></div>
+  </div>
+  <div class="cd" style="margin:20px 0"><div class="ct">Equity Curve</div><div class="eq-w"><canvas id="eq-cv"></canvas></div></div>
+  <div class="cd" style="margin-bottom:20px"><div class="ct">Signal Pipeline</div>
+    <div class="flow">
+      <div class="flow-s"><div class="flow-l">Source</div><div class="flow-n" style="color:var(--cyan)">Signal Gen</div></div><div class="flow-a">&rarr;</div>
+      <div class="flow-s"><div class="flow-l">Score</div><div class="flow-n" style="color:var(--gold)">Confluence</div></div><div class="flow-a">&rarr;</div>
+      <div class="flow-s"><div class="flow-l">Filter</div><div class="flow-n" style="color:var(--purple)">ML Engine</div></div><div class="flow-a">&rarr;</div>
+      <div class="flow-s"><div class="flow-l">Risk</div><div class="flow-n" style="color:var(--loss)">Guardrails</div></div><div class="flow-a">&rarr;</div>
+      <div class="flow-s"><div class="flow-l">Memory</div><div class="flow-n" style="color:var(--warn)">Trade Mem</div></div><div class="flow-a">&rarr;</div>
+      <div class="flow-s"><div class="flow-l">Execute</div><div class="flow-n" style="color:var(--profit)">Dhan API</div></div>
+    </div>
+  </div>
+  <div class="cd"><div class="ct">P&L by Hour</div><div class="hm" id="hm"></div></div>
+</div>
+
+<!-- ══ TRADES ══ -->
+<div class="tp" id="tp-trades">
+  <div class="cd"><div class="ct">Closed Trades &bull; 56 historical</div>
+    <div class="tw"><table class="ttb"><thead><tr>
+      <th>Side</th><th>Symbol</th><th>Qty</th><th>Entry</th><th>Exit</th><th>P&L</th><th>%</th><th>Reason</th><th>Hold</th><th>Score</th><th>Conf</th>
+    </tr></thead><tbody id="tb"></tbody></table></div>
+  </div>
+</div>
+
+<!-- ══ SIGNALS ══ -->
+<div class="tp" id="tp-sigs">
+  <div class="ct" style="padding:0 0 12px;border:none">Signal Intelligence &bull; All signals logged for ML retraining</div>
+  <div class="g2" id="sg2"></div>
+</div>
+
+<!-- ══ ANALYTICS ══ -->
+<div class="tp" id="tp-analytics">
+  <div class="g2" style="margin-bottom:16px">
+    <div class="cd"><div class="ct">Performance by Index</div><div id="ip"></div></div>
+    <div class="cd"><div class="ct">CE vs PE</div>
+      <div class="vs">
+        <div class="vs-s"><div class="vs-v mono" style="color:var(--loss)">&minus;&#8377;9,418</div><div class="vs-l">Calls (CE)</div><div class="vs-sub">31 trades &middot; 32% WR</div>
+          <span class="vs-bd" style="background:rgba(255,77,94,.08);color:var(--loss);border:1px solid rgba(255,77,94,.15)">UNDERPERFORMING</span></div>
+        <div class="vs-d"></div>
+        <div class="vs-s"><div class="vs-v mono" style="color:var(--loss)">&minus;&#8377;6,115</div><div class="vs-l">Puts (PE)</div><div class="vs-sub">25 trades &middot; 40% WR</div>
+          <span class="vs-bd" style="background:rgba(0,230,138,.08);color:var(--profit);border:1px solid rgba(0,230,138,.15)">OUTPERFORMING</span></div>
+      </div>
+    </div>
+  </div>
+  <div class="cd"><div class="ct">Exit Reason Analysis</div><div id="er"></div></div>
+</div>
+
+<!-- ══ ARCHITECTURE ══ -->
+<div class="tp" id="tp-arch">
+  <div class="g3" style="margin-bottom:16px">
+    <div class="arch"><div class="arch-i ic-g">&Omega;</div><h3>Omega Strategy</h3><p>Confluence scoring: SuperTrend, VWAP, ADX, EMA, RSI, ORB, Divergence. Dynamic SL/TP with 4-level escalation.</p><div class="tech"><span>Python</span><span>FastAPI</span><span>ATR SL</span></div></div>
+    <div class="arch"><div class="arch-i ic-p">&#9881;</div><h3>ML Engine</h3><p>50-feature neural network (50&rarr;32&rarr;16&rarr;2). Auto-retrains on trades. K-Means regime detection for market adaptation.</p><div class="tech"><span>NumPy</span><span>Neural Net</span><span>K-Means</span></div></div>
+    <div class="arch"><div class="arch-i ic-c">&#9878;</div><h3>Risk Engine</h3><p>7-gate safety layer. Loss limits, position caps, ATR trailing stops, Kelly sizing, cooldown periods.</p><div class="tech"><span>&#8377;1,500/trade</span><span>3% daily cap</span></div></div>
+    <div class="arch"><div class="arch-i ic-gr">&#9733;</div><h3>Trade Memory</h3><p>56-trade pattern memory. Auto-blocks poor symbols. Adjusts sizing by instrument expectancy.</p><div class="tech"><span>SQLite</span><span>JSON</span><span>56 trades</span></div></div>
+    <div class="arch"><div class="arch-i ic-b">&#9889;</div><h3>Live Feed</h3><p>Dhan WebSocket real-time prices. REST+Yahoo fallback. ATM option chain resolution.</p><div class="tech"><span>WebSocket</span><span>REST</span><span>Dhan</span></div></div>
+    <div class="arch"><div class="arch-i ic-w">&#9888;</div><h3>Guardrails</h3><p>Chop lockout, VIX-adjusted SL, session sizing caps, loss cooldowns. Prevents overtrading.</p><div class="tech"><span>VIX</span><span>Choppiness</span></div></div>
+  </div>
+  <div class="cd"><div class="ct">Data Pipeline</div>
+    <div class="g4">
+      <div style="text-align:center;padding:14px;background:var(--bg3);border-radius:8px"><div class="mono" style="font-size:20px;font-weight:700;color:var(--cyan)">Signals</div><div style="font-size:9px;color:var(--t3);margin-top:3px">All logged &rarr; signal_log.json</div></div>
+      <div style="text-align:center;padding:14px;background:var(--bg3);border-radius:8px"><div class="mono" style="font-size:20px;font-weight:700;color:var(--profit)">Trades</div><div style="font-size:9px;color:var(--t3);margin-top:3px">11 fields &rarr; SQLite</div></div>
+      <div style="text-align:center;padding:14px;background:var(--bg3);border-radius:8px"><div class="mono" style="font-size:20px;font-weight:700;color:var(--purple)">ML Buffer</div><div style="font-size:9px;color:var(--t3);margin-top:3px">1,890 entries</div></div>
+      <div style="text-align:center;padding:14px;background:var(--bg3);border-radius:8px"><div class="mono" style="font-size:20px;font-weight:700;color:var(--gold)">50 Features</div><div style="font-size:9px;color:var(--t3);margin-top:3px">Extracted per signal</div></div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ ML ENGINE ══ -->
+<div class="tp" id="tp-ml">
+  <div class="cd" style="margin-bottom:16px"><div class="ct">Neural Network</div>
+    <div class="ml-a">
+      <div class="ml-n"><div class="nv" style="color:var(--cyan)">50</div><div class="nl">Input</div></div><div class="ml-ar">&rarr;</div>
+      <div class="ml-n"><div class="nv" style="color:var(--gold)">32</div><div class="nl">Hidden 1</div></div><div class="ml-ar">&rarr;</div>
+      <div class="ml-n"><div class="nv" style="color:var(--purple)">16</div><div class="nl">Hidden 2</div></div><div class="ml-ar">&rarr;</div>
+      <div class="ml-n"><div class="nv" style="color:var(--profit)">2</div><div class="nl">Output</div></div>
+    </div>
+    <div style="text-align:center;font-size:11px;color:var(--t3);margin-top:6px">Sigmoid &bull; Binary cross-entropy &bull; Auto-retrain after 20 new trades</div>
+  </div>
+  <div class="sg" style="grid-template-columns:repeat(4,1fr);margin-bottom:16px">
+    <div class="sc"><div class="sv mono" style="color:var(--profit)">83.9%</div><div class="sl">Accuracy</div></div>
+    <div class="sc"><div class="sv mono" style="color:var(--cyan)">1,890</div><div class="sl">Buffer</div></div>
+    <div class="sc"><div class="sv mono" style="color:var(--gold)">0.55</div><div class="sl">Threshold</div></div>
+    <div class="sc"><div class="sv mono" style="color:var(--purple)">100</div><div class="sl">Iterations</div></div>
+  </div>
+  <div class="g2">
+    <div class="cd"><div class="ct">50 Features</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;font-size:10px">
+        <div style="padding:7px;background:var(--bg3);border-radius:5px"><b style="color:var(--cyan)">Price</b><br><span style="color:var(--t3)">close_norm, high_low_range, body_ratio, upper_wick, lower_wick</span></div>
+        <div style="padding:7px;background:var(--bg3);border-radius:5px"><b style="color:var(--gold)">Trend</b><br><span style="color:var(--t3)">ema_fast_slope, ema_slow_slope, supertrend, ema_cross, adx</span></div>
+        <div style="padding:7px;background:var(--bg3);border-radius:5px"><b style="color:var(--purple)">Momentum</b><br><span style="color:var(--t3)">rsi, rsi_slope, macd_hist, momentum_5, price_acceleration</span></div>
+        <div style="padding:7px;background:var(--bg3);border-radius:5px"><b style="color:var(--profit)">Volume</b><br><span style="color:var(--t3)">volume_ratio, vwap_dist, obv_slope, consec_green, consec_red</span></div>
+        <div style="padding:7px;background:var(--bg3);border-radius:5px"><b style="color:var(--warn)">Volatility</b><br><span style="color:var(--t3)">bb_width, bb_position, atr, range_expansion, choppiness</span></div>
+        <div style="padding:7px;background:var(--bg3);border-radius:5px"><b style="color:var(--loss)">Context</b><br><span style="color:var(--t3)">hour_sin, hour_cos, day_sin, day_cos, session_progress</span></div>
+      </div>
+    </div>
+    <div class="cd"><div class="ct">Regime Detection (K-Means)</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        <div style="padding:14px;background:rgba(0,230,138,.04);border:1px solid rgba(0,230,138,.08);border-radius:8px;text-align:center"><div style="font-size:16px;font-weight:800;color:var(--profit)">TRENDING</div><div style="font-size:9px;color:var(--t3);margin-top:3px">ADX &gt; 25</div></div>
+        <div style="padding:14px;background:rgba(78,205,196,.04);border:1px solid rgba(78,205,196,.08);border-radius:8px;text-align:center"><div style="font-size:16px;font-weight:800;color:var(--cyan)">RANGING</div><div style="font-size:9px;color:var(--t3);margin-top:3px">ADX &lt; 20</div></div>
+        <div style="padding:14px;background:rgba(240,185,11,.04);border:1px solid rgba(240,185,11,.08);border-radius:8px;text-align:center"><div style="font-size:16px;font-weight:800;color:var(--warn)">VOLATILE</div><div style="font-size:9px;color:var(--t3);margin-top:3px">High ATR</div></div>
+        <div style="padding:14px;background:rgba(255,77,94,.04);border:1px solid rgba(255,77,94,.08);border-radius:8px;text-align:center"><div style="font-size:16px;font-weight:800;color:var(--loss)">CHOPPY</div><div style="font-size:9px;color:var(--t3);margin-top:3px">CI &gt; 61.8</div></div>
+      </div>
+      <div style="text-align:center;font-size:11px;color:var(--t2);margin-top:12px">Current: <span style="color:var(--warn);font-weight:700">CHOPPY</span> &bull; 4 clusters &bull; Auto-adapts parameters</div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ RISK ══ -->
+<div class="tp" id="tp-risk">
+  <div class="cd rp" style="margin-bottom:16px"><div class="ct">Risk Monitor</div>
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap">
+      <span class="rzb" style="background:rgba(240,185,11,.1);color:var(--warn);border:1px solid rgba(240,185,11,.2)">ELEVATED</span>
+      <span class="mono" style="color:var(--loss);font-weight:700;font-size:15px">&minus;&#8377;15,533</span>
+      <span style="color:var(--t3);font-size:11px">(-15.5%)</span>
+    </div>
+    <div class="rg">
+      <div><div class="rg-l">Daily Loss Used</div><div class="pgb"><div class="pgf" style="width:42%;background:var(--warn)"></div></div><div class="mono" style="font-size:11px;font-weight:600;margin-top:2px">42%</div></div>
+      <div><div class="rg-l">Trades Today</div><div class="rg-v mono">0 <span style="color:var(--t3);font-size:11px">/ 8</span></div></div>
+      <div><div class="rg-l">Consecutive Losses</div><div class="rg-v mono" style="color:var(--loss)">4</div></div>
+      <div><div class="rg-l">Recovery Needed</div><div class="rg-v mono" style="color:var(--loss)">18.8%</div></div>
+      <div><div class="rg-l">Drawdown Protection</div><div class="rg-v mono" style="color:var(--warn)">50%</div></div>
+      <div><div class="rg-l">Max Risk/Trade</div><div class="rg-v mono">&#8377;1,500</div></div>
+    </div>
+  </div>
+  <div class="cd" style="margin-bottom:16px"><div class="ct">7-Gate Safety Layer</div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:10px">
+      <div style="padding:12px;background:var(--bg3);border-radius:8px;border-left:3px solid var(--profit)"><div style="font-size:11px;font-weight:700;margin-bottom:3px">1. Capital Preservation</div><div style="font-size:10px;color:var(--t3)">Max 8% capital risk/trade. 3% daily loss cap.</div></div>
+      <div style="padding:12px;background:var(--bg3);border-radius:8px;border-left:3px solid var(--cyan)"><div style="font-size:11px;font-weight:700;margin-bottom:3px">2. Position Sizing</div><div style="font-size:10px;color:var(--t3)">Kelly criterion. Drawdown halves size to 50%.</div></div>
+      <div style="padding:12px;background:var(--bg3);border-radius:8px;border-left:3px solid var(--gold)"><div style="font-size:11px;font-weight:700;margin-bottom:3px">3. ADX Filter</div><div style="font-size:10px;color:var(--t3)">Min ADX 10 for directional trades.</div></div>
+      <div style="padding:12px;background:var(--bg3);border-radius:8px;border-left:3px solid var(--purple)"><div style="font-size:11px;font-weight:700;margin-bottom:3px">4. VIX-Adjusted Stops</div><div style="font-size:10px;color:var(--t3)">SL widens when VIX elevated.</div></div>
+      <div style="padding:12px;background:var(--bg3);border-radius:8px;border-left:3px solid var(--warn)"><div style="font-size:11px;font-weight:700;margin-bottom:3px">5. Loss Cooldown</div><div style="font-size:10px;color:var(--t3)">5-min cooldown after 3 consecutive losses.</div></div>
+      <div style="padding:12px;background:var(--bg3);border-radius:8px;border-left:3px solid var(--loss)"><div style="font-size:11px;font-weight:700;margin-bottom:3px">6. Chop Lockout</div><div style="font-size:10px;color:var(--t3)">CI &gt; 61.8 blocks directional entries.</div></div>
+      <div style="padding:12px;background:var(--bg3);border-radius:8px;border-left:3px solid var(--blue)"><div style="font-size:11px;font-weight:700;margin-bottom:3px">7. Session Guards</div><div style="font-size:10px;color:var(--t3)">Early caps, no trades in last 15 min.</div></div>
+    </div>
+  </div>
+  <div class="cd"><div class="ct">ATR Trailing Stops</div>
+    <div class="g4">
+      <div style="text-align:center;padding:14px;background:rgba(0,230,138,.03);border:1px solid rgba(0,230,138,.08);border-radius:8px"><div style="font-size:9px;color:var(--t3)">0-10 MIN</div><div class="mono" style="font-size:20px;font-weight:700;color:var(--profit)">3.5&times;</div><div style="font-size:9px;color:var(--t3)">ATR width</div></div>
+      <div style="text-align:center;padding:14px;background:rgba(78,205,196,.03);border:1px solid rgba(78,205,196,.08);border-radius:8px"><div style="font-size:9px;color:var(--t3)">10-30 MIN</div><div class="mono" style="font-size:20px;font-weight:700;color:var(--cyan)">3.0&times;</div><div style="font-size:9px;color:var(--t3)">ATR width</div></div>
+      <div style="text-align:center;padding:14px;background:rgba(201,168,76,.03);border:1px solid rgba(201,168,76,.08);border-radius:8px"><div style="font-size:9px;color:var(--t3)">30-60 MIN</div><div class="mono" style="font-size:20px;font-weight:700;color:var(--gold)">2.5&times;</div><div style="font-size:9px;color:var(--t3)">ATR width</div></div>
+      <div style="text-align:center;padding:14px;background:rgba(240,185,11,.03);border:1px solid rgba(240,185,11,.08);border-radius:8px"><div style="font-size:9px;color:var(--t3)">60+ MIN</div><div class="mono" style="font-size:20px;font-weight:700;color:var(--warn)">2.0&times;</div><div style="font-size:9px;color:var(--t3)">ATR width</div></div>
+    </div>
+    <div style="text-align:center;margin-top:10px;font-size:11px;color:var(--t3)">Min distance: 8% from peak &bull; Breakeven at 2.5&times; ATR &bull; Buffer: 0.7&times; ATR</div>
+  </div>
+</div>
+
+<!-- ══ GOAL ══ -->
+<div class="tp" id="tp-goal">
+  <div class="cd" style="margin-bottom:16px"><div class="ct">Compound Doubling Path</div>
+    <div class="goal">
+      <div class="goal-s now"><div class="goal-l">Current</div><div class="goal-v mono" style="color:var(--gold)">&#8377;1L</div></div><div class="goal-a">&rarr;</div>
+      <div class="goal-s"><div class="goal-l">Double 1</div><div class="goal-v mono">&#8377;2L</div></div><div class="goal-a">&rarr;</div>
+      <div class="goal-s"><div class="goal-l">Double 2</div><div class="goal-v mono">&#8377;4L</div></div><div class="goal-a">&rarr;</div>
+      <div class="goal-s"><div class="goal-l">Double 3</div><div class="goal-v mono">&#8377;8L</div></div><div class="goal-a">&rarr;</div>
+      <div class="goal-s" style="border-color:var(--profit)"><div class="goal-l">Target</div><div class="goal-v" style="color:var(--profit)">Go Live</div></div>
+    </div>
+    <p style="text-align:center;color:var(--t3);font-size:11px;margin-top:12px">No fixed timeline. Compound doubling. Prove the edge is real, then deploy real capital.</p>
+  </div>
+  <div class="cd" style="margin-bottom:16px"><div class="ct">SEBI Algo Trading Compliance (April 2026)</div>
+    <div class="sebi">
+      <div class="sebi-i"><span class="sebi-ck">&#10003;</span><div><h4>Strategy Tagging</h4><p>Each order tagged with strategy ID</p></div></div>
+      <div class="sebi-i"><span class="sebi-ck">&#10003;</span><div><h4>Static IP Ready</h4><p>Fixed IP for broker API</p></div></div>
+      <div class="sebi-i"><span class="sebi-ck">&#10003;</span><div><h4>Order Rate Cap</h4><p>10 orders/sec enforced</p></div></div>
+      <div class="sebi-i"><span class="sebi-ck">&#10003;</span><div><h4>2FA Auth</h4><p>Daily JWT token with expiry</p></div></div>
+      <div class="sebi-i"><span class="sebi-ck">&#10003;</span><div><h4>Audit Trail</h4><p>Full signal + trade logging</p></div></div>
+      <div class="sebi-i"><span class="sebi-ck">&#10003;</span><div><h4>Kill Switch</h4><p>Auto-kill on critical risk</p></div></div>
+    </div>
+  </div>
+  <div class="cd"><div class="ct">Arthashastra Principles</div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:10px">
+      <div style="padding:12px;background:var(--bg3);border-radius:8px"><div style="font-size:11px;font-weight:700;color:var(--gold);margin-bottom:3px">Kosha (Treasury)</div><div style="font-size:10px;color:var(--t3)">Capital preservation above all. Never risk more than you can afford to lose.</div></div>
+      <div style="padding:12px;background:var(--bg3);border-radius:8px"><div style="font-size:11px;font-weight:700;color:var(--gold);margin-bottom:3px">Saptanga (7 Pillars)</div><div style="font-size:10px;color:var(--t3)">7 confluence factors mirror the 7 pillars of statecraft. All must align.</div></div>
+      <div style="padding:12px;background:var(--bg3);border-radius:8px"><div style="font-size:11px;font-weight:700;color:var(--gold);margin-bottom:3px">Anvikshiki (Analysis)</div><div style="font-size:10px;color:var(--t3)">ML-driven analysis before action. No trade without systematic evaluation.</div></div>
+      <div style="padding:12px;background:var(--bg3);border-radius:8px"><div style="font-size:11px;font-weight:700;color:var(--gold);margin-bottom:3px">Dandaniti (Discipline)</div><div style="font-size:10px;color:var(--t3)">Guardrails enforce discipline even when emotions don't. Rules are non-negotiable.</div></div>
+    </div>
+  </div>
+</div>
+
+</main>
+
+<div class="ftr">
+  <div class="ftr-b">Omega Trading Company</div>
+  <div class="ftr-s">Precision &bull; Performance &bull; Profit</div>
+  <div class="ftr-l"><a href="https://github.com/vishnu1609/omega-trading-system" target="_blank">GitHub</a><a href="https://github.com/vishnu1609/omega-trading-system/blob/main/README.md" target="_blank">Docs</a></div>
+</div>
+
+<script>
+(function(){
+const R='₹';
+function fmt(n){return new Intl.NumberFormat('en-IN').format(Math.abs(n));}
+function fpnl(n){return (n>=0?'+':'−')+R+fmt(n);}
+
+// Clock
+function tick(){const d=new Date();document.getElementById('clk').textContent=
+  d.toLocaleString('en-GB',{timeZone:'Asia/Kolkata',hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false})+' IST';}
+setInterval(tick,1000);tick();
+
+// Tabs
+document.querySelectorAll('.tab').forEach(b=>{b.onclick=()=>{
+  document.querySelectorAll('.tab').forEach(x=>x.classList.remove('on'));b.classList.add('on');
+  document.querySelectorAll('.tp').forEach(x=>x.classList.remove('on'));
+  document.getElementById('tp-'+b.dataset.t).classList.add('on');};});
+
+// Equity curve
+const pnls=[-400,850,-320,1200,-550,-280,930,-660,-1100,420,-380,1500,-720,-290,680,-810,
+  -1300,560,-440,2100,-330,-620,1100,-770,-980,340,-510,1800,-460,-190,750,-850,
+  -1200,480,-370,1650,-590,-420,890,-710,-1050,310,-640,1400,-530,-260,720,-680,
+  -1500,440,-350,1900,-610,-300,820,-490];
+let cum=0;const pts=pnls.map(p=>{cum+=p;return cum;});
+function drawEq(){
+  const cv=document.getElementById('eq-cv');if(!cv)return;
+  const ctx=cv.getContext('2d');const w=cv.parentElement.clientWidth;const h=cv.parentElement.clientHeight;
+  cv.width=w*2;cv.height=h*2;ctx.scale(2,2);
+  const mn=Math.min(...pts,0),mx=Math.max(...pts,0);const pad=Math.abs(mx-mn)*.1||100;
+  const lo=mn-pad,hi=mx+pad,rng=hi-lo;const sx=w/(pts.length-1),sy=h/rng;
+  ctx.beginPath();pts.forEach((p,i)=>{const x=i*sx,y=h-(p-lo)*sy;i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);});
+  const col=pts[pts.length-1]>=0?'#00e68a':'#ff4d5e';
+  ctx.strokeStyle=col;ctx.lineWidth=1.5;ctx.stroke();
+  const g=ctx.createLinearGradient(0,0,0,h);
+  g.addColorStop(0,pts[pts.length-1]>=0?'rgba(0,230,138,.12)':'rgba(255,77,94,.12)');
+  g.addColorStop(1,'transparent');ctx.lineTo(w,h);ctx.lineTo(0,h);ctx.fillStyle=g;ctx.fill();
+  ctx.beginPath();const zy=h-(0-lo)*sy;ctx.moveTo(0,zy);ctx.lineTo(w,zy);
+  ctx.strokeStyle='rgba(255,255,255,.06)';ctx.lineWidth=1;ctx.setLineDash([4,4]);ctx.stroke();}
+setTimeout(drawEq,100);window.addEventListener('resize',drawEq);
+
+// Hourly heatmap
+const hrs=[{h:'09:15',pnl:-3845,t:12,wr:58},{h:'10:00',pnl:-10460,t:15,wr:13},{h:'11:00',pnl:-553,t:11,wr:36},
+  {h:'12:00',pnl:-3880,t:6,wr:17},{h:'13:00',pnl:2934,t:7,wr:57},{h:'14:00',pnl:271,t:3,wr:67}];
+const hm=document.getElementById('hm');
+hrs.forEach(d=>{const bg=d.pnl>=0?`rgba(0,230,138,${Math.min(d.pnl/3000,.35)+.05})`:`rgba(255,77,94,${Math.min(Math.abs(d.pnl)/10000,.35)+.05})`;
+  const tc=d.pnl>=0?'var(--profit)':'var(--loss)';
+  hm.innerHTML+=`<div class="hm-c mono" style="background:${bg}"><div style="font-size:9px;color:var(--t3)">${d.h}</div><div style="color:${tc};margin:2px 0">${fpnl(d.pnl)}</div><div style="font-size:8px;color:var(--t3)">${d.t}t ${d.wr}%</div></div>`;});
+
+// Trades
+const tds=[
+  {s:'BUY',sym:'NIFTY 24850 CE',q:50,e:245.30,x:218.50,pnl:-1340,r:'TRAIL_SL',h:'8m',sc:67,c:'MEDIUM'},
+  {s:'BUY',sym:'BANKNIFTY 53200 PE',q:30,e:410,x:485.20,pnl:2256,r:'TP_HIT',h:'22m',sc:72,c:'HIGH'},
+  {s:'SELL',sym:'SENSEX 81300 CE',q:20,e:320,x:355,pnl:-700,r:'SL_HIT',h:'3m',sc:58,c:'MEDIUM'},
+  {s:'BUY',sym:'NIFTY 24900 PE',q:50,e:180.50,x:155.80,pnl:-1235,r:'TRAIL_SL',h:'12m',sc:63,c:'MEDIUM'},
+  {s:'BUY',sym:'BANKNIFTY 53400 CE',q:30,e:290,x:342.50,pnl:1575,r:'TP_HIT',h:'35m',sc:78,c:'HIGH'},
+  {s:'BUY',sym:'NIFTY 24800 CE',q:50,e:310.20,x:278.40,pnl:-1590,r:'SL_HIT',h:'5m',sc:55,c:'LOW'},
+  {s:'SELL',sym:'SENSEX 81500 PE',q:20,e:425,x:398.70,pnl:526,r:'TP_HIT',h:'18m',sc:71,c:'HIGH'},
+  {s:'BUY',sym:'BANKNIFTY 53100 PE',q:30,e:365,x:332.80,pnl:-966,r:'STAGNATION',h:'20m',sc:60,c:'LOW'},
+];
+const tb=document.getElementById('tb');
+tds.forEach(t=>{const pc=t.pnl>=0?'var(--profit)':'var(--loss)';const pct=((t.x-t.e)/t.e*100*(t.s==='SELL'?-1:1));
+  const cc=t.c==='HIGH'?'cb-h':t.c==='MEDIUM'?'cb-m':'cb-lo';
+  const scc=t.sc>=70?'var(--profit)':t.sc>=50?'var(--warn)':'var(--loss)';
+  tb.innerHTML+=`<tr><td><span class="db ${t.s==='BUY'?'db-l':'db-s'}">${t.s}</span></td><td style="font-weight:600;font-size:11px">${t.sym}</td><td class="mono">${t.q}</td><td class="mono">${R}${t.e.toFixed(1)}</td><td class="mono">${R}${t.x.toFixed(1)}</td><td class="mono" style="color:${pc};font-weight:700">${fpnl(t.pnl)}</td><td class="mono" style="color:${pc};font-size:10px">${pct>=0?'+':''}${pct.toFixed(1)}%</td><td style="font-size:9px;color:var(--t3)">${t.r}</td><td class="mono" style="font-size:10px">${t.h}</td><td class="mono" style="color:${scc};font-size:10px">${t.sc}</td><td><span class="cb ${cc}">${t.c}</span></td></tr>`;});
+
+// Signals
+const sigs=[
+  {side:'BUY_CE',sym:'NIFTY',sc:72,c:'HIGH',adx:28.5,rsi:42,atr:85,vol:1.8,reg:'TRENDING'},
+  {side:'BUY_PE',sym:'BANKNIFTY',sc:65,c:'MEDIUM',adx:22.1,rsi:68,atr:142,vol:1.3,reg:'RANGING'},
+  {side:'BUY_CE',sym:'SENSEX',sc:58,c:'MEDIUM',adx:19.8,rsi:38,atr:210,vol:0.9,reg:'CHOPPY'},
+  {side:'BUY_PE',sym:'NIFTY',sc:48,c:'LOW',adx:15.2,rsi:72,atr:76,vol:0.7,reg:'CHOPPY'},
+];
+const sg2=document.getElementById('sg2');
+sigs.forEach(s=>{const sc=s.side.includes('BUY')?'color:var(--profit)':'color:var(--loss)';
+  const cc=s.c==='HIGH'?'cb-h':s.c==='MEDIUM'?'cb-m':'cb-lo';
+  const scc=s.sc>=70?'var(--profit)':s.sc>=50?'var(--warn)':'var(--loss)';
+  sg2.innerHTML+=`<div class="sig"><div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><span style="font-weight:700;${sc}">${s.side}</span><span style="font-weight:600">${s.sym}</span><span class="cb ${cc}">${s.c}</span><span class="mono" style="font-size:11px;color:${scc};font-weight:700">${s.sc}</span><span style="font-size:9px;padding:2px 6px;border-radius:3px;background:var(--bg3);color:var(--t3)">${s.reg}</span></div><div class="sig-bars"><div class="sig-r"><span class="sig-l">ADX</span><div class="sig-b"><div class="sig-f" style="width:${s.adx}%;background:var(--cyan)"></div></div><span class="sig-v mono">${s.adx}</span></div><div class="sig-r"><span class="sig-l">RSI</span><div class="sig-b"><div class="sig-f" style="width:${s.rsi}%;background:var(--purple)"></div></div><span class="sig-v mono">${s.rsi}</span></div><div class="sig-r"><span class="sig-l">ATR</span><div class="sig-b"><div class="sig-f" style="width:${Math.min(s.atr/3,100)}%;background:var(--gold)"></div></div><span class="sig-v mono">${s.atr}</span></div><div class="sig-r"><span class="sig-l">VOL</span><div class="sig-b"><div class="sig-f" style="width:${s.vol*50}%;background:var(--warn)"></div></div><span class="sig-v mono">${s.vol}x</span></div></div></div>`;});
+
+// Index perf
+const idxP=[{n:'NIFTY',pnl:-8420,t:28,wr:32},{n:'BANKNIFTY',pnl:-4210,t:18,wr:39},{n:'SENSEX',pnl:-2903,t:10,wr:40}];
+const mxP=Math.max(...idxP.map(d=>Math.abs(d.pnl)));const ip=document.getElementById('ip');
+idxP.forEach(d=>{const bw=Math.abs(d.pnl)/mxP*100;const bc=d.pnl>=0?'var(--profit)':'var(--loss)';
+  ip.innerHTML+=`<div class="ana-r"><span class="ana-l">${d.n}</span><div class="ana-b"><div class="ana-f" style="width:${bw}%;background:${bc}" data-v="${fpnl(d.pnl)}"></div></div><div class="ana-s">${d.t}t &middot; <b>${d.wr}%</b> WR</div></div>`;});
+
+// Exit reasons
+const exR=[{n:'TRAIL SL',c:22,pnl:-6840},{n:'SL HIT',c:14,pnl:-8920},{n:'TP HIT',c:12,pnl:4180},{n:'STAGNATION',c:5,pnl:-2450},{n:'SESSION END',c:3,pnl:-1503}];
+const mxR=Math.max(...exR.map(d=>Math.abs(d.pnl)));const er=document.getElementById('er');
+exR.forEach(d=>{const bw=Math.abs(d.pnl)/mxR*100;const bc=d.pnl>=0?'var(--profit)':'var(--loss)';
+  er.innerHTML+=`<div class="ana-r"><span class="ana-l">${d.n}</span><div class="ana-b"><div class="ana-f" style="width:${bw}%;background:${bc}" data-v="${fpnl(d.pnl)}"></div></div><div class="ana-s">${d.c}t</div></div>`;});
+})();
+</script>
+</body>
+</html>
