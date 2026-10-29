@@ -118,12 +118,19 @@ class TelegramAlert:
         )
 
     def signal_detected(self, symbol: str, side: str, score: int,
-                        adx: float, strike: int = 0, premium: float = 0) -> None:
+                        adx: float, strike: int = 0, premium: float = 0,
+                        confidence: str = "", regime: str = "",
+                        rsi: float = 0, supertrend: str = "",
+                        vwap: str = "", choppiness: float = 0,
+                        atr: float = 0, close: float = 0,
+                        oi: float = 0, iv: float = 0) -> None:
         lines = [
             f"<b>SIGNAL DETECTED</b>",
-            f"{side} {symbol}",
+            f"{side} {symbol} [{confidence}]",
             f"Score: {score}/100 | ADX: {adx:.1f}",
         ]
+        if regime:
+            lines.append(f"Regime: {regime} | RSI: {rsi:.1f}")
         if strike:
             lines.append(f"Strike: {strike} | Premium: ₹{premium:.2f}")
         lines.append(f"{datetime.now(IST).strftime('%H:%M:%S IST')}")

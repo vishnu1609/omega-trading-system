@@ -34,9 +34,9 @@ class Candle:
     volume: float
 
 
-def extract_features(candles: list[Candle], lookback: int = 50) -> dict[str, float]:
+def extract_features(candles: list[Candle], lookback: int = 50) -> dict[str, float] | None:
     if len(candles) < lookback:
-        return {}
+        return None
 
     window = candles[-lookback:]
     c = window[-1]
@@ -104,14 +104,19 @@ def extract_features(candles: list[Candle], lookback: int = 50) -> dict[str, flo
     avg_vol = float(np.mean(volumes[-20:])) if len(volumes) >= 20 else float(np.mean(volumes))
     features["volume_ratio"] = volumes[-1] / avg_vol if avg_vol > 0 else 1.0
     features["volume_trend_5"] = _slope_of_last_n(volumes[-5:], 5)
-    features["volume_price_corr"] = float(np.corrcoef(closes[-10:], volumes[-10:])[0, 1]) if len(closes) >= 10 and np.std(volumes[-10:]) > 0 else 0
+    try:
+        vpc = float(np.corrcoef(closes[-10:], volumes[-10:])[0, 1]) if len(closes) >= 10 and np.std(volumes[-10:]) > 0 and np.std(closes[-10:]) > 0 else 0
+        features["volume_price_corr"] = 0.0 if math.isnan(vpc) else vpc
+    except (ValueError, FloatingPointError):
+        features["volume_price_corr"] = 0.0
     features["obv_slope"] = _obv_slope(closes[-20:], volumes[-20:])
 
     # === TIME FEATURES (6) ===
     import datetime as dt
     from zoneinfo import ZoneInfo
     IST = ZoneInfo("Asia/Kolkata")
-    ts = dt.datetime.fromtimestamp(c.timestamp, tz=IST) if c.timestamp > 1e9 else dt.datetime.now(IST)
+    raw_ts = c.timestamp.timestamp() if isinstance(c.timestamp, dt.datetime) else float(c.timestamp)
+    ts = dt.datetime.fromtimestamp(raw_ts, tz=IST) if raw_ts > 1e9 else dt.datetime.now(IST)
     minutes_from_open = (ts.hour - 9) * 60 + (ts.minute - 15)
     features["minutes_from_open"] = max(0, minutes_from_open)
     features["hour_sin"] = math.sin(2 * math.pi * ts.hour / 24)
@@ -160,13 +165,24 @@ def extract_features(candles: list[Candle], lookback: int = 50) -> dict[str, flo
     current_range = float(highs[-1] - lows[-1]) if len(highs) > 0 else 0
     features["range_expansion"] = current_range / avg_range_20 if avg_range_20 > 0 else 1.0
 
+    # === KAUFMAN EFFICIENCY RATIO (KER) ===
+    ker_period = min(20, len(closes) - 1)
+    if ker_period >= 5:
+        net_direction = abs(closes[-1] - closes[-ker_period - 1])
+        bar_to_bar = float(np.sum(np.abs(np.diff(closes[-ker_period - 1:]))))
+        features["ker"] = net_direction / bar_to_bar if bar_to_bar > 0 else 0.5
+    else:
+        features["ker"] = 0.5
+
     return features
 
 
 def features_to_array(features: dict[str, float], feature_names: list[str] | None = None) -> np.ndarray:
     if feature_names is None:
         feature_names = sorted(features.keys())
-    return np.array([features.get(name, 0.0) for name in feature_names], dtype=np.float32)
+    arr = np.array([features.get(name, 0.0) for name in feature_names], dtype=np.float32)
+    np.nan_to_num(arr, copy=False, nan=0.0, posinf=0.0, neginf=0.0)
+    return arr
 
 
 FEATURE_NAMES = [
@@ -176,7 +192,7 @@ FEATURE_NAMES = [
     "consec_green", "consec_red",
     "day_of_week", "di_spread", "ema9", "ema21", "ema_cross",
     "ema_spread_pct", "gap_pct", "higher_high", "hour_cos", "hour_sin",
-    "hurst_exponent", "is_first_hour", "is_last_hour", "lower_low",
+    "hurst_exponent", "is_first_hour", "is_last_hour", "ker", "lower_low",
     "lower_wick_pct", "macd_histogram", "minutes_from_open", "momentum_5",
     "obv_slope", "price_acceleration", "price_vs_ema50_pct",
     "price_vs_sma200_pct", "range_expansion", "range_pct",
@@ -184,6 +200,23 @@ FEATURE_NAMES = [
     "supertrend_dir", "trend_strength", "upper_wick_pct",
     "volume_price_corr", "volume_ratio", "volume_trend_5",
     "vwap_distance_pct",
+]
+
+# Reduced orthogonal feature set for LightGBM (15 features, max_depth=3)
+# Selected by information ratio — 6 independent factor groups:
+#   1. Trend: adx_14, ker, ema_spread_pct
+#   2. Momentum: rsi_14, macd_histogram, momentum_5
+#   3. Volatility: atr_pct, bb_width, range_expansion
+#   4. Volume: volume_ratio, obv_slope
+#   5. Regime: choppiness, hurst_exponent
+#   6. Time: minutes_from_open, day_of_week
+REDUCED_FEATURE_NAMES = [
+    "adx_14", "ker", "ema_spread_pct",
+    "rsi_14", "macd_histogram", "momentum_5",
+    "atr_pct", "bb_width", "range_expansion",
+    "volume_ratio", "obv_slope",
+    "choppiness", "hurst_exponent",
+    "minutes_from_open", "day_of_week",
 ]
 
 
@@ -403,6 +436,9 @@ def _choppiness(highs: np.ndarray, lows: np.ndarray, closes: np.ndarray, period:
         atr_sum += tr
     highest = float(np.max(highs))
     lowest = float(np.min(lows))
-    if highest == lowest:
+    if highest == lowest or atr_sum <= 0:
         return 50.0
-    return 100 * math.log10(atr_sum / (highest - lowest)) / math.log10(period)
+    ratio = atr_sum / (highest - lowest)
+    if ratio <= 0:
+        return 50.0
+    return 100 * math.log10(ratio) / math.log10(period)

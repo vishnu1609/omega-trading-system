@@ -5,11 +5,11 @@ instruments:
     exchange: "NSE"
     segment: "IDX_OPT"
     asset_class: "index_options"
-    lot_size: 75
+    lot_size: 65
     strike_step: 50
     tick_size: 0.05
     dhan_security_id: "13"
-    expiry_day: "thursday"
+    expiry_day: "tuesday"
     symbol_prefix: "NIFTY"
     session_start: "09:15"
     session_end: "15:30"
@@ -19,11 +19,11 @@ instruments:
     exchange: "NSE"
     segment: "IDX_OPT"
     asset_class: "index_options"
-    lot_size: 15
+    lot_size: 30
     strike_step: 100
     tick_size: 0.05
     dhan_security_id: "25"
-    expiry_day: "wednesday"
+    expiry_day: "monthly_last_tuesday"
     symbol_prefix: "BANKNIFTY"
     session_start: "09:15"
     session_end: "15:30"
@@ -33,7 +33,7 @@ instruments:
     exchange: "BSE"
     segment: "IDX_OPT"
     asset_class: "index_options"
-    lot_size: 10
+    lot_size: 20
     strike_step: 100
     tick_size: 0.05
     dhan_security_id: "51"
@@ -48,7 +48,7 @@ instruments:
 costs:
   equity_options:
     brokerage_per_order: 20
-    stt_sell_pct: 0.0625        # STT on sell side (options)
+    stt_sell_pct: 0.15           # STT on sell side (options) — updated Apr 2026 SEBI rate
     exchange_txn_pct: 0.053
     sebi_per_crore: 10
     gst_pct: 18

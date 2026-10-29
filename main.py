@@ -9,6 +9,7 @@ from __future__ import annotations
 import argparse
 import logging
 import signal
+import sqlite3
 import sys
 import threading
 import time
@@ -22,6 +23,7 @@ from dotenv import load_dotenv
 
 from core.broker_base import BrokerAuthError, BrokerBase
 from core.broker_dhan import DhanBroker
+from core.broker_groww import GrowwBroker
 from core.broker_paper import PaperBroker
 from core.instrument_selector import InstrumentSelector
 from core.order_manager import OrderManager
@@ -33,6 +35,7 @@ from core.live_feed import LiveFeed, EXCHANGE_SEG_MAP
 from core.chain_collector import ChainCollector
 from core.greeks import compute_greeks, dte_from_expiry
 from core.option_chain import OptionChainResolver
+from core.instrument_master import InstrumentMaster
 from core.signal_generator import SignalGenerator
 from core.trade_memory import TradeMemory
 from core.wallet import Wallet
@@ -80,15 +83,36 @@ def main() -> None:
     import os as _os, atexit as _atexit
     _pid_file = Path(__file__).parent / "data" / "omega.pid"
     _pid_file.parent.mkdir(parents=True, exist_ok=True)
+    my_pid = _os.getpid()
     if _pid_file.exists():
         try:
             old_pid = int(_pid_file.read_text().strip())
-            _os.kill(old_pid, 0)
-            print(f"Another bot instance (PID {old_pid}) is already running. Kill it first or delete data/omega.pid")
-            sys.exit(1)
+            if old_pid != my_pid:
+                _os.kill(old_pid, 0)
+                print(f"Another bot instance (PID {old_pid}) is already running. Kill it first or delete data/omega.pid")
+                sys.exit(1)
         except (OSError, ValueError):
             pass
-    _pid_file.write_text(str(_os.getpid()))
+    import subprocess as _sp
+    try:
+        result = _sp.run(
+            ["lsof", str(Path(__file__).parent / "data" / "omega.db")],
+            capture_output=True, text=True,
+        )
+        for line in result.stdout.strip().splitlines()[1:]:
+            parts = line.split()
+            if len(parts) >= 2:
+                pid = int(parts[1])
+                if pid != my_pid:
+                    log.warning("Killing stale process PID %d holding omega.db", pid)
+                    try:
+                        _os.kill(pid, 9)
+                    except OSError:
+                        pass
+        import time as _t; _t.sleep(0.5)
+    except Exception:
+        pass
+    _pid_file.write_text(str(my_pid))
     _atexit.register(lambda: _pid_file.unlink(missing_ok=True))
 
     parser = argparse.ArgumentParser(description="Omega Trading Company")
@@ -239,8 +263,11 @@ def main() -> None:
         for alert in health["alerts"]:
             log.warning("TradeMemory alert: %s", alert)
 
-    option_chain = OptionChainResolver()
-    log.info("Option chain resolver initialized (Dhan API)")
+    instrument_master = InstrumentMaster()
+    instrument_master.download_and_parse()
+    option_chain = OptionChainResolver(instrument_master=instrument_master)
+    log.info("Option chain resolver initialized (Dhan API + instrument master: %d instruments)",
+             len(instrument_master._instruments) if hasattr(instrument_master, '_instruments') else 0)
 
     live_feed = LiveFeed()
     index_instruments = [
@@ -254,6 +281,20 @@ def main() -> None:
     wallet = Wallet(starting_capital=100_000.0)
     wallet.reconcile_in_trade(pm.open_positions)
     log.info("Wallet loaded: balance=₹%.2f available=₹%.2f", wallet.balance, wallet.available)
+
+    groww_broker = None
+    import os as _os_env
+    if _os_env.environ.get("GROWW_ACCESS_TOKEN"):
+        try:
+            groww_broker = GrowwBroker()
+            if groww_broker.validate_token():
+                log.info("Groww broker initialized — equity cash trading enabled")
+            else:
+                log.warning("Groww token invalid — equity cash trading disabled")
+                groww_broker = None
+        except Exception as e:
+            log.warning("Groww broker init failed: %s — equity cash disabled", e)
+            groww_broker = None
 
     strategy = OmegaStrategy(
         broker=broker,
@@ -271,8 +312,10 @@ def main() -> None:
     )
     strategy.option_chain = option_chain
     strategy.live_feed = live_feed
+    strategy.sig_gen = None
+    strategy.equity_broker = groww_broker
 
-    register_bot(strategy=strategy, pm=pm, broker=broker, om=om, wallet=wallet, guardrails=guardrails, live_feed=live_feed)
+    register_bot(strategy=strategy, pm=pm, broker=broker, om=om, wallet=wallet, guardrails=guardrails, live_feed=live_feed, option_chain=option_chain)
 
     if mode == "live" and hasattr(broker, 'validate_token'):
         if not broker.validate_token():
@@ -373,6 +416,7 @@ def main() -> None:
             orb_minutes=sig_cfg.get("orb_minutes", 30),
         )
         sig_gen.set_guardrails(guardrails)
+        strategy.sig_gen = sig_gen
         register_bot(sig_gen=sig_gen)
 
         calendar = MarketCalendar(base_path=base_path)
@@ -515,6 +559,7 @@ def main() -> None:
                 re.reset_daily()
                 pm.reset_daily()
                 guardrails.reset_daily()
+                wallet.reset_daily()
                 if sig_gen:
                     sig_gen._orb_levels.clear()
                     sig_gen._last_signal.clear()
@@ -532,12 +577,23 @@ def main() -> None:
                     signals_log.append(payload)
                     strategy.process_signal(payload)
                 except Exception as exc:
-                    log.error("Signal processing error: %s", exc)
+                    log.error("Signal processing error: %s", exc, exc_info=True)
                     tg.error("process_signal", exc)
 
             try:
                 strategy.monitor_positions()
                 pm.save_state()
+            except sqlite3.OperationalError as exc:
+                if "locked" in str(exc):
+                    log.warning("Position monitor DB locked — retrying in 0.5s")
+                    time.sleep(0.5)
+                    try:
+                        strategy.monitor_positions()
+                        pm.save_state()
+                    except Exception:
+                        pass
+                else:
+                    log.error("Position monitoring error: %s", exc)
             except Exception as exc:
                 log.error("Position monitoring error: %s", exc)
                 tg.error("monitor_positions", exc)

@@ -5,8 +5,8 @@ broker:
 
 risk:
   max_daily_loss: 10000         # 10% of 1L — paper mode: let it rip to stress-test
-  max_concurrent_positions: 3   # disciplined: max 3 positions at once
-  max_daily_trades: 12          # cap overtrading — quality over quantity
+  max_concurrent_positions: 6   # paper mode: allow more concurrent to stress-test
+  max_daily_trades: 20          # paper mode: higher limit to gather ML data faster
   sl_buffer_pct: 0.3
   trail_pct: 0.15
   cooldown_after_losses: 3      # cooldown after 3 consecutive losses
@@ -63,7 +63,7 @@ signal_generator:
 
 guardrails:
   capital: 100000                   # 1 lakh capital
-  max_risk_per_trade_pct: 8.0        # paper mode: 8% = ₹8K per trade — room for multi-lot spreads
+  max_risk_per_trade_pct: 10.0        # paper mode: 10% = ₹10K per trade — room for BANKNIFTY multi-lot
   nse_allocation_cap: 0.90          # paper mode: 90% allocation to NSE indices
   adx_min_threshold: 10             # suppress signals if ADX < 10 (truly dead market — 14 was blocking valid options moves)
   vwap_warmup_time: "09:30"         # wait for 3 candles before trusting VWAP

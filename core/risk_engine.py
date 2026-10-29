@@ -87,6 +87,9 @@ class RiskEngine:
         self._peak_capital: float = 0
         self._gate_lock = threading.Lock()
         self._symbol_cooldowns: dict[str, datetime] = {}
+        self._weekly_pnl: float = 0.0
+        self._week_start: str = ""
+        self.max_weekly_loss: float = max_daily_loss * 2
 
     def register_instrument_session(self, name: str, start: str, square_off: str) -> None:
         sh, sm = map(int, start.split(":"))
@@ -126,6 +129,17 @@ class RiskEngine:
             log.critical(self.last_reason)
             return False
 
+        # Gate 2b: Weekly loss check
+        current_week = now.strftime("%Y-W%W")
+        if current_week != self._week_start:
+            self._weekly_pnl = 0.0
+            self._week_start = current_week
+        week_total = self._weekly_pnl + self.pm.daily_pnl
+        if week_total <= -self.max_weekly_loss:
+            self.last_reason = f"Weekly loss limit breached: Rs.{week_total:,.2f} (max={self.max_weekly_loss:,.0f})"
+            log.critical(self.last_reason)
+            return False
+
         # Gate 3: Session check (per-instrument if available)
         sess_start, sess_end = self.get_session_times(instrument)
         if now.timetz() < sess_start:
@@ -153,6 +167,14 @@ class RiskEngine:
         if self.pm.open_count >= self.max_concurrent:
             self.last_reason = f"Max concurrent positions ({self.max_concurrent}) reached"
             return False
+
+        # Gate 5a: Correlation guard — max 3 same-direction positions
+        if instrument and symbol:
+            direction = "LONG" if "CE" in symbol.upper() or "BUY" in symbol.upper() else "SHORT"
+            same_dir_count = sum(1 for pos in self.pm.open_positions if pos.direction == direction)
+            if same_dir_count >= 3:
+                self.last_reason = f"Correlation limit: {same_dir_count} same-direction ({direction}) positions already open"
+                return False
 
         # Gate 5b: Progressive loss reduction — halve after 50% daily loss used
         half_loss = self.max_daily_loss / 2
@@ -393,7 +415,7 @@ class RiskEngine:
     def atr_position_size(self, capital: float, risk_pct: float,
                           entry_price: float, atr_value: float,
                           sl_multiplier: float = 1.5,
-                          lot_size: int = 75,
+                          lot_size: int = 65,
                           fee_rate: float = 0.0005) -> int:
         if atr_value <= 0 or entry_price <= 0:
             return lot_size
@@ -417,9 +439,9 @@ class RiskEngine:
         aggressively. On DTE=1 the curve steepens too. For DTE>3 the
         standard hold-time decay is enough.
 
-        NSE 2026 expiry calendar:
-          - Nifty weekly: Tuesday
-          - BankNifty monthly: last Tuesday
+        NSE 2026 expiry calendar (post Sep 2025 SEBI):
+          - Nifty weekly: Tuesday (moved from Thu, Sep 2025)
+          - BankNifty monthly: last Tuesday (weekly discontinued Nov 2024)
         """
         if hold_minutes < 15 or original_tp <= 0 or entry_price <= 0:
             return original_tp
@@ -450,7 +472,7 @@ class RiskEngine:
     def check_partial_exit(self, current_price: float, entry_price: float,
                            direction: str, atr_value: float,
                            quantity: int, already_scaled: bool = False,
-                           lot_size: int = 75) -> dict:
+                           lot_size: int = 65) -> dict:
         """Check if position qualifies for partial profit booking.
 
         Scale out 50% at 1.5× ATR profit. This locks in gains while
@@ -495,25 +517,27 @@ class RiskEngine:
                        trail_step: float = 0.0,
                        trail_trigger: float = 1.0,
                        atr_value: float = 0.0,
-                       hold_seconds: float = 0.0) -> dict:
-        """ATR-based trailing stop with time-aware phased progression.
+                       hold_seconds: float = 0.0,
+                       initial_sl: float = 0.0) -> dict:
+        """R-multiple Chandelier Exit with 0.8R deadband.
 
-        Time phases (options need room to breathe):
-          < 10 min: wide trail at 3.0× ATR from peak (let trade develop)
-          10-30 min: medium trail at 2.5× ATR from peak
-          30-60 min: tighter trail at 2.0× ATR from peak
-          60+ min: tight trail at 1.5× ATR (theta eating, lock profits)
+        Fixes the ₹3-₹5 premature stop-out problem by NOT trailing until
+        profit reaches 0.8R (where R = initial risk = entry - initial_sl).
 
-        Profit phases (ATR multiples from entry):
-          < 1.0× ATR: no trail tightening
-          1.5× ATR: move SL to breakeven
-          3.0× ATR: apply time-based trail from peak
-          5.0× ATR+: override to tight 1.5× ATR regardless of time
+        R-multiple tiers (from Gemini+ChatGPT research consensus):
+          Tier 0 (R < 0.80):  DEADBAND — hold initial SL, zero trailing
+          Tier 1 (0.80-1.50): Breakeven lock + loose chandelier (3.0× ATR)
+          Tier 2 (1.50-2.50): Standard chandelier (2.5× ATR from peak)
+          Tier 3 (2.50-4.00): Momentum ratchet (1.8× ATR from peak)
+          Tier 4 (R >= 4.00): Climax compression (1.1× ATR from peak)
+
+        Hold-time theta compression (options decay):
+          Multiplier is reduced by up to 0.5 after 60+ min hold.
         """
         if not _is_valid_price(current_price) or not _is_valid_price(entry_price):
             return {"sl": existing_sl, "peak": peak_price,
                     "trail_armed": False, "stop_hit": False,
-                    "detail": "invalid price"}
+                    "detail": "invalid price", "r_multiple": 0, "tier": "INVALID"}
 
         is_long = direction == "LONG"
         min_atr = entry_price * 0.05
@@ -526,53 +550,88 @@ class RiskEngine:
             peak = min(peak_price, current_price) if _is_valid_price(peak_price) else current_price
             favourable = max(0, entry_price - peak)
 
-        atr_multiples = favourable / atr if atr > 0 else 0
+        # Compute R-multiple: how many initial-risks of profit we have
+        if _is_valid_price(initial_sl) and initial_sl > 0:
+            initial_risk = abs(entry_price - initial_sl)
+        else:
+            initial_risk = atr * 2.0  # fallback: ~2× ATR as initial risk proxy
+        initial_risk = max(initial_risk, 1.0)
+        r_multiple = favourable / initial_risk
+
         sl = existing_sl
         detail = ""
+        breakeven_buffer = 2.50  # covers brokerage + STT + slippage
 
-        if hold_seconds < 600:
-            trail_width = 4.0
-        elif hold_seconds < 1800:
-            trail_width = 3.5
-        elif hold_seconds < 3600:
-            trail_width = 3.0
+        # Theta-decay compression: tighten multiplier as hold time increases
+        hold_minutes = hold_seconds / 60
+        if hold_minutes < 15:
+            theta_compress = 0.0
+        elif hold_minutes < 30:
+            theta_compress = 0.1
+        elif hold_minutes < 60:
+            theta_compress = 0.25
         else:
-            trail_width = 2.5
+            theta_compress = 0.4
 
-        if atr_multiples >= 6.0:
-            trail_width = min(trail_width, 2.5)
+        # === TIER 0: DEADBAND — R < 0.80 — NO TRAILING AT ALL ===
+        if r_multiple < 0.80:
+            candidate = sl  # keep initial SL untouched
+            detail = f"DEADBAND (R={r_multiple:.2f}<0.80): hold initial SL={sl:.2f}"
+            tier = "TIER_0_DEADBAND"
+
+        # === TIER 1: BREAKEVEN LOCK — 0.80 <= R < 1.50 ===
+        elif r_multiple < 1.50:
             if is_long:
-                candidate = peak - (trail_width * atr)
+                be_stop = entry_price + breakeven_buffer
             else:
-                candidate = peak + (trail_width * atr)
-            detail = f"strong trail (6×ATR, {trail_width}×w): {sl:.2f} → {candidate:.2f}"
-        elif atr_multiples >= 4.0:
+                be_stop = entry_price - breakeven_buffer
+            mult = max(0.90, 3.0 - theta_compress)
             if is_long:
-                candidate = peak - (trail_width * atr)
+                chand_stop = peak - (mult * atr)
             else:
-                candidate = peak + (trail_width * atr)
-            detail = f"trail ({atr_multiples:.1f}×ATR, {trail_width}×w): {sl:.2f} → {candidate:.2f}"
-        elif atr_multiples >= 3.0:
-            be_buffer = atr * 0.5
-            candidate = entry_price + be_buffer if is_long else entry_price - be_buffer
-            detail = f"breakeven+ (3.0×ATR): {sl:.2f} → {candidate:.2f} (buffer={be_buffer:.2f})"
+                chand_stop = peak + (mult * atr)
+            candidate = max(be_stop, chand_stop) if is_long else min(be_stop, chand_stop)
+            detail = f"BREAKEVEN_LOCK (R={r_multiple:.2f}): be={be_stop:.2f} chand={chand_stop:.2f} mult={mult:.1f}"
+            tier = "TIER_1_BREAKEVEN"
+
+        # === TIER 2: STANDARD CHANDELIER — 1.50 <= R < 2.50 ===
+        elif r_multiple < 2.50:
+            mult = max(0.90, 2.5 - theta_compress)
+            if is_long:
+                candidate = peak - (mult * atr)
+            else:
+                candidate = peak + (mult * atr)
+            detail = f"STANDARD_CHANDELIER (R={r_multiple:.2f}): peak={peak:.2f} mult={mult:.1f}"
+            tier = "TIER_2_STANDARD"
+
+        # === TIER 3: MOMENTUM RATCHET — 2.50 <= R < 4.00 ===
+        elif r_multiple < 4.0:
+            mult = max(0.90, 1.8 - theta_compress)
+            if is_long:
+                candidate = peak - (mult * atr)
+            else:
+                candidate = peak + (mult * atr)
+            detail = f"MOMENTUM_RATCHET (R={r_multiple:.2f}): peak={peak:.2f} mult={mult:.1f}"
+            tier = "TIER_3_MOMENTUM"
+
+        # === TIER 4: CLIMAX COMPRESSION — R >= 4.00 ===
         else:
-            candidate = sl
+            mult = max(0.90, 1.1 - theta_compress * 0.5)
+            if is_long:
+                candidate = peak - (mult * atr)
+            else:
+                candidate = peak + (mult * atr)
+            detail = f"CLIMAX_RATCHET (R={r_multiple:.2f}): peak={peak:.2f} mult={mult:.1f}"
+            tier = "TIER_4_CLIMAX"
 
+        # Monotonic ratchet: SL can never move backwards
         candidate = round(candidate, 2)
-        min_distance = entry_price * 0.08
         if is_long:
-            floor_sl = round(peak - min_distance, 2) if _is_valid_price(peak) else candidate
-            if _is_valid_price(candidate) and candidate > floor_sl:
-                candidate = floor_sl
             if _is_valid_price(candidate) and candidate > sl:
                 sl = candidate
             else:
                 detail = ""
         else:
-            ceil_sl = round(peak + min_distance, 2) if _is_valid_price(peak) else candidate
-            if _is_valid_price(candidate) and candidate < ceil_sl:
-                candidate = ceil_sl
             if _is_valid_price(candidate) and (sl <= 0 or candidate < sl):
                 sl = candidate
             else:
@@ -582,16 +641,97 @@ class RiskEngine:
         if _is_valid_price(sl):
             stop_hit = (current_price <= sl) if is_long else (current_price >= sl)
 
-        return {"sl": sl, "peak": peak, "trail_armed": atr_multiples >= 1.0,
-                "stop_hit": stop_hit, "detail": detail}
+        return {"sl": sl, "peak": peak, "trail_armed": r_multiple >= 0.80,
+                "stop_hit": stop_hit, "detail": detail,
+                "r_multiple": round(r_multiple, 2), "tier": tier}
+
+    def evaluate_dual_domain_trail(
+        self,
+        option_price: float,
+        option_entry: float,
+        underlying_price: float,
+        underlying_entry: float,
+        direction: str,
+        option_sl: float,
+        underlying_peak: float = 0.0,
+        underlying_atr: float = 0.0,
+        hold_seconds: float = 0.0,
+    ) -> dict:
+        """Dual-domain exit: underlying structural trail + option catastrophe stop.
+
+        Domain 1 — Underlying chandelier: trails the index price using ATR.
+                   Catches trend reversals before they crush option premium.
+        Domain 2 — Option catastrophe stop: hard floor at 70% loss from entry.
+                   Catches IV crush / gamma collapse where underlying barely moves.
+
+        Returns dict with exit=True/False, reason, and updated underlying_peak.
+        """
+        is_long = direction == "LONG"
+
+        # --- Domain 2: Option catastrophe stop (check first — hard floor) ---
+        catastrophe_pct = 0.70
+        if option_entry > 0 and option_price > 0:
+            option_loss_pct = (option_entry - option_price) / option_entry if is_long else (option_price - option_entry) / option_entry
+            if option_loss_pct >= catastrophe_pct:
+                return {
+                    "exit": True,
+                    "reason": f"CATASTROPHE_STOP: option lost {option_loss_pct:.0%} from entry",
+                    "underlying_peak": underlying_peak,
+                    "domain": "option",
+                }
+
+        # --- Domain 1: Underlying structural trail ---
+        if underlying_atr <= 0:
+            underlying_atr = underlying_entry * 0.005
+
+        if is_long:
+            u_peak = max(underlying_peak, underlying_price) if underlying_peak > 0 else underlying_price
+        else:
+            u_peak = min(underlying_peak, underlying_price) if underlying_peak > 0 else underlying_price
+
+        u_favourable = abs(u_peak - underlying_entry)
+        u_r = u_favourable / max(underlying_atr * 2, 1.0)
+
+        hold_min = hold_seconds / 60
+        theta_c = min(0.4, max(0, (hold_min - 15) / 112.5))
+
+        if u_r < 0.5:
+            u_mult = 3.5
+        elif u_r < 1.5:
+            u_mult = max(1.0, 2.8 - theta_c)
+        else:
+            u_mult = max(1.0, 2.0 - theta_c)
+
+        if is_long:
+            u_trail = u_peak - u_mult * underlying_atr
+            u_stop_hit = underlying_price <= u_trail
+        else:
+            u_trail = u_peak + u_mult * underlying_atr
+            u_stop_hit = underlying_price >= u_trail
+
+        if u_stop_hit:
+            return {
+                "exit": True,
+                "reason": f"UNDERLYING_TRAIL: price={underlying_price:.0f} broke trail={u_trail:.0f} (peak={u_peak:.0f}, {u_mult:.1f}×ATR)",
+                "underlying_peak": u_peak,
+                "domain": "underlying",
+            }
+
+        return {
+            "exit": False,
+            "reason": "",
+            "underlying_peak": u_peak,
+            "domain": "",
+        }
 
     def reset_daily(self) -> None:
+        self._weekly_pnl += self.pm.daily_pnl
         self._bot_killed = False
         self._cooldown_until = None
         self._daily_trade_count = 0
         self._symbol_cooldowns.clear()
         self.last_reason = ""
-        log.info("Risk engine reset for new trading day")
+        log.info("Risk engine reset for new trading day (weekly_pnl=₹%.2f)", self._weekly_pnl)
 
 
 def _is_valid_price(value: Any) -> bool:

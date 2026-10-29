@@ -21,11 +21,11 @@ log = logging.getLogger(__name__)
 IST = ZoneInfo("Asia/Kolkata")
 
 EXPIRY_DAYS = {
-    "NIFTY": 3,       # Thursday = weekday 3 (weekly expiry — only NSE weekly left post-SEBI Nov 2024)
-    "BANKNIFTY": 3,   # Monthly expiry (last Thursday) — weekly discontinued Nov 2024
-    "FINNIFTY": 3,    # Monthly expiry (last Tuesday→Thursday) — weekly discontinued Nov 2024
-    "SENSEX": 4,      # Friday = weekday 4 (weekly expiry — only BSE weekly left post-SEBI Nov 2024)
-    "BANKEX": 0,      # Monthly expiry — weekly discontinued Nov 2024
+    "NIFTY": 1,       # Tuesday = weekday 1 (weekly expiry moved from Thu→Tue, Sep 2025 SEBI circular)
+    "BANKNIFTY": -1,   # Monthly only (last Tuesday) — weekly discontinued Nov 2024; -1 = use calendar
+    "FINNIFTY": -1,    # Monthly only — weekly discontinued Nov 2024; -1 = use calendar
+    "SENSEX": 4,      # Friday = weekday 4 (weekly expiry — only BSE weekly left)
+    "BANKEX": -1,      # Monthly only — weekly discontinued Nov 2024; -1 = use calendar
 }
 
 SECTOR_NSE = {"NIFTY", "BANKNIFTY", "FINNIFTY", "SENSEX", "BANKEX",
@@ -241,6 +241,10 @@ class Guardrails:
                 expiry_weekday = wd
                 break
         if expiry_weekday is None:
+            return PASS
+
+        # -1 means monthly only (no weekly) — skip weekday-based expiry check
+        if expiry_weekday < 0:
             return PASS
 
         if now.weekday() != expiry_weekday:

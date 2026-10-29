@@ -70,6 +70,9 @@ class Position:
     max_loss: float = 0.0
     hedge_entry_price: float = 0.0
     hedge_current_price: float = 0.0
+    underlying_entry_price: float = 0.0
+    underlying_peak_price: float = 0.0
+    asset_type: str = "options"  # options | equity | stock_options
 
     @property
     def is_long(self) -> bool:
@@ -168,6 +171,12 @@ class PositionManager:
         return count
 
     def add_position(self, pos: Position) -> None:
+        if not pos.security_id:
+            log.error("REJECTED add_position: empty security_id for %s", pos.symbol)
+            return
+        if pos.asset_type == "options" and not pos.security_id.isdigit():
+            log.error("REJECTED add_position: invalid numeric security_id '%s' for option %s", pos.security_id, pos.symbol)
+            return
         with self._lock:
             key = pos.security_id
             if key in self._open:
@@ -206,7 +215,11 @@ class PositionManager:
             log.warning("No open position for %s to close", security_id)
             return None
 
-        if pos.is_long:
+        if pos.is_spread and pos.hedge_current_price > 0:
+            sell_pnl = (pos.entry_price - exit_price) * pos.quantity
+            hedge_pnl = (pos.hedge_current_price - pos.hedge_entry_price) * pos.quantity
+            pnl = sell_pnl + hedge_pnl
+        elif pos.is_long:
             pnl = (exit_price - pos.entry_price) * pos.quantity
         else:
             pnl = (pos.entry_price - exit_price) * pos.quantity
@@ -282,6 +295,9 @@ class PositionManager:
                     "max_loss": p.max_loss,
                     "hedge_entry_price": p.hedge_entry_price,
                     "hedge_current_price": p.hedge_current_price,
+                    "underlying_entry_price": p.underlying_entry_price,
+                    "underlying_peak_price": p.underlying_peak_price,
+                    "asset_type": p.asset_type,
                     } for sid, p in self._open.items()
                 },
                 "closed_count": len(self._closed),
@@ -299,6 +315,9 @@ class PositionManager:
             state = json.loads(path.read_text())
             loaded = 0
             for sid, data in state.get("open", {}).items():
+                if not sid:
+                    log.warning("SKIPPED restore: empty security_id")
+                    continue
                 pos = Position(
                     symbol=data["symbol"], security_id=data["security_id"],
                     exchange_segment=data["exchange_segment"],
@@ -335,6 +354,9 @@ class PositionManager:
                     max_loss=data.get("max_loss", 0.0),
                     hedge_entry_price=data.get("hedge_entry_price", 0.0),
                     hedge_current_price=data.get("hedge_current_price", 0.0),
+                    underlying_entry_price=data.get("underlying_entry_price", 0.0),
+                    underlying_peak_price=data.get("underlying_peak_price", 0.0),
+                    asset_type=data.get("asset_type", "options"),
                 )
                 self._open[sid] = pos
                 loaded += 1

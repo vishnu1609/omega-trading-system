@@ -59,49 +59,133 @@ IST = ZoneInfo("Asia/Kolkata")
 
 DYNAMIC_SLTP_LEVELS = {
     "LOW": [
-        {"level": 1, "sl_pct": 10.0, "tp_pct": 15.0},
-        {"level": 2, "sl_pct": 12.0, "tp_pct": 20.0},
-        {"level": 3, "sl_pct": 15.0, "tp_pct": 25.0},
-        {"level": 4, "sl_pct": 18.0, "tp_pct": 30.0},
+        {"level": 1, "sl_pct": 10.0, "tp_pct": 20.0},
+        {"level": 2, "sl_pct": 12.0, "tp_pct": 28.0},
+        {"level": 3, "sl_pct": 15.0, "tp_pct": 35.0},
+        {"level": 4, "sl_pct": 18.0, "tp_pct": 42.0},
     ],
     "MEDIUM": [
-        {"level": 1, "sl_pct": 10.0, "tp_pct": 18.0},
-        {"level": 2, "sl_pct": 13.0, "tp_pct": 24.0},
-        {"level": 3, "sl_pct": 16.0, "tp_pct": 30.0},
-        {"level": 4, "sl_pct": 20.0, "tp_pct": 36.0},
+        {"level": 1, "sl_pct": 10.0, "tp_pct": 25.0},
+        {"level": 2, "sl_pct": 13.0, "tp_pct": 33.0},
+        {"level": 3, "sl_pct": 16.0, "tp_pct": 40.0},
+        {"level": 4, "sl_pct": 20.0, "tp_pct": 48.0},
     ],
     "HIGH": [
-        {"level": 1, "sl_pct": 12.0, "tp_pct": 22.0},
-        {"level": 2, "sl_pct": 15.0, "tp_pct": 30.0},
-        {"level": 3, "sl_pct": 18.0, "tp_pct": 38.0},
-        {"level": 4, "sl_pct": 22.0, "tp_pct": 45.0},
+        {"level": 1, "sl_pct": 12.0, "tp_pct": 30.0},
+        {"level": 2, "sl_pct": 15.0, "tp_pct": 40.0},
+        {"level": 3, "sl_pct": 18.0, "tp_pct": 50.0},
+        {"level": 4, "sl_pct": 22.0, "tp_pct": 60.0},
     ],
 }
 
 SHORT_DYNAMIC_SLTP_LEVELS = {
     "LOW": [
-        {"level": 1, "sl_pct": 12.0, "tp_pct": 5.0},
-        {"level": 2, "sl_pct": 5.0, "tp_pct": 8.0},
-        {"level": 3, "sl_pct": 8.0, "tp_pct": 12.0},
-        {"level": 4, "sl_pct": 12.0, "tp_pct": 15.0},
+        {"level": 1, "sl_pct": 25.0, "tp_pct": 8.0},
+        {"level": 2, "sl_pct": 15.0, "tp_pct": 15.0},
+        {"level": 3, "sl_pct": 18.0, "tp_pct": 22.0},
+        {"level": 4, "sl_pct": 22.0, "tp_pct": 30.0},
     ],
     "MEDIUM": [
-        {"level": 1, "sl_pct": 15.0, "tp_pct": 7.0},
-        {"level": 2, "sl_pct": 7.0, "tp_pct": 11.0},
-        {"level": 3, "sl_pct": 11.0, "tp_pct": 15.0},
-        {"level": 4, "sl_pct": 15.0, "tp_pct": 20.0},
+        {"level": 1, "sl_pct": 30.0, "tp_pct": 10.0},
+        {"level": 2, "sl_pct": 18.0, "tp_pct": 18.0},
+        {"level": 3, "sl_pct": 22.0, "tp_pct": 25.0},
+        {"level": 4, "sl_pct": 25.0, "tp_pct": 35.0},
     ],
     "HIGH": [
-        {"level": 1, "sl_pct": 18.0, "tp_pct": 10.0},
-        {"level": 2, "sl_pct": 10.0, "tp_pct": 15.0},
-        {"level": 3, "sl_pct": 15.0, "tp_pct": 20.0},
-        {"level": 4, "sl_pct": 20.0, "tp_pct": 25.0},
+        {"level": 1, "sl_pct": 35.0, "tp_pct": 12.0},
+        {"level": 2, "sl_pct": 20.0, "tp_pct": 20.0},
+        {"level": 3, "sl_pct": 25.0, "tp_pct": 30.0},
+        {"level": 4, "sl_pct": 30.0, "tp_pct": 40.0},
     ],
 }
 
-SL_GRACE_SECONDS = 120
+# Spread-specific levels: tighter SL (cap at 150% of net credit), wider TP (capture 60%+ of credit)
+SPREAD_SLTP_LEVELS = {
+    "LOW": [
+        {"level": 1, "sl_pct": 120.0, "tp_pct": 50.0},
+        {"level": 2, "sl_pct": 80.0, "tp_pct": 65.0},
+        {"level": 3, "sl_pct": 60.0, "tp_pct": 80.0},
+    ],
+    "MEDIUM": [
+        {"level": 1, "sl_pct": 150.0, "tp_pct": 55.0},
+        {"level": 2, "sl_pct": 100.0, "tp_pct": 70.0},
+        {"level": 3, "sl_pct": 80.0, "tp_pct": 85.0},
+    ],
+    "HIGH": [
+        {"level": 1, "sl_pct": 150.0, "tp_pct": 60.0},
+        {"level": 2, "sl_pct": 100.0, "tp_pct": 75.0},
+        {"level": 3, "sl_pct": 80.0, "tp_pct": 90.0},
+    ],
+}
+
+EQUITY_DYNAMIC_SLTP_LEVELS = {
+    "LOW": [
+        {"level": 1, "sl_pct": 2.0, "tp_pct": 4.0},
+        {"level": 2, "sl_pct": 2.5, "tp_pct": 6.0},
+        {"level": 3, "sl_pct": 3.0, "tp_pct": 8.0},
+        {"level": 4, "sl_pct": 3.5, "tp_pct": 10.0},
+    ],
+    "MEDIUM": [
+        {"level": 1, "sl_pct": 2.5, "tp_pct": 5.0},
+        {"level": 2, "sl_pct": 3.0, "tp_pct": 7.0},
+        {"level": 3, "sl_pct": 3.5, "tp_pct": 10.0},
+        {"level": 4, "sl_pct": 4.0, "tp_pct": 13.0},
+    ],
+    "HIGH": [
+        {"level": 1, "sl_pct": 3.0, "tp_pct": 6.0},
+        {"level": 2, "sl_pct": 3.5, "tp_pct": 9.0},
+        {"level": 3, "sl_pct": 4.0, "tp_pct": 12.0},
+        {"level": 4, "sl_pct": 5.0, "tp_pct": 15.0},
+    ],
+}
+
+EQUITY_SHORT_DYNAMIC_SLTP_LEVELS = {
+    "LOW": [
+        {"level": 1, "sl_pct": 2.5, "tp_pct": 3.0},
+        {"level": 2, "sl_pct": 2.0, "tp_pct": 5.0},
+        {"level": 3, "sl_pct": 2.5, "tp_pct": 7.0},
+        {"level": 4, "sl_pct": 3.0, "tp_pct": 9.0},
+    ],
+    "MEDIUM": [
+        {"level": 1, "sl_pct": 3.0, "tp_pct": 4.0},
+        {"level": 2, "sl_pct": 2.5, "tp_pct": 6.0},
+        {"level": 3, "sl_pct": 3.0, "tp_pct": 8.0},
+        {"level": 4, "sl_pct": 3.5, "tp_pct": 11.0},
+    ],
+    "HIGH": [
+        {"level": 1, "sl_pct": 3.5, "tp_pct": 5.0},
+        {"level": 2, "sl_pct": 3.0, "tp_pct": 7.0},
+        {"level": 3, "sl_pct": 3.5, "tp_pct": 10.0},
+        {"level": 4, "sl_pct": 4.0, "tp_pct": 13.0},
+    ],
+}
+
+STOCK_OPTION_DYNAMIC_SLTP_LEVELS = {
+    "LOW": [
+        {"level": 1, "sl_pct": 8.0, "tp_pct": 15.0},
+        {"level": 2, "sl_pct": 10.0, "tp_pct": 22.0},
+        {"level": 3, "sl_pct": 12.0, "tp_pct": 28.0},
+        {"level": 4, "sl_pct": 15.0, "tp_pct": 35.0},
+    ],
+    "MEDIUM": [
+        {"level": 1, "sl_pct": 10.0, "tp_pct": 20.0},
+        {"level": 2, "sl_pct": 12.0, "tp_pct": 28.0},
+        {"level": 3, "sl_pct": 15.0, "tp_pct": 35.0},
+        {"level": 4, "sl_pct": 18.0, "tp_pct": 42.0},
+    ],
+    "HIGH": [
+        {"level": 1, "sl_pct": 12.0, "tp_pct": 25.0},
+        {"level": 2, "sl_pct": 15.0, "tp_pct": 35.0},
+        {"level": 3, "sl_pct": 18.0, "tp_pct": 42.0},
+        {"level": 4, "sl_pct": 22.0, "tp_pct": 50.0},
+    ],
+}
+
+SL_GRACE_SECONDS = 180
 MIN_OPTION_ATR_PCT = 5.0
-BREAKEVEN_PROFIT_PCT = 18.0
+MIN_EQUITY_ATR_PCT = 1.5
+BREAKEVEN_PROFIT_PCT = 12.0  # aligned with 0.8R deadband — chandelier handles the rest
+EQUITY_BREAKEVEN_PROFIT_PCT = 3.0
 MAX_RISK_PER_TRADE = 1500.0
 ATR_SL_MULTIPLIER = 1.5
 ATR_SL_FLOOR = {"NIFTY": 15.0, "BANKNIFTY": 35.0, "SENSEX": 20.0, "FINNIFTY": 15.0, "BANKEX": 15.0}
@@ -142,7 +226,7 @@ class OmegaStrategy:
         self.ml_engine: OmegaMLEngine | None = None
         if OmegaMLEngine:
             try:
-                self.ml_engine = OmegaMLEngine(min_confidence=0.55, auto_train=True)
+                self.ml_engine = OmegaMLEngine(min_confidence=0.60, auto_train=True)
                 log.info("ML Engine loaded: %s", self.ml_engine.get_model_stats())
             except Exception as e:
                 log.warning("ML Engine init failed (trading continues without ML): %s", e)
@@ -150,7 +234,21 @@ class OmegaStrategy:
         self._signal_context: dict[str, dict] = {}
         self._underlying_cache: dict[str, tuple[float, float]] = {}
         self._consecutive_losses: int = 0
+        self._consecutive_wins: int = 0
         self._last_loss_time: float = 0.0
+        self._symbol_loss_cooldown: dict[str, float] = {}  # underlying → timestamp of last loss
+        self._recent_signal_dirs: dict[str, tuple[str, float]] = {}  # symbol → (direction, timestamp)
+
+    def _get_level_table(self, asset: str, direction: str, is_spread: bool = False) -> dict:
+        """Pick the right SL/TP level table based on asset class and direction."""
+        if is_spread:
+            return SPREAD_SLTP_LEVELS
+        if asset == "equity":
+            return EQUITY_SHORT_DYNAMIC_SLTP_LEVELS if direction == "SHORT" else EQUITY_DYNAMIC_SLTP_LEVELS
+        elif asset == "stock_options":
+            return SHORT_DYNAMIC_SLTP_LEVELS if direction == "SHORT" else STOCK_OPTION_DYNAMIC_SLTP_LEVELS
+        else:
+            return SHORT_DYNAMIC_SLTP_LEVELS if direction == "SHORT" else DYNAMIC_SLTP_LEVELS
 
     def _record_signal_audit(self, payload: dict, status: str, reason: str = "", trade_symbol: str = "") -> None:
         payload["execution_status"] = status
@@ -184,12 +282,17 @@ class OmegaStrategy:
         if self.ml_engine:
             try:
                 candles = None
-                if self.live_feed:
+                inst_name = payload.get("symbol", "")
+                if hasattr(self, 'sig_gen') and self.sig_gen and hasattr(self.sig_gen, '_candle_store'):
+                    candles = self.sig_gen._candle_store.get(inst_name)
+                if not candles and self.live_feed:
                     candles = getattr(self.live_feed, 'candle_buffer', None)
-                    if candles:
-                        from ml.features import Candle as MLCandle
-                        candles = [MLCandle(c.timestamp, c.open, c.high, c.low, c.close, c.volume)
-                                   for c in candles] if candles and not isinstance(candles[0], MLCandle) else candles
+                if candles:
+                    from ml.features import Candle as MLCandle
+                    if not isinstance(candles[0], MLCandle):
+                        candles = [MLCandle(
+                            c.timestamp.timestamp() if hasattr(c.timestamp, 'timestamp') else float(c.timestamp),
+                            c.open, c.high, c.low, c.close, c.volume) for c in candles]
                 self.ml_engine.record_signal(payload, status, candles)
             except Exception:
                 pass
@@ -269,10 +372,11 @@ class OmegaStrategy:
         is_sell_entry = side.startswith("SELL")
         is_buy_option = side in ("BUY_CE", "BUY_PE")
 
-        if time_minutes < 9 * 60 + 25:
-            log.info("OPENING RANGE FILTER: blocking %s %s before 09:25 IST — first 10 min too choppy (%02d:%02d)",
-                     side, symbol, hour, minute)
-            self._record_signal_audit(payload, "BLOCKED_OPENING_RANGE", "Before 09:25 IST")
+        warmup_cutoff = 9 * 60 + 30 if self.mode == "paper" else 10 * 60
+        if time_minutes < warmup_cutoff:
+            log.info("WARMUP FILTER: blocking %s %s before %s IST (%02d:%02d)",
+                     side, symbol, "09:30" if self.mode == "paper" else "10:00", hour, minute)
+            self._record_signal_audit(payload, "BLOCKED_WARMUP", f"Before {'09:30' if self.mode == 'paper' else '10:00'} IST")
             return
 
         if is_sell_entry and time_minutes < 11 * 60 + 30:
@@ -283,15 +387,68 @@ class OmegaStrategy:
             score = payload.get("score", 0) + 5
             payload["score"] = score
             log.info("THETA BOOST: +5 score for SELL entry after 12:30 IST (accelerated decay)")
-        if is_buy_option and time_minutes >= 15 * 60:
-            log.info("LATE ENTRY BLOCK: blocking %s %s after 15:00 IST — theta crush zone", side, symbol)
-            self._record_signal_audit(payload, "BLOCKED_LATE_ENTRY", "After 15:00 IST")
+        late_cutoff = 14 * 60 + 30 if self.mode == "paper" else 14 * 60
+        if is_buy_option and time_minutes >= late_cutoff:
+            cutoff_str = "14:30" if self.mode == "paper" else "14:00"
+            log.info("LATE ENTRY BLOCK: blocking %s %s after %s IST — theta crush zone", side, symbol, cutoff_str)
+            self._record_signal_audit(payload, "BLOCKED_LATE_ENTRY", f"After {cutoff_str} IST")
             return
-        if is_buy_option and time_minutes >= 14 * 60 + 30:
-            score = payload.get("score", 0) - 10
+
+        # --- CHOPPY REGIME BLOCK: no directional buys in choppy markets ---
+        vol_regime_early = payload.get("volatility_regime", "NORMAL")
+        if is_buy_option and vol_regime_early == "CHOPPY":
+            log.info("CHOPPY REGIME BLOCK: %s %s — regime=%s, directional buys disabled (use spreads)",
+                     side, symbol, vol_regime_early)
+            self._record_signal_audit(payload, "BLOCKED_CHOPPY_REGIME", f"Directional buy in {vol_regime_early}")
+            return
+
+        # --- PER-UNDERLYING COOLDOWN: 30-min block after a loss on same underlying ---
+        if is_buy_option:
+            underlying = self._resolve_instrument(symbol) or symbol
+            last_loss = self._symbol_loss_cooldown.get(underlying, 0)
+            cooldown_secs = 1800  # 30 minutes
+            elapsed = time.time() - last_loss
+            if last_loss > 0 and elapsed < cooldown_secs:
+                remaining = int((cooldown_secs - elapsed) / 60)
+                log.info("SYMBOL COOLDOWN: %s blocked — %s lost %d min ago, %d min remaining",
+                         symbol, underlying, int(elapsed / 60), remaining)
+                self._record_signal_audit(payload, "BLOCKED_SYMBOL_COOLDOWN",
+                                          f"{underlying} loss cooldown, {remaining}min left")
+                return
+
+        # --- TIME-OF-DAY SCORING (U-shaped intraday persistence) ---
+        # Morning momentum 09:20-10:45: 60% persistence → easier entry
+        # Late morning 10:45-11:30: transition → slightly harder
+        # Midday lull 11:30-13:15: 51.8% persistence (random walk) → block weak signals
+        # Afternoon build 13:15-14:00: pre-breakout watch
+        # Late session 14:00-15:10: 59% persistence → easier entry
+        tod_mod = 0
+        if is_buy_option:
+            if time_minutes <= 10 * 60 + 45:
+                tod_mod = 3  # morning momentum window
+            elif time_minutes < 11 * 60 + 30:
+                tod_mod = -2  # transition — slightly harder
+            elif time_minutes <= 13 * 60 + 15:
+                tod_mod = -8  # midday lull — strong penalty for directional buys
+            elif time_minutes < 14 * 60:
+                tod_mod = -1  # afternoon build
+            else:
+                tod_mod = 2  # late session momentum
+            if tod_mod != 0:
+                score = payload.get("score", 0) + tod_mod
+                payload["score"] = score
+                log.info("TOD MODIFIER: %+d score at %02d:%02d (%s, score=%.0f)",
+                         tod_mod, hour, minute,
+                         "morning" if tod_mod > 0 and time_minutes < 11*60 else
+                         "midday_lull" if tod_mod < -5 else
+                         "late_session" if tod_mod > 0 else "transition",
+                         score)
+
+        weekday = now_ist.weekday()
+        if weekday == 0:
+            score = payload.get("score", 0) + 3
             payload["score"] = score
-            log.info("THETA PENALTY: -10 score for option BUY after 14:30 IST "
-                     "(rapid time decay erodes premium, score now %.0f)", score)
+            log.info("MONDAY EDGE: +3 score (Monday reversal tendency, score=%.0f)", score)
 
         if self.guardrails and hasattr(self.guardrails, "check_chop_window"):
             chop_check = self.guardrails.check_chop_window(symbol, score=score, now=now_ist)
@@ -312,12 +469,16 @@ class OmegaStrategy:
             self._record_signal_audit(payload, "BLOCKED_RSI", f"BUY PE RSI5={rsi_5m:.0f} RSI15={rsi_15m:.0f}")
             return
 
-        if "CE" in side:
+        if "PE" in side:
             score = payload.get("score", 0) + 3
             payload["score"] = score
-            log.info("CE BOOST: +3 score for CE trade (CE historically outperforms PE, score=%.0f)", score)
+            log.info("PE BOOST: +3 score (PE historically +₹5,972 vs CE -₹3,985, score=%.0f)", score)
+        if "CE" in side:
+            score = payload.get("score", 0) - 1
+            payload["score"] = score
+            log.info("CE PENALTY: -1 score (CE historically weaker, score=%.0f)", score)
 
-        min_score = 48 if self.mode == "paper" else 55
+        min_score = 45 if self.mode == "paper" else 55
         vol_regime = payload.get("volatility_regime", "NORMAL")
 
         if confidence == "LOW" and score < 55:
@@ -326,24 +487,31 @@ class OmegaStrategy:
             self._record_signal_audit(payload, "BLOCKED_LOW_CONFIDENCE", f"LOW conf score={score:.0f}")
             return
 
-        if self._consecutive_losses >= 3:
+        if self._consecutive_losses >= 6:
             elapsed = time.time() - self._last_loss_time
-            if elapsed < 300:
-                remaining = int((300 - elapsed) / 60)
+            if elapsed < 1800:
+                remaining = int((1800 - elapsed) / 60)
+                log.info("HARD COOLDOWN: %d consecutive losses — %d min pause remaining, blocking %s %s",
+                         self._consecutive_losses, remaining, side, symbol)
+                self._record_signal_audit(payload, "BLOCKED_HARD_COOLDOWN", f"{self._consecutive_losses} losses, {remaining}min left")
+                return
+            min_score = max(min_score, 62)
+        elif self._consecutive_losses >= 4:
+            elapsed = time.time() - self._last_loss_time
+            if elapsed < 600:
+                remaining = int((600 - elapsed) / 60)
                 log.info("LOSS COOLDOWN: %d consecutive losses — %d min cooldown remaining, blocking %s %s",
                          self._consecutive_losses, remaining, side, symbol)
+                self._record_signal_audit(payload, "BLOCKED_LOSS_COOLDOWN", f"{self._consecutive_losses} losses, {remaining}min left")
                 return
             min_score = max(min_score, 58)
-        if "BANKNIFTY" in symbol:
+        if "BANKNIFTY" in symbol and self.mode != "paper":
             min_score += 2
             log.info("BANKNIFTY GATE: +2 min_score (min_score=%d)", min_score)
         if "SENSEX" in symbol.upper():
-            if confidence == "LOW":
-                log.info("SENSEX GATE: blocking %s %s — SENSEX requires MEDIUM+ (got LOW)", side, symbol)
-                self._record_signal_audit(payload, "BLOCKED_SENSEX_CONF", f"SENSEX needs MEDIUM+, got LOW")
-                return
-            min_score += 5
-            log.info("SENSEX GATE: +5 min_score (wide spreads, min_score=%d)", min_score)
+            sensex_min = 55 if self.mode == "paper" else 60
+            min_score = max(min_score, sensex_min)
+            log.info("SENSEX GATE: min_score raised to %d (wider spreads, lower liquidity)", min_score)
         if score < min_score:
             log.info("Signal rejected: %s %s — confidence=%s score=%.0f (need score>=%.0f, mode=%s)",
                      side, symbol, confidence, score, min_score, self.mode)
@@ -355,29 +523,179 @@ class OmegaStrategy:
             log.warning("Unknown instrument for symbol %s", symbol)
             return
 
+        # --- CROSS-INDEX DIVERGENCE VETO ---
+        # Track recent signal directions; block if this index opposes another within 5 min
+        sig_dir = "CE" if "CE" in side else "PE"
+        self._recent_signal_dirs[inst_name] = (sig_dir, time.time())
+        if is_buy_option and score < 70:
+            cross_indices = {"NIFTY", "BANKNIFTY", "SENSEX"} - {inst_name}
+            for other in cross_indices:
+                other_dir, other_ts = self._recent_signal_dirs.get(other, ("", 0))
+                if other_dir and (time.time() - other_ts) < 300:  # within 5 min
+                    if other_dir != sig_dir:
+                        log.warning("DIVERGENCE VETO: %s %s opposes recent %s %s signal — indices diverging",
+                                    inst_name, sig_dir, other, other_dir)
+                        self._record_signal_audit(payload, "BLOCKED_DIVERGENCE",
+                                                  f"{inst_name} {sig_dir} vs {other} {other_dir}")
+                        return
+
         inst_cfg = self.instruments.get(inst_name, {})
-        lot_size = inst_cfg.get("lot_size", 75)
-        conf_lots = {"HIGH": 2, "MEDIUM": 1, "LOW": 1}.get(confidence, 1) if self.mode == "paper" else self.default_qty_lots
+        lot_size = inst_cfg.get("lot_size", 65)
+        # Prefer instrument master (daily Dhan CSV) for lot size — handles SEBI transitions
+        if self.option_chain:
+            im_lot = self.option_chain.resolve_lot_size(inst_name, fallback=lot_size)
+            if im_lot != lot_size:
+                log.info("LOT SIZE: %s instrument master=%d (config=%d) — using master", inst_name, im_lot, lot_size)
+                lot_size = im_lot
+        conf_lots = {"HIGH": 2, "MEDIUM": 1, "LOW": 0}.get(confidence, 1) if self.mode == "paper" else self.default_qty_lots
+        if conf_lots == 0:
+            log.info("LOW CONFIDENCE SKIP: %s %s — not trading LOW confidence signals", side, symbol)
+            self._record_signal_audit(payload, "BLOCKED_LOW_CONF_SIZING", "LOW confidence = 0 lots")
+            return
         quantity = lot_size * conf_lots
-        if time_minutes < 9 * 60 + 45:
+        # Anti-martingale: scale UP after consecutive wins (house money effect)
+        if self._consecutive_wins >= 3 and self.mode == "paper":
+            extra_lots = min(self._consecutive_wins - 2, 2)  # max +2 lots bonus
+            quantity += lot_size * extra_lots
+            log.info("ANTI-MARTINGALE: %d consecutive wins — +%d lots (qty=%d, house money)",
+                     self._consecutive_wins, extra_lots, quantity)
+        if self._consecutive_losses >= 4:
+            quantity = max(lot_size, quantity // 2)
+            log.info("LOSS REDUCED SIZING: %d consecutive losses — halved to %d", self._consecutive_losses, quantity)
+        if time_minutes < 10 * 60 + 30:
             quantity = lot_size
-            log.info("EARLY SESSION SIZING: first 30 min — capped to 1 lot (%d)", quantity)
+            log.info("EARLY SESSION SIZING: before 10:30 — capped to 1 lot (%d)", quantity)
         direction = "LONG" if side.startswith("BUY") else "SHORT"
 
         option_type = "CE" if side.endswith("CE") else "PE"
         strike_step = inst_cfg.get("strike_step", 50)
         exchange_seg = "NSE_FNO" if inst_cfg.get("exchange") == "NSE" else "BSE_FNO"
 
-        contract: OptionContract | None = None
-        if self.option_chain and asset == "options":
-            underlying_price = sl * 1.01 if sl > 0 else 0
-            contract = self.option_chain.resolve_atm_option(
-                underlying=inst_name,
-                underlying_price=underlying_price,
-                option_type=option_type,
-                lot_size=lot_size,
-                strike_step=strike_step,
+        # === EQUITY CASH PATH: direct stock buy/sell ===
+        if asset == "equity":
+            equity_price = payload.get("close", 0) or payload.get("entry_price", 0) or sl
+            if equity_price <= 0:
+                log.warning("EQUITY BLOCKED: no price for %s", symbol)
+                self._record_signal_audit(payload, "BLOCKED", "no equity price")
+                return
+
+            trade_symbol = symbol.upper()
+            security_id = payload.get("security_id", "")
+            exchange_seg = "NSE_EQ"
+            entry_price = equity_price
+
+            if not security_id and self.option_chain and hasattr(self.option_chain, '_instrument_master'):
+                im = self.option_chain._instrument_master
+                if im:
+                    results = im.search(trade_symbol, segment="NSE_EQ")
+                    if results:
+                        security_id = str(results[0].security_id)
+
+            quantity = int(payload.get("quantity", 1))
+            if quantity <= 0:
+                max_per_trade = MAX_RISK_PER_TRADE
+                risk_pct = EQUITY_DYNAMIC_SLTP_LEVELS.get(confidence, EQUITY_DYNAMIC_SLTP_LEVELS["LOW"])[0]["sl_pct"] / 100
+                quantity = max(1, int(max_per_trade / (entry_price * risk_pct)))
+
+            level_table = self._get_level_table("equity", direction)
+            levels = level_table.get(confidence, level_table["LOW"])
+            sl_pct = levels[0]["sl_pct"]
+            tp_pct = levels[0]["tp_pct"]
+
+            if direction == "LONG":
+                sl_price = round(entry_price * (1 - sl_pct / 100), 2)
+                tp_price = round(entry_price * (1 + tp_pct / 100), 2)
+            else:
+                sl_price = round(entry_price * (1 + sl_pct / 100), 2)
+                tp_price = round(entry_price * (1 - tp_pct / 100), 2)
+
+            log.info("EQUITY TRADE: %s %s %s qty=%d entry=₹%.2f SL=₹%.2f (%.1f%%) TP=₹%.2f (%.1f%%)",
+                     direction, trade_symbol, confidence, quantity, entry_price, sl_price, sl_pct, tp_price, tp_pct)
+
+            eq_broker = getattr(self, 'equity_broker', None)
+            if not eq_broker:
+                log.warning("EQUITY BLOCKED: no equity broker (Groww) configured for %s", trade_symbol)
+                self._record_signal_audit(payload, "BLOCKED", "no_equity_broker")
+                return
+
+            from core.broker_base import Order as BrokerOrder, OrderType, ProductType, TransactionType
+            txn_type = "BUY" if direction == "LONG" else "SELL"
+            product = "CNC"
+            order_ref = f"OM-{trade_symbol[:8]}-{int(time.time()) % 100000:05d}"
+
+            order = BrokerOrder(
+                security_id=trade_symbol,
+                exchange_segment="NSE_EQ",
+                transaction_type=txn_type,
+                quantity=quantity,
+                order_type="MARKET",
+                product_type=product,
+                price=0,
+                tag=order_ref,
             )
+            try:
+                resp = eq_broker.place_order(order)
+            except Exception as e:
+                log.error("EQUITY ORDER FAILED: %s — %s", trade_symbol, e)
+                self._record_signal_audit(payload, "BLOCKED", f"equity_order_error:{e}")
+                return
+
+            if not resp or resp.status in ("REJECTED", "FAILED"):
+                log.warning("EQUITY ORDER REJECTED: %s %s", trade_symbol, resp)
+                self._record_signal_audit(payload, "BLOCKED", f"equity_rejected:{resp}")
+                return
+
+            fill_price = resp.fill_price if resp.fill_price > 0 else entry_price
+            eq_order_id = resp.order_id
+            position = Position(
+                symbol=trade_symbol, security_id=trade_symbol,
+                exchange_segment=exchange_seg, option_type="EQ",
+                direction=direction, quantity=quantity,
+                entry_price=fill_price, sl_price=sl_price, trail_sl=sl_price,
+                tp_price=tp_price, entry_order_id=eq_order_id,
+                peak_price=fill_price, strategy="omega_equity",
+                atr_value=fill_price * MIN_EQUITY_ATR_PCT / 100,
+                original_quantity=quantity, confidence=confidence,
+                underlying=trade_symbol,
+                asset_type="equity",
+            )
+            self.pm.add_position(position)
+            self.re.record_trade_taken()
+
+            if self.wallet:
+                margin = fill_price * quantity
+                if not self.wallet.deduct_margin(margin, trade_symbol):
+                    log.warning("EQUITY BLOCKED: insufficient funds for %s (need ₹%.2f)", trade_symbol, margin)
+                    self.pm._open.pop(security_id, None)
+                    return
+
+            self.tg.trade_opened(symbol=trade_symbol, direction=direction,
+                                  entry_price=fill_price, sl=sl_price, tp=tp_price,
+                                  quantity=quantity, confidence=confidence)
+            return
+
+        # === STOCK OPTIONS PATH: same as index options with stock-specific levels ===
+        contract: OptionContract | None = None
+        if self.option_chain and asset in ("options", "stock_options"):
+            underlying_price = sl * 1.01 if sl > 0 else 0
+            if is_buy_option and hasattr(self.option_chain, 'resolve_delta_option'):
+                contract = self.option_chain.resolve_delta_option(
+                    underlying=inst_name,
+                    underlying_price=underlying_price,
+                    option_type=option_type,
+                    target_delta=0.55,
+                    delta_band=(0.45, 0.65),
+                    lot_size=lot_size,
+                    strike_step=strike_step,
+                )
+            if not contract:
+                contract = self.option_chain.resolve_atm_option(
+                    underlying=inst_name,
+                    underlying_price=underlying_price,
+                    option_type=option_type,
+                    lot_size=lot_size,
+                    strike_step=strike_step,
+                )
 
         if contract:
             trade_symbol = contract.trade_symbol
@@ -385,12 +703,45 @@ class OmegaStrategy:
             exchange_seg = contract.exchange_segment
             strike = contract.strike
             entry_price = contract.ltp
+
+            # --- BID-ASK SPREAD VETO: block if spread > 1.5% of mid price ---
+            if contract.bid > 0 and contract.ask > 0:
+                spread = contract.ask - contract.bid
+                spread_pct = (spread / contract.mid_price * 100) if contract.mid_price > 0 else 999
+                if spread_pct > 1.5:
+                    log.info("SPREAD VETO: %s bid=%.2f ask=%.2f spread=%.2f (%.1f%% > 1.5%%) — illiquid",
+                             trade_symbol, contract.bid, contract.ask, spread, spread_pct)
+                    self._record_signal_audit(payload, "BLOCKED_WIDE_SPREAD",
+                                              f"spread {spread_pct:.1f}% > 1.5%")
+                    return
+                if contract.oi == 0:
+                    log.info("SPREAD VETO: %s OI=0 — no open interest, skipping", trade_symbol)
+                    self._record_signal_audit(payload, "BLOCKED_NO_OI", "OI=0")
+                    return
+
+            # --- IV CRUSH FILTER: block BUY entries when IV is extremely high (>80th percentile) ---
+            # High IV means expensive premiums + imminent IV crush risk
+            if is_buy_option and contract.iv > 0:
+                # Typical IV ranges: NIFTY 10-35%, BANKNIFTY 15-45%, SENSEX 12-30%
+                iv_high_threshold = {"NIFTY": 30, "BANKNIFTY": 40, "SENSEX": 28}.get(inst_name, 35)
+                if contract.iv > iv_high_threshold:
+                    log.warning("IV FILTER: %s IV=%.1f%% > %d%% threshold — expensive premium, IV crush risk",
+                                trade_symbol, contract.iv, iv_high_threshold)
+                    self._record_signal_audit(payload, "BLOCKED_HIGH_IV",
+                                              f"IV {contract.iv:.1f}% > {iv_high_threshold}%")
+                    return
         else:
             if not strike:
                 strike = self._compute_atm_strike(inst_name, strike_step)
             trade_symbol = f"{inst_name}{strike}{option_type}"
-            security_id = trade_symbol
+            security_id = ""
             entry_price = 0
+            log.warning("NO CONTRACT resolved for %s — cannot trade without security_id", trade_symbol)
+
+        if not security_id or not security_id.isdigit():
+            log.warning("TRADE BLOCKED: no valid security_id for %s (got '%s')", trade_symbol, security_id)
+            self._record_signal_audit(payload, "BLOCKED", reason=f"no_security_id:{trade_symbol}")
+            return
 
         signal = Signal(
             strategy=strategy,
@@ -422,13 +773,15 @@ class OmegaStrategy:
             if same_index:
                 log.warning("Same-index position blocked: %s %s already open", direction, inst_name)
                 return
-            if corr_count >= 2:
-                log.warning("Max 2 correlated positions: %s %s blocked (%d already open)",
+            if corr_count >= 1:
+                log.warning("CORRELATED LIMIT: %s %s blocked — %d same-direction index position(s) already open "
+                            "(NIFTY/BN/SENSEX ~90%% correlated, treating as single portfolio bet)",
                             direction, inst_name, corr_count)
                 return
 
         if self.guardrails and entry_price > 0:
-            premium_sl = entry_price * 0.50
+            sl_pct = DYNAMIC_SLTP_LEVELS.get(confidence, DYNAMIC_SLTP_LEVELS["MEDIUM"])[0]["sl_pct"] / 100
+            premium_sl = entry_price * sl_pct
             risk_check = self.guardrails.check_per_trade_risk(
                 entry_price, entry_price - premium_sl, quantity)
             if not risk_check:
@@ -445,21 +798,28 @@ class OmegaStrategy:
 
         vol_regime = payload.get("volatility_regime", "NORMAL")
 
-        if self.ml_engine and self.live_feed:
+        if self.ml_engine:
             try:
-                candles = getattr(self.live_feed, 'candle_buffer', [])
+                candles = []
+                if hasattr(self, 'sig_gen') and self.sig_gen and hasattr(self.sig_gen, '_candle_store'):
+                    candles = self.sig_gen._candle_store.get(inst_name, [])
+                if not candles and self.live_feed:
+                    candles = getattr(self.live_feed, 'candle_buffer', [])
                 if candles and len(candles) >= 50:
                     from ml.features import Candle as MLCandle
-                    ml_candles = [MLCandle(c.timestamp, c.open, c.high, c.low, c.close, c.volume)
-                                  for c in candles] if not isinstance(candles[0], MLCandle) else candles
+                    if not isinstance(candles[0], MLCandle):
+                        ml_candles = [MLCandle(
+                            c.timestamp.timestamp() if hasattr(c.timestamp, 'timestamp') else float(c.timestamp),
+                            c.open, c.high, c.low, c.close, c.volume) for c in candles]
+                    else:
+                        ml_candles = candles
                     ml_result = self.ml_engine.evaluate_signal(
                         ml_candles, signal_direction=direction, signal_score=score)
                     self._signal_context[trade_symbol] = ml_result
                     if not ml_result["approved"]:
-                        log.info("ML GATE: %s %s BLOCKED — %s (confidence=%.2f, regime=%s)",
+                        log.info("ML SHADOW: %s %s would-block — %s (confidence=%.2f, regime=%s)",
                                  side, symbol, ml_result["reason"],
                                  ml_result["confidence"], ml_result["regime"])
-                        return
                     if ml_result.get("regime_adjustments"):
                         adj = ml_result["regime_adjustments"]
                         vol_regime = ml_result["regime"]
@@ -504,7 +864,7 @@ class OmegaStrategy:
                 size_mod = self.memory.get_position_size_modifier(trade_symbol)
                 if size_mod < 1.0:
                     original_qty = quantity
-                    quantity = max(int(quantity * size_mod), inst_cfg.get("lot_size", 75))
+                    quantity = max(int(quantity * size_mod), inst_cfg.get("lot_size", 65))
                     signal.quantity = quantity
                     log.info("Position size reduced by memory: %d → %d", original_qty, quantity)
 
@@ -583,10 +943,10 @@ class OmegaStrategy:
             signal.quantity = quantity
             log.info("LOW VIX SIZING: VIX=%.1f < 12, SELL qty reduced to %d (low premium)", india_vix, quantity)
 
-        if "PE" in side and self.mode != "paper":
+        if "CE" in side and self.mode != "paper":
             quantity = max(lot_size, (quantity * 8 // 10) // lot_size * lot_size)
             signal.quantity = quantity
-            log.info("PE SIZE REDUCTION: PE qty reduced to %d (PE historically underperforms CE)", quantity)
+            log.info("CE SIZE REDUCTION: CE qty reduced to %d (CE historically net negative)", quantity)
 
         # --- VIX-adjusted SL widening ---
         india_vix_for_sl = payload.get("india_vix", 0)
@@ -666,13 +1026,19 @@ class OmegaStrategy:
             underlying=contract.underlying if contract else "",
             strike=contract.strike if contract else 0,
             iv=contract.iv if contract else 0.0,
+            underlying_entry_price=self._get_underlying_ltp(inst_name),
+            asset_type="stock_options" if asset == "stock_options" else "options",
         )
         self.pm.add_position(position)
         self.re.record_trade_taken()
 
         if self.wallet:
             margin = fill_price * quantity
-            self.wallet.deduct_margin(margin, trade_symbol)
+            if not self.wallet.deduct_margin(margin, trade_symbol):
+                log.warning("TRADE BLOCKED: insufficient wallet funds for %s (need ₹%.2f)", trade_symbol, margin)
+                self.pm._open.pop(security_id, None)
+                self._record_signal_audit(payload, "BLOCKED_FUNDS", f"need ₹{margin:.0f}")
+                return
 
         try:
             db = OmegaDB.get()
@@ -744,50 +1110,9 @@ class OmegaStrategy:
         )
 
     def _handle_exit(self, symbol: str, strategy: str) -> None:
-        closed = []
-        now = datetime.now(IST)
-        for pos in self.pm.open_positions:
-            if symbol in pos.symbol or pos.strategy == strategy:
-                hold_seconds = (now - pos.entry_time).total_seconds()
-                min_hold_sec = 180.0
-                if hold_seconds < min_hold_sec:
-                    log.info("SIGNAL_EXIT blocked for %s — held only %.0fs (need %.0fs minimum hold)",
-                             pos.symbol, hold_seconds, min_hold_sec)
-                    continue
-
-                if pos.dynamic_level >= 2:
-                    log.info("SIGNAL_EXIT blocked for %s — at L%d with locked profit, letting levels manage",
-                             pos.symbol, pos.dynamic_level)
-                    continue
-
-                ltp = self.broker.get_ltp(pos.security_id, pos.exchange_segment)
-                if ltp <= 0:
-                    ltp = pos.current_price
-                cur_pnl_pct = ((ltp - pos.entry_price) / pos.entry_price * 100
-                               if pos.is_long else
-                               (pos.entry_price - ltp) / pos.entry_price * 100)
-                if cur_pnl_pct > 0:
-                    log.info("SIGNAL_EXIT skipped for %s — in profit %.1f%%, letting trail manage",
-                             pos.symbol, cur_pnl_pct)
-                    continue
-
-                unrealized_loss = abs(ltp - pos.entry_price) * pos.quantity
-                if unrealized_loss < 200:
-                    log.info("SIGNAL_EXIT skipped for %s — loss Rs %.0f < Rs 200 threshold, letting SL handle",
-                             pos.symbol, unrealized_loss)
-                    continue
-
-                exit_price = pos.current_price if pos.current_price > 0 else pos.entry_price
-                ltp = self.broker.get_ltp(pos.security_id, pos.exchange_segment)
-                if ltp > 0:
-                    exit_price = ltp
-                if pos.is_spread:
-                    self._exit_spread(pos, exit_price, "SIGNAL_EXIT")
-                else:
-                    self._exit_position(pos, exit_price, "SIGNAL_EXIT")
-                closed.append(pos.symbol)
-
-        log.info("Exited %d positions on signal", len(closed))
+        # SIGNAL_EXIT disabled — 0% win rate across 12 trades, -₹1,778 total loss
+        # Trail SL handles all exits (58% WR, +₹3,767). Let positions ride.
+        log.info("SIGNAL_EXIT disabled — letting TRAIL_SL manage all exits for %s", symbol)
 
     def _handle_spread_entry(self, payload: dict) -> None:
         symbol = payload["symbol"]
@@ -802,9 +1127,11 @@ class OmegaStrategy:
             return
 
         inst_cfg = self.instruments.get(inst_name, {})
-        lot_size = inst_cfg.get("lot_size", 75)
+        lot_size = inst_cfg.get("lot_size", 65)
         spread_conf = payload.get("confidence", "MEDIUM")
         conf_lots = {"HIGH": 3, "MEDIUM": 2, "LOW": 1}.get(spread_conf, 1) if self.mode == "paper" else self.default_qty_lots
+        if lot_size >= 50 and conf_lots > 1:
+            conf_lots = max(1, conf_lots - 1)
         quantity = lot_size * conf_lots
         strike_step = inst_cfg.get("strike_step", 50)
 
@@ -901,13 +1228,13 @@ class OmegaStrategy:
         actual_credit = sell_fill - hedge_fill
         actual_max_loss = spread_width - actual_credit
 
-        level_table = SHORT_DYNAMIC_SLTP_LEVELS
+        level_table = SPREAD_SLTP_LEVELS
         levels = level_table.get(confidence, level_table["LOW"])
-        sl_pct = levels[0]["sl_pct"]
-        tp_pct = levels[0]["tp_pct"]
 
-        sl_price = round(sell_fill * (1 + sl_pct / 100), 2)
-        tp_price = round(sell_fill * (1 - tp_pct / 100), 2)
+        # SL/TP are reference only — actual exits use net-premium % in monitor_positions
+        # Set sell leg SL wide enough to never trigger is_sl_hit (spreads bypass it)
+        sl_price = round(sell_fill * 1.50, 2)
+        tp_price = round(sell_fill * 0.50, 2)
 
         position = Position(
             symbol=sell_contract.trade_symbol,
@@ -941,8 +1268,27 @@ class OmegaStrategy:
         self.pm.add_position(position)
         self.re.record_trade_taken()
 
+        if self.live_feed and sell_contract.security_id.isdigit():
+            from core.live_feed import EXCHANGE_SEG_MAP
+            seg_int = EXCHANGE_SEG_MAP.get(sell_contract.exchange_segment, 2)
+            self.live_feed.subscribe(
+                [(seg_int, sell_contract.security_id, 15)])
+            log.info("LiveFeed subscribed SELL leg: %s sid=%s",
+                     sell_contract.trade_symbol, sell_contract.security_id)
+        if self.live_feed and hedge_contract.security_id.isdigit():
+            from core.live_feed import EXCHANGE_SEG_MAP
+            seg_int = EXCHANGE_SEG_MAP.get(hedge_contract.exchange_segment, 2)
+            self.live_feed.subscribe(
+                [(seg_int, hedge_contract.security_id, 15)])
+            log.info("LiveFeed subscribed HEDGE leg: %s sid=%s",
+                     hedge_contract.trade_symbol, hedge_contract.security_id)
+
         if self.wallet:
-            self.wallet.deduct_spread_margin(actual_max_loss, quantity, sell_contract.trade_symbol)
+            if not self.wallet.deduct_spread_margin(actual_max_loss, quantity, sell_contract.trade_symbol):
+                log.warning("SPREAD BLOCKED: insufficient wallet funds for %s (need ₹%.2f)",
+                            sell_contract.trade_symbol, actual_max_loss * quantity)
+                self.pm._open.pop(sell_contract.security_id, None)
+                return
 
         if self.guardrails:
             self.guardrails.record_allocation(symbol, actual_max_loss * quantity)
@@ -962,9 +1308,14 @@ class OmegaStrategy:
         )
 
     def _exit_spread(self, pos: Position, sell_ltp: float, reason: str) -> None:
-        hedge_ltp = self.broker.get_ltp(pos.hedge_security_id, pos.exchange_segment)
+        hedge_ltp = 0.0
+        if self.live_feed:
+            hedge_ltp = self.live_feed.get_ltp(pos.hedge_security_id, pos.exchange_segment)
+        if hedge_ltp <= 0:
+            hedge_ltp = self.broker.get_ltp(pos.hedge_security_id, pos.exchange_segment)
         if hedge_ltp <= 0:
             hedge_ltp = pos.hedge_current_price if pos.hedge_current_price > 0 else pos.hedge_entry_price
+        pos.hedge_current_price = hedge_ltp
 
         unwind_sell = Signal(
             strategy=pos.strategy, symbol=pos.symbol,
@@ -989,9 +1340,13 @@ class OmegaStrategy:
             trade.pnl = round(total_pnl, 2)
             if trade.pnl >= 0:
                 self._consecutive_losses = 0
+                self._consecutive_wins += 1
             else:
+                self._consecutive_wins = 0
                 self._consecutive_losses += 1
                 self._last_loss_time = time.time()
+                underlying = self._resolve_instrument(pos.symbol) or pos.symbol
+                self._symbol_loss_cooldown[underlying] = time.time()
 
             if self.guardrails:
                 self.guardrails.release_allocation(pos.symbol, pos.max_loss * pos.quantity)
@@ -1034,20 +1389,49 @@ class OmegaStrategy:
         """
         if hasattr(self.broker, 'check_pending_sl_orders'):
             self.broker.check_pending_sl_orders()
+
+        # Counterfactual resolution (throttled internally to every 5 min)
+        if self.ml_engine:
+            try:
+                prices = {sym: self._get_underlying_ltp(sym) for sym in ("NIFTY", "BANKNIFTY", "SENSEX")}
+                self.ml_engine.resolve_counterfactuals(prices)
+            except Exception:
+                pass
+
         now = datetime.now(IST)
         for pos in self.pm.open_positions:
             try:
                 ltp = 0.0
-                if self.live_feed:
-                    ltp = self.live_feed.get_ltp(pos.security_id, pos.exchange_segment)
-                if ltp <= 0:
-                    ltp = self.broker.get_ltp(pos.security_id, pos.exchange_segment)
+                _pos_asset = getattr(pos, 'asset_type', 'options')
+                if _pos_asset == "equity" and getattr(self, 'equity_broker', None):
+                    ltp = self.equity_broker.get_ltp(pos.symbol, pos.exchange_segment)
+                else:
+                    if self.live_feed:
+                        ltp = self.live_feed.get_ltp(pos.security_id, pos.exchange_segment)
+                    if ltp <= 0:
+                        ltp = self.broker.get_ltp(pos.security_id, pos.exchange_segment)
                 if ltp <= 0:
                     continue
                 self.pm.update_price(pos.security_id, ltp)
             except Exception as exc:
                 log.warning("LTP fetch failed for %s: %s", pos.symbol, exc)
                 continue
+
+            # --- EXPIRY-DAY 14:00 EXIT: gamma explodes in last 90 min ---
+            if pos.expiry and pos.direction == "LONG":
+                try:
+                    from core.greeks import dte_from_expiry
+                    dte = dte_from_expiry(pos.expiry)
+                    if dte <= 0.1 and now.hour >= 14:
+                        log.info("EXPIRY EXIT: %s %s — 0DTE past 14:00 IST, gamma risk too high (dte=%.2f)",
+                                 pos.direction, pos.symbol, dte)
+                        if pos.is_spread:
+                            self._exit_spread(pos, ltp, "EXPIRY_DAY_1400")
+                        else:
+                            self._exit_position(pos, ltp, "EXPIRY_DAY_1400")
+                        continue
+                except Exception:
+                    pass
 
             if pos.is_spread and pos.hedge_security_id:
                 try:
@@ -1058,8 +1442,11 @@ class OmegaStrategy:
                         hedge_ltp = self.broker.get_ltp(pos.hedge_security_id, pos.exchange_segment)
                     if hedge_ltp > 0:
                         pos.hedge_current_price = hedge_ltp
-                except Exception:
-                    pass
+                    else:
+                        log.warning("Hedge LTP=0 for %s (sid=%s) — spread SL blind",
+                                    pos.hedge_trade_symbol, pos.hedge_security_id)
+                except Exception as e:
+                    log.warning("Hedge LTP fetch failed for %s: %s", pos.hedge_trade_symbol, e)
 
                 spot = self._underlying_spot(pos.underlying)
                 if pos.expiry and pos.net_credit > 0 and spot > 0 and pos.iv > 0:
@@ -1086,39 +1473,72 @@ class OmegaStrategy:
                           (pos.entry_price - ltp) / pos.entry_price * 100)
             pos.peak_profit_pct = max(pos.peak_profit_pct, profit_pct)
 
-            min_atr = pos.entry_price * MIN_OPTION_ATR_PCT / 100
+            _asset = getattr(pos, 'asset_type', 'options')
+            if _asset == "equity":
+                min_atr = pos.entry_price * MIN_EQUITY_ATR_PCT / 100
+            else:
+                min_atr = pos.entry_price * MIN_OPTION_ATR_PCT / 100
             premium_atr = max(pos.atr_value, min_atr) if pos.atr_value > 0 else min_atr
             is_bought_option = pos.direction == "LONG" and ("CE" in pos.symbol or "PE" in pos.symbol)
-            if is_bought_option:
+            if is_bought_option and _asset != "equity":
                 premium_atr *= 1.3
 
-            level_table = SHORT_DYNAMIC_SLTP_LEVELS if pos.direction == "SHORT" else DYNAMIC_SLTP_LEVELS
+            level_table = self._get_level_table(getattr(pos, 'asset_type', 'options'), pos.direction, is_spread=pos.is_spread)
             levels = level_table.get(pos.confidence, level_table["LOW"])
             past_all_levels = pos.max_dynamic_level > 0
 
-            trail_eval = self.re.evaluate_trail(
-                current_price=ltp,
-                entry_price=pos.entry_price,
-                existing_sl=pos.trail_sl,
-                direction=pos.direction,
-                peak_price=pos.peak_price,
-                atr_value=premium_atr,
-                hold_seconds=hold_seconds,
-            )
-            pos.peak_price = trail_eval["peak"]
+            # Spreads: SL/TP on net premium only — no directional trail
+            if pos.is_spread and pos.net_credit > 0 and pos.hedge_current_price > 0:
+                net_premium = ltp - pos.hedge_current_price
+                net_pnl_pct = (pos.net_credit - net_premium) / pos.net_credit * 100
+                sl_pct = levels[0]["sl_pct"]
+                if net_pnl_pct < -sl_pct:
+                    log.info("SPREAD_SL: %s net_credit=%.2f net_now=%.2f loss=%.1f%% > %s%%",
+                             pos.symbol, pos.net_credit, net_premium, net_pnl_pct, sl_pct)
+                    self._exit_spread(pos, ltp, "SPREAD_NET_SL")
+                    continue
+                tp_pct = levels[min(pos.dynamic_level, len(levels)-1)]["tp_pct"]
+                if net_pnl_pct >= tp_pct:
+                    log.info("SPREAD_TP: %s net_credit=%.2f net_now=%.2f profit=%.1f%% >= %s%%",
+                             pos.symbol, pos.net_credit, net_premium, net_pnl_pct, tp_pct)
+                    self._exit_spread(pos, ltp, "SPREAD_NET_TP")
+                    continue
+                # Time-based TP: if profitable and within 30 min of close, take it
+                if net_pnl_pct > 0 and now.hour >= 15 and now.minute >= 0:
+                    log.info("SPREAD_TIME_TP: %s net_credit=%.2f net_now=%.2f profit=%.1f%% — EOD exit",
+                             pos.symbol, pos.net_credit, net_premium, net_pnl_pct)
+                    self._exit_spread(pos, ltp, "SPREAD_TIME_TP")
+                    continue
+                # Skip directional trail for spreads — net premium SL handles it
+                new_trail = pos.trail_sl
+                old_trail = pos.trail_sl
+                trail_eval = {"detail": "", "r_multiple": 0, "tier": "", "peak": pos.peak_price, "sl": pos.trail_sl}
+            else:
+                trail_eval = self.re.evaluate_trail(
+                    current_price=ltp,
+                    entry_price=pos.entry_price,
+                    existing_sl=pos.trail_sl,
+                    direction=pos.direction,
+                    peak_price=pos.peak_price,
+                    atr_value=premium_atr,
+                    hold_seconds=hold_seconds,
+                    initial_sl=pos.sl_price,
+                )
+                pos.peak_price = trail_eval["peak"]
 
-            new_trail = trail_eval["sl"]
-            old_trail = pos.trail_sl
+                new_trail = trail_eval["sl"]
+                old_trail = pos.trail_sl
 
             if hold_minutes < 15 and new_trail != old_trail:
-                log.info("TRAIL DIAG: %s ltp=%.2f entry=%.2f trail %.2f→%.2f profit=%.1f%% hold=%.0fm detail=%s",
-                         pos.symbol, ltp, pos.entry_price, old_trail, new_trail, profit_pct, hold_minutes,
-                         trail_eval.get("detail", ""))
+                log.info("TRAIL DIAG: %s ltp=%.2f entry=%.2f trail %.2f→%.2f profit=%.1f%% R=%.2f %s hold=%.0fm detail=%s",
+                         pos.symbol, ltp, pos.entry_price, old_trail, new_trail, profit_pct,
+                         trail_eval.get("r_multiple", 0), trail_eval.get("tier", ""),
+                         hold_minutes, trail_eval.get("detail", ""))
 
             # Early trail freeze removed — let trades breathe with wider trail widths instead
 
             if past_all_levels:
-                tight_width = 2.0
+                tight_width = 4.0
                 peak = pos.peak_price
                 if pos.is_long:
                     atr_trail = round(peak - (tight_width * premium_atr), 2)
@@ -1129,9 +1549,9 @@ class OmegaStrategy:
                     if new_trail <= 0 or atr_trail < new_trail:
                         new_trail = atr_trail
 
-            # --- PROFIT PROTECTION: if we were up 15%+, guarantee at least 3% profit ---
+            # --- PROFIT PROTECTION: if we were up 15%+, guarantee at least 5% profit ---
             if pos.peak_profit_pct >= 15.0 and not pos.breakeven_locked:
-                min_profit_sl = pos.entry_price * (1.03 if pos.is_long else 0.97)
+                min_profit_sl = pos.entry_price * (1.05 if pos.is_long else 0.95)
                 if pos.is_long and new_trail < min_profit_sl:
                     new_trail = round(min_profit_sl, 2)
                 elif not pos.is_long and (new_trail > min_profit_sl or new_trail <= 0):
@@ -1174,9 +1594,11 @@ class OmegaStrategy:
                     log.error("Broker SL sync failed for %s: %s", pos.symbol, e)
 
             if trail_eval["detail"]:
-                log.info("Trail: %s %s hold=%.0fs pATR=%.2f profit=%.1f%% | %s",
+                log.info("Trail: %s %s hold=%.0fs pATR=%.2f profit=%.1f%% R=%.2f %s | %s",
                          pos.direction, pos.symbol, hold_seconds,
-                         premium_atr, profit_pct, trail_eval["detail"])
+                         premium_atr, profit_pct,
+                         trail_eval.get("r_multiple", 0), trail_eval.get("tier", ""),
+                         trail_eval["detail"])
 
             # --- 2. SCALE-OUT IN 3 TRANCHES ---
             lot_size = self._get_lot_size(pos.symbol)
@@ -1229,20 +1651,40 @@ class OmegaStrategy:
 
             # --- STAGNATION EXIT: disabled — let trades breathe ---
 
+            # --- DUAL-DOMAIN EXIT: underlying trail + option catastrophe ---
+            if not pos.is_spread and pos.underlying and pos.underlying_entry_price > 0:
+                u_ltp = self._get_underlying_ltp(pos.underlying)
+                if u_ltp > 0:
+                    u_atr = pos.atr_value * (pos.underlying_entry_price / max(pos.entry_price, 1))
+                    dual = self.re.evaluate_dual_domain_trail(
+                        option_price=ltp,
+                        option_entry=pos.entry_price,
+                        underlying_price=u_ltp,
+                        underlying_entry=pos.underlying_entry_price,
+                        direction=pos.direction,
+                        option_sl=pos.trail_sl,
+                        underlying_peak=pos.underlying_peak_price,
+                        underlying_atr=u_atr,
+                        hold_seconds=hold_seconds,
+                    )
+                    pos.underlying_peak_price = dual["underlying_peak"]
+                    if dual["exit"]:
+                        log.info("DUAL_DOMAIN_EXIT: %s %s — %s", pos.direction, pos.symbol, dual["reason"])
+                        self._exit_position(pos, ltp, f"DUAL_DOMAIN_{dual['domain'].upper()}")
+                        continue
+
             # --- EXIT CHECKS ---
-            if pos.is_sl_hit and hold_seconds >= SL_GRACE_SECONDS:
+            # Spreads use net-premium SL only (handled above), skip individual leg trail SL
+            if pos.is_sl_hit and not pos.is_spread and hold_seconds >= SL_GRACE_SECONDS:
                 log.info("SL HIT: %s %s @ %.2f (SL=%.2f) pnl=%.1f%% hold=%.0fs level=L%d",
                          pos.direction, pos.symbol, ltp, pos.trail_sl, profit_pct, hold_seconds, pos.dynamic_level)
-                if pos.is_spread:
-                    self._exit_spread(pos, ltp, "TRAIL_SL")
-                else:
-                    self._exit_position(pos, ltp, "TRAIL_SL")
-            elif pos.is_sl_hit and hold_seconds < SL_GRACE_SECONDS:
+                self._exit_position(pos, ltp, "TRAIL_SL")
+            elif pos.is_sl_hit and not pos.is_spread and hold_seconds < SL_GRACE_SECONDS:
                 log.info("SL GRACE: %s %s SL hit at %.2f but hold=%.0fs < %ds grace — holding",
                          pos.direction, pos.symbol, ltp, hold_seconds, SL_GRACE_SECONDS)
 
             elif tp_hit:
-                level_table = SHORT_DYNAMIC_SLTP_LEVELS if pos.direction == "SHORT" else DYNAMIC_SLTP_LEVELS
+                level_table = self._get_level_table(getattr(pos, 'asset_type', 'options'), pos.direction, is_spread=pos.is_spread)
                 levels = level_table.get(pos.confidence, level_table["LOW"])
                 start_level = pos.dynamic_level
                 jumped = False
@@ -1346,8 +1788,8 @@ class OmegaStrategy:
         upper = symbol.upper()
         for name, cfg in self.instruments.items():
             if name in upper:
-                return cfg.get("lot_size", 75)
-        return 75
+                return cfg.get("lot_size", 65)
+        return 65
 
     def _partial_exit(self, pos, exit_qty: int, price: float) -> None:
         exit_tag = f"{pos.strategy}_{pos.symbol}_{int(time.time())}_partial"
@@ -1385,10 +1827,10 @@ class OmegaStrategy:
             return False
         if pos.direction == "LONG":
             gap_pct = (active_sl - ltp) / active_sl * 100 if active_sl > 0 else 0
-            return ltp < active_sl and gap_pct > 0.5
+            return ltp < active_sl and gap_pct > 3.0
         else:
             gap_pct = (ltp - active_sl) / active_sl * 100 if active_sl > 0 else 0
-            return ltp > active_sl and gap_pct > 0.5
+            return ltp > active_sl and gap_pct > 3.0
 
     def square_off_all(self) -> None:
         if not self.pm.open_positions:
@@ -1404,25 +1846,54 @@ class OmegaStrategy:
                 self._exit_position(pos, ltp, "SQUARE_OFF")
 
     def _exit_position(self, pos: Position, price: float, reason: str) -> None:
-        exit_tag = f"{pos.strategy}_{pos.symbol}_{int(time.time())}_{reason.lower()}"
-        exit_signal = Signal(
-            strategy=pos.strategy,
-            symbol=pos.symbol,
-            security_id=pos.security_id,
-            exchange_segment=pos.exchange_segment,
-            side="EXIT",
-            quantity=pos.quantity,
-            price=0,
-            tag=exit_tag,
-        )
-        self.om.place_exit(exit_signal, pos.direction)
+        _asset = getattr(pos, 'asset_type', 'options')
+        if _asset == "equity" and getattr(self, 'equity_broker', None):
+            from core.broker_base import Order as BrokerOrder
+            txn_type = "SELL" if pos.direction == "LONG" else "BUY"
+            order_ref = f"OM-X{pos.symbol[:6]}-{int(time.time()) % 100000:05d}"
+            order = BrokerOrder(
+                security_id=pos.symbol,
+                exchange_segment="NSE_EQ",
+                transaction_type=txn_type,
+                quantity=pos.quantity,
+                order_type="MARKET",
+                product_type="CNC",
+                price=0,
+                tag=order_ref,
+            )
+            try:
+                resp = self.equity_broker.place_order(order)
+                log.info("GROWW EXIT: %s %s qty=%d reason=%s → %s",
+                         txn_type, pos.symbol, pos.quantity, reason,
+                         resp.status if resp else "NO_RESP")
+            except Exception as e:
+                log.error("GROWW EXIT FAILED: %s %s — %s", pos.symbol, reason, e)
+        else:
+            exit_tag = f"{pos.strategy}_{pos.symbol}_{int(time.time())}_{reason.lower()}"
+            exit_signal = Signal(
+                strategy=pos.strategy,
+                symbol=pos.symbol,
+                security_id=pos.security_id,
+                exchange_segment=pos.exchange_segment,
+                side="EXIT",
+                quantity=pos.quantity,
+                price=0,
+                tag=exit_tag,
+            )
+            self.om.place_exit(exit_signal, pos.direction)
         trade = self.pm.close_position(pos.security_id, price, reason)
         if trade:
             if trade.pnl >= 0:
                 self._consecutive_losses = 0
+                self._consecutive_wins += 1
             else:
+                self._consecutive_wins = 0
                 self._consecutive_losses += 1
                 self._last_loss_time = time.time()
+                underlying = self._resolve_instrument(pos.symbol) or pos.symbol
+                self._symbol_loss_cooldown[underlying] = time.time()
+                log.info("SYMBOL COOLDOWN SET: %s — 30-min block on %s after ₹%.0f loss",
+                         pos.symbol, underlying, trade.pnl)
                 if self._consecutive_losses >= 4:
                     log.warning("LOSS RECOVERY SEVERE: %d consecutive losses — next: 1/3 size, score>=60, 15-min cooldown, MEDIUM/HIGH only",
                                 self._consecutive_losses)
@@ -1513,17 +1984,45 @@ class OmegaStrategy:
             )
             self.memory.record_trade(trade_ctx)
 
-            if self.ml_engine and self.live_feed:
+            if self.ml_engine:
                 try:
-                    candles = getattr(self.live_feed, 'candle_buffer', [])
+                    candles = []
+                    inst = self._resolve_instrument(pos.symbol) or ""
+                    if hasattr(self, 'sig_gen') and self.sig_gen and hasattr(self.sig_gen, '_candle_store'):
+                        candles = self.sig_gen._candle_store.get(inst, [])
+                        if not candles:
+                            log.debug("ML: no candles in store for inst=%s (symbol=%s), keys=%s",
+                                      inst, pos.symbol, list(self.sig_gen._candle_store.keys()))
+                    if not candles and self.live_feed:
+                        candles = getattr(self.live_feed, 'candle_buffer', [])
+                    if not candles or len(candles) < 50:
+                        log.info("ML OUTCOME SKIPPED: %s — only %d candles (need 50), inst=%s",
+                                 pos.symbol, len(candles), inst)
                     if candles and len(candles) >= 50:
                         from ml.features import Candle as MLCandle
-                        ml_candles = [MLCandle(c.timestamp, c.open, c.high, c.low, c.close, c.volume)
-                                      for c in candles] if not isinstance(candles[0], MLCandle) else candles
+                        ml_candles = []
+                        for c in candles:
+                            if isinstance(c, MLCandle):
+                                ml_candles.append(c)
+                            else:
+                                import datetime as _dt
+                                t = c.timestamp.timestamp() if isinstance(c.timestamp, _dt.datetime) else float(c.timestamp)
+                                ml_candles.append(MLCandle(t, c.open, c.high, c.low, c.close, getattr(c, 'volume', 0.0)))
                         is_win = trade.pnl > 0
+                        hold_secs = 0
+                        try:
+                            hold_secs = (trade.exit_time - trade.entry_time).total_seconds()
+                        except Exception:
+                            pass
                         self.ml_engine.record_trade_outcome(
                             ml_candles, is_win=is_win, pnl=trade.pnl,
-                            entry_time=str(pos.entry_time), symbol=pos.symbol)
+                            entry_time=str(pos.entry_time), symbol=pos.symbol,
+                            exit_reason=reason, hold_seconds=hold_secs)
+                        stats = self.ml_engine.get_model_stats()
+                        buf = stats.get("buffer", {})
+                        log.info("ML OUTCOME RECORDED: %s win=%s pnl=₹%.2f — signals=%d trades=%d",
+                                 pos.symbol, is_win, trade.pnl,
+                                 buf.get("signals", 0), buf.get("trades", 0))
                 except Exception as e:
                     log.warning("ML outcome recording failed: %s", e)
 

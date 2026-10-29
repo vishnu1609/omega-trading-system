@@ -260,6 +260,9 @@ class OmegaDB:
     })
 
     def upsert_position(self, security_id: str, **data) -> None:
+        if not security_id or not security_id.isdigit():
+            log.error("DB REJECTED: invalid security_id '%s' for %s", security_id, data.get("symbol", "?"))
+            return
         data["security_id"] = security_id
         data = {k: v for k, v in data.items() if k in self._POSITION_COLUMNS}
         cols = ", ".join(data.keys())

@@ -49,8 +49,8 @@ class SignalClassifier:
 
     def __init__(
         self,
-        num_features: int = 44,
-        hidden_layers: tuple[int, ...] = (32, 16),
+        num_features: int = 50,
+        hidden_layers: tuple[int, ...] = (64, 32, 16),
         epsilon: float = 0.12,
     ):
         self.layers = [num_features, *hidden_layers, 2]  # 2 outputs: LOSS, WIN
@@ -79,6 +79,7 @@ class SignalClassifier:
         max_iterations: int = 2000,
         validation_split: float = 0.2,
         early_stop_patience: int = 50,
+        batch_size: int = 512,
     ) -> list[float]:
         if len(X) < 10:
             log.warning("Need at least 10 samples to train, got %d", len(X))
@@ -111,12 +112,22 @@ class SignalClassifier:
         best_thetas = None
 
         self._cost_history = []
+        n_train = X_train.shape[0]
+        use_minibatch = n_train > batch_size * 2
 
         for iteration in range(max_iterations):
-            cost = self._cost_function(X_train, y_train, self._thetas_roll(unrolled), regularization)
+            if use_minibatch:
+                mb_idx = np.random.choice(n_train, batch_size, replace=False)
+                X_batch = X_train[mb_idx]
+                y_batch = y_train[mb_idx]
+            else:
+                X_batch = X_train
+                y_batch = y_train
+
+            cost = self._cost_function(X_batch, y_batch, self._thetas_roll(unrolled), regularization)
             self._cost_history.append(cost)
 
-            gradient = self._gradient_step(X_train, y_train, unrolled, regularization)
+            gradient = self._gradient_step(X_batch, y_batch, unrolled, regularization)
             unrolled = unrolled - alpha * gradient
 
             if X_val is not None and iteration % 10 == 0:
@@ -222,8 +233,7 @@ class SignalClassifier:
         predictions = np.clip(activation, 1e-10, 1 - 1e-10)
 
         bitwise_labels = np.zeros((num_examples, num_labels))
-        for j in range(num_examples):
-            bitwise_labels[j, y[j, 0]] = 1
+        bitwise_labels[np.arange(num_examples), y[:, 0]] = 1
 
         cost = (-1 / num_examples) * (
             np.sum(bitwise_labels * np.log(predictions))
@@ -255,45 +265,42 @@ class SignalClassifier:
         reg: float,
     ) -> dict[int, np.ndarray]:
         num_layers = len(self.layers)
-        num_examples, num_features = X.shape
+        num_examples = X.shape[0]
         num_labels = self.layers[-1]
 
+        # Vectorized forward pass — store activations and pre-activations
+        activations = [X]  # each is (m, features+1) with bias
+        z_values = []
+
+        a = X
+        for i in range(num_layers - 1):
+            z = a @ thetas[i].T  # (m, layer_size)
+            z_values.append(z)
+            a = _sigmoid(z)
+            if i < num_layers - 2:
+                a = np.hstack((np.ones((num_examples, 1)), a))
+            activations.append(a)
+
+        # Vectorized backward pass
+        # Output error
+        targets = np.zeros((num_examples, num_labels))
+        for j in range(num_examples):
+            targets[j, y[j, 0]] = 1
+        delta = activations[-1] - targets  # (m, 2)
+
         deltas = {}
+        deltas[num_layers - 2] = (delta.T @ activations[-2]) / num_examples
+
+        for i in range(num_layers - 3, -1, -1):
+            # Backprop through layer
+            sg = _sigmoid_gradient(z_values[i])  # (m, layer_size)
+            delta = (delta @ thetas[i + 1][:, 1:]) * sg  # strip bias column
+            deltas[i] = (delta.T @ activations[i]) / num_examples
+
+        # Regularization
         for i in range(num_layers - 1):
-            deltas[i] = np.zeros((self.layers[i + 1], self.layers[i] + 1))
-
-        for ex in range(num_examples):
-            layer_inputs = {}
-            layer_activations = {}
-
-            a = X[ex, :].reshape((num_features, 1))
-            layer_activations[0] = a
-
-            for i in range(num_layers - 1):
-                z = thetas[i] @ a
-                a = np.vstack((np.array([[1]]), _sigmoid(z)))
-                layer_inputs[i + 1] = z
-                layer_activations[i + 1] = a
-
-            output = a[1:, :]
-
-            delta = {}
-            target = np.zeros((num_labels, 1))
-            target[y[ex, 0]] = 1
-            delta[num_layers - 1] = output - target
-
-            for i in range(num_layers - 2, 0, -1):
-                z = np.vstack((np.array([[1]]), layer_inputs[i]))
-                delta[i] = (thetas[i].T @ delta[i + 1]) * _sigmoid_gradient(z)
-                delta[i] = delta[i][1:, :]
-
-            for i in range(num_layers - 1):
-                deltas[i] += delta[i + 1] @ layer_activations[i].T
-
-        for i in range(num_layers - 1):
-            d = deltas[i]
-            reg_term = np.hstack((np.zeros((d.shape[0], 1)), d[:, 1:]))
-            deltas[i] = (1 / num_examples) * d + (reg / num_examples) * reg_term
+            reg_term = np.hstack((np.zeros((deltas[i].shape[0], 1)), deltas[i][:, 1:]))
+            deltas[i] = deltas[i] + (reg / num_examples) * reg_term
 
         return deltas
 

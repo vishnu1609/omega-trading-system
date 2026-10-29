@@ -32,10 +32,13 @@ class IMessageAlert:
                 f'tell application "Messages" to send "{self._escape(message)}" '
                 f'to buddy "{self._escape(self.recipient)}"'
             )
-            subprocess.run(
+            result = subprocess.run(
                 ["osascript", "-e", script],
                 timeout=10, capture_output=True, text=True,
             )
+            if result.returncode != 0:
+                log.warning("iMessage osascript failed (rc=%d): %s",
+                            result.returncode, result.stderr.strip())
         except Exception as exc:
             log.warning("iMessage send failed: %s", exc)
 

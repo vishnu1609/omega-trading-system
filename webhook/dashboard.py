@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import secrets
+import sqlite3
 from datetime import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -208,6 +209,7 @@ async def api_state():
         "loss_cooldown_remaining": idx.get("loss_cooldown_remaining", 0),
         "csrf": _CSRF_TOKEN,
         "ml": _get_ml_info(),
+        "chain_cache": _bot["option_chain"].cache_stats() if _bot.get("option_chain") else {},
     }
 
 
@@ -274,22 +276,30 @@ async def close_position(request: Request):
                 guardrails.release_allocation(pos.symbol, margin)
             except Exception:
                 pass
-        try:
-            from core.database import OmegaDB
-            db = OmegaDB.get()
-            db.record_trade(
-                symbol=trade.symbol, direction=trade.direction,
-                option_type=trade.option_type, quantity=trade.quantity,
-                entry_price=trade.entry_price, exit_price=trade.exit_price,
-                pnl=trade.pnl,
-                entry_time=trade.entry_time.isoformat(),
-                exit_time=trade.exit_time.isoformat(),
-                exit_reason=reason, strategy=pos.strategy,
-                balance_after=wallet.balance if wallet else 0,
-            )
-            db.delete_position(pos.security_id)
-        except Exception as e:
-            log.warning("DB trade record failed: %s", e)
+        for _attempt in range(3):
+            try:
+                from core.database import OmegaDB
+                db = OmegaDB.get()
+                db.record_trade(
+                    symbol=trade.symbol, direction=trade.direction,
+                    option_type=trade.option_type, quantity=trade.quantity,
+                    entry_price=trade.entry_price, exit_price=trade.exit_price,
+                    pnl=trade.pnl,
+                    entry_time=trade.entry_time.isoformat(),
+                    exit_time=trade.exit_time.isoformat(),
+                    exit_reason=reason, strategy=pos.strategy,
+                    balance_after=wallet.balance if wallet else 0,
+                )
+                db.delete_position(pos.security_id)
+                break
+            except sqlite3.OperationalError as e:
+                if "locked" in str(e) and _attempt < 2:
+                    import time as _t; _t.sleep(0.5)
+                else:
+                    log.warning("DB trade record failed: %s", e)
+            except Exception as e:
+                log.warning("DB trade record failed: %s", e)
+                break
         if strategy and hasattr(strategy, "_consecutive_losses"):
             if trade.pnl >= 0:
                 strategy._consecutive_losses = 0
@@ -373,22 +383,30 @@ async def close_all(request: Request):
             margin = trade.entry_price * trade.quantity
             if wallet:
                 wallet.release_margin(margin, trade.pnl, pos.symbol, "MANUAL_SQUARE_OFF")
-            try:
-                from core.database import OmegaDB
-                db = OmegaDB.get()
-                db.record_trade(
-                    symbol=trade.symbol, direction=trade.direction,
-                    option_type=trade.option_type, quantity=trade.quantity,
-                    entry_price=trade.entry_price, exit_price=trade.exit_price,
-                    pnl=trade.pnl,
-                    entry_time=trade.entry_time.isoformat(),
-                    exit_time=trade.exit_time.isoformat(),
-                    exit_reason="MANUAL_SQUARE_OFF", strategy=pos.strategy,
-                    balance_after=wallet.balance if wallet else 0,
-                )
-                db.delete_position(pos.security_id)
-            except Exception as e:
-                log.warning("DB trade record failed: %s", e)
+            for _attempt in range(3):
+                try:
+                    from core.database import OmegaDB
+                    db = OmegaDB.get()
+                    db.record_trade(
+                        symbol=trade.symbol, direction=trade.direction,
+                        option_type=trade.option_type, quantity=trade.quantity,
+                        entry_price=trade.entry_price, exit_price=trade.exit_price,
+                        pnl=trade.pnl,
+                        entry_time=trade.entry_time.isoformat(),
+                        exit_time=trade.exit_time.isoformat(),
+                        exit_reason="MANUAL_SQUARE_OFF", strategy=pos.strategy,
+                        balance_after=wallet.balance if wallet else 0,
+                    )
+                    db.delete_position(pos.security_id)
+                    break
+                except sqlite3.OperationalError as e:
+                    if "locked" in str(e) and _attempt < 2:
+                        import time as _t; _t.sleep(0.5)
+                    else:
+                        log.warning("DB trade record failed: %s", e)
+                except Exception as e:
+                    log.warning("DB trade record failed: %s", e)
+                    break
             strategy = _bot.get("strategy")
             if strategy and hasattr(strategy, "_consecutive_losses"):
                 if trade.pnl >= 0:
@@ -1317,7 +1335,7 @@ function fmt(n,d){
   if(d===undefined)d=2;
   return new Intl.NumberFormat('en-IN',{minimumFractionDigits:d,maximumFractionDigits:d}).format(n);
 }
-function fpnl(n){return (n>=0?'+':'')+String.fromCharCode(8377)+fmt(Math.abs(n))}
+function fpnl(n){return (n>=0?'+':'-')+String.fromCharCode(8377)+fmt(Math.abs(n))}
 function pc(n){return n>=0?'var(--profit)':'var(--loss)'}
 function esc(s){if(!s)return '';return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');}
 function cc(c){return c==='HIGH'?'cb-h':c==='MEDIUM'?'cb-m':'cb-lo'}
@@ -2329,11 +2347,10 @@ function rAnalytics(){
 function rArch(){
   const el=document.getElementById('tp-arch');
   if(tab!=='arch')return;
-  const ml=S.ml||{};const sig=ml.signal_classifier||{};const reg=ml.regime_detector||{};
-  const buf=ml.trade_buffer||{};
+  const ml=S.ml||{};const buf=ml.buffer||{};const reg=ml.regime_detector||{};
   let h='<div class="g3" style="margin-bottom:16px">';
   h+='<div class="arch"><div class="arch-i ic-g">&Omega;</div><h3>Omega Strategy</h3><p>Confluence scoring: SuperTrend, VWAP, ADX, EMA, RSI, ORB, Divergence. Dynamic SL/TP with 4-level escalation.</p><div class="tech"><span>Python</span><span>FastAPI</span><span>ATR SL</span></div></div>';
-  h+='<div class="arch"><div class="arch-i ic-p">&#9881;</div><h3>ML Engine</h3><p>50-feature neural network (50&rarr;32&rarr;16&rarr;2). Auto-retrains on trades. K-Means regime detection for market adaptation.</p><div class="tech"><span>NumPy</span><span>Neural Net</span><span>K-Means</span></div></div>';
+  h+='<div class="arch"><div class="arch-i ic-p">&#9881;</div><h3>ML Engine v2</h3><p>LightGBM (depth=3) + SGD online adapter. SQLite self-healing buffer with counterfactual shadow logging. E[R]&ge;0.15R gate.</p><div class="tech"><span>LightGBM</span><span>SQLite</span><span>SGD</span></div></div>';
   h+='<div class="arch"><div class="arch-i ic-c">&#9878;</div><h3>Risk Engine</h3><p>7-gate safety layer. Loss limits, position caps, ATR trailing stops, Kelly sizing, cooldown periods.</p><div class="tech"><span>&#8377;1,500/trade</span><span>3% daily cap</span></div></div>';
   h+='<div class="arch"><div class="arch-i ic-gr">&#9733;</div><h3>Trade Memory</h3><p>4-trade pattern memory. Auto-blocks poor symbols. Adjusts sizing by instrument expectancy.</p><div class="tech"><span>SQLite</span><span>JSON</span><span>4 trades</span></div></div>';
   h+='<div class="arch"><div class="arch-i ic-b">&#9889;</div><h3>Live Feed</h3><p>Dhan WebSocket real-time prices. REST+Yahoo fallback. ATM option chain resolution.</p><div class="tech"><span>WebSocket</span><span>REST</span><span>Dhan</span></div></div>';
@@ -2343,7 +2360,7 @@ function rArch(){
   const sigs=S.signals||[];const closed=S.closed_trades||[];
   h+='<div style="text-align:center;padding:14px;background:var(--bg3);border-radius:8px"><div class="mono" style="font-size:20px;font-weight:700;color:var(--cyan)">Signals</div><div style="font-size:9px;color:var(--t3);margin-top:3px">'+sigs.length+' logged &rarr; signal_log.json</div></div>';
   h+='<div style="text-align:center;padding:14px;background:var(--bg3);border-radius:8px"><div class="mono" style="font-size:20px;font-weight:700;color:var(--profit)">Trades</div><div style="font-size:9px;color:var(--t3);margin-top:3px">'+closed.length+' fields &rarr; SQLite</div></div>';
-  h+='<div style="text-align:center;padding:14px;background:var(--bg3);border-radius:8px"><div class="mono" style="font-size:20px;font-weight:700;color:var(--purple)">ML Buffer</div><div style="font-size:9px;color:var(--t3);margin-top:3px">'+(buf.size||0)+' entries</div></div>';
+  h+='<div style="text-align:center;padding:14px;background:var(--bg3);border-radius:8px"><div class="mono" style="font-size:20px;font-weight:700;color:var(--purple)">ML Buffer</div><div style="font-size:9px;color:var(--t3);margin-top:3px">'+(buf.signals||0)+' signals &rarr; SQLite</div></div>';
   h+='<div style="text-align:center;padding:14px;background:var(--bg3);border-radius:8px"><div class="mono" style="font-size:20px;font-weight:700;color:var(--gold)">50 Features</div><div style="font-size:9px;color:var(--t3);margin-top:3px">Extracted per signal</div></div>';
   h+='</div></div>';
   el.innerHTML=h;
@@ -2353,23 +2370,27 @@ function rArch(){
 function rML(){
   const el=document.getElementById('tp-ml');
   if(tab!=='ml')return;
-  const ml=S.ml||{};const sig=ml.signal_classifier||{};const reg=ml.regime_detector||{};
-  const buf=ml.trade_buffer||{};const layers=(sig.layers||[50,64,32,16,2]);
-  const names=['Input','Hidden 1','Hidden 2','Hidden 3','Output'];
-  const colors=['var(--cyan)','var(--gold)','var(--purple)','var(--warn)','var(--profit)'];
-  let h='<div class="cd" style="margin-bottom:16px"><div class="ct">Neural Network</div><div class="ml-a">';
-  layers.forEach((n,i)=>{
-    if(i>0)h+='<div class="ml-ar">&rarr;</div>';
-    h+='<div class="ml-n"><div class="nv" style="color:'+colors[i%colors.length]+'">'+n+'</div><div class="nl">'+(names[i]||'Layer '+i)+'</div></div>';
+  const ml=S.ml||{};const lgbm=ml.lgbm||{};const sgd=ml.sgd||{};const reg=ml.regime_detector||{};
+  const buf=ml.buffer||{};const ts=buf.trade_stats||{};const er=ml.expected_r||{};
+  const models=[
+    {name:'LightGBM',status:lgbm.trained?'TRAINED':'UNTRAINED',desc:lgbm.model_type||'depth=3,leaves=7',col:'var(--profit)'},
+    {name:'SGD Online',status:sgd.trained?'TRAINED':'UNTRAINED',desc:sgd.model_type||'log_loss',col:'var(--cyan)'},
+    {name:'Regime',status:reg.trained?'TRAINED':'RULE-BASED',desc:'K-Means 4 clusters',col:'var(--gold)'},
+  ];
+  let h='<div class="cd" style="margin-bottom:16px"><div class="ct">ML Models (v2 — Self-Healing)</div><div class="g3">';
+  models.forEach(m=>{
+    h+='<div style="padding:14px;background:var(--bg3);border-radius:8px;text-align:center">';
+    h+='<div style="font-size:14px;font-weight:700;color:'+m.col+'">'+m.name+'</div>';
+    h+='<div style="font-size:10px;color:var(--t3);margin-top:3px">'+m.desc+'</div>';
+    h+='<div style="font-size:9px;margin-top:5px;color:'+(m.status==='TRAINED'?'var(--profit)':'var(--t3)')+'">'+m.status+'</div></div>';
   });
-  h+='</div>';
-  h+='<div style="text-align:center;font-size:11px;color:var(--t3);margin-top:6px">Sigmoid &bull; Binary cross-entropy &bull; Auto-retrain after '+(buf.auto_retrain_at||20)+' new trades</div></div>';
-  const acc=((buf.wins||0)/Math.max(1,(buf.wins||0)+(buf.losses||0))*100).toFixed(1);
+  h+='</div></div>';
+  const wr=((ts.wins||0)/Math.max(1,(ts.wins||0)+(ts.losses||0))*100).toFixed(1);
   h+='<div class="sg" style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:16px">';
-  h+='<div class="sc"><div class="sv mono" style="color:var(--profit)">'+acc+'%</div><div class="sl">Accuracy</div></div>';
-  h+='<div class="sc"><div class="sv mono" style="color:var(--cyan)">'+(buf.size||0).toLocaleString()+'</div><div class="sl">Buffer</div></div>';
-  h+='<div class="sc"><div class="sv mono" style="color:var(--gold)">'+(ml.confidence_threshold||0.55)+'</div><div class="sl">Threshold</div></div>';
-  h+='<div class="sc"><div class="sv mono" style="color:var(--purple)">'+(sig.iterations_trained||0)+'</div><div class="sl">Iterations</div></div>';
+  h+='<div class="sc"><div class="sv mono" style="color:var(--profit)">'+wr+'%</div><div class="sl">Win Rate</div></div>';
+  h+='<div class="sc"><div class="sv mono" style="color:var(--cyan)">'+(buf.signals||0).toLocaleString()+'</div><div class="sl">Signals</div></div>';
+  h+='<div class="sc"><div class="sv mono" style="color:var(--gold)">'+(er.avg_win_r||1.5)+'R / '+(er.avg_loss_r||1.0)+'R</div><div class="sl">Avg W/L</div></div>';
+  h+='<div class="sc"><div class="sv mono" style="color:var(--purple)">'+(buf.trades_since_retrain||0)+'/'+(buf.retrain_threshold||15)+'</div><div class="sl">Next Retrain</div></div>';
   h+='</div>';
   h+='<div class="g2">';
   h+='<div class="cd"><div class="ct">50 Features</div><div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;font-size:10px">';
@@ -2696,7 +2717,9 @@ async function poll(){
   const dot=document.getElementById('live-dot');
   if(staleSec>3){dot.style.background='#f59e0b';dot.title='Data '+staleSec+'s stale'}
   else{dot.title='Live'}
-  setTimeout(poll,_pollFails>5?2000:1000);
+  const h=new Date().getUTCHours()+5,m=new Date().getUTCMinutes()+30,ist=h*60+(m>=60?m-60:m)+(m>=60?60:0);
+  const mktOpen=ist>=555&&ist<=960;
+  setTimeout(poll,_pollFails>5?5000:(mktOpen?3000:10000));
 }
 poll();
 window.doAction=doAction;

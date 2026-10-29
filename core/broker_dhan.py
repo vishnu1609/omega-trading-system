@@ -212,6 +212,8 @@ class DhanBroker(BrokerBase):
         return self._request("GET", "/fundlimit")
 
     def get_ltp(self, security_id: str, exchange_segment: str) -> float:
+        if not security_id or not str(security_id).isdigit():
+            return 0.0
         payload = {exchange_segment: [int(security_id)]}
         data = self._request("POST", "/marketfeed/ltp", payload)
         seg_data = data.get("data", {}).get(exchange_segment, {})

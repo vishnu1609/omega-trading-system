@@ -52,13 +52,22 @@ class Wallet:
             log.warning("Wallet PnL reconcile failed: %s", e)
 
     def _sync_to_db(self):
-        self._db.update_wallet(
-            balance=round(self._balance, 2),
-            in_trade=round(self._in_trade, 2),
-            today_pnl=round(self._today_pnl, 2),
-            today_trades=self._today_trades,
-            trade_date=self._today_date,
-        )
+        import sqlite3, time as _t
+        for _attempt in range(3):
+            try:
+                self._db.update_wallet(
+                    balance=round(self._balance, 2),
+                    in_trade=round(self._in_trade, 2),
+                    today_pnl=round(self._today_pnl, 2),
+                    today_trades=self._today_trades,
+                    trade_date=self._today_date,
+                )
+                return
+            except sqlite3.OperationalError as e:
+                if "locked" in str(e) and _attempt < 2:
+                    _t.sleep(0.5)
+                else:
+                    log.warning("Wallet DB sync failed: %s", e)
 
     @property
     def balance(self) -> float:
@@ -80,12 +89,17 @@ class Wallet:
     def today_trades(self) -> int:
         return self._today_trades
 
-    def deduct_margin(self, amount: float, symbol: str = ""):
+    def deduct_margin(self, amount: float, symbol: str = "") -> bool:
         with self._lock:
+            if self._balance - self._in_trade < amount:
+                log.warning("WALLET REJECTED: insufficient funds for %s — need ₹%.2f, available ₹%.2f",
+                            symbol, amount, self._balance - self._in_trade)
+                return False
             self._in_trade += amount
             log.info("WALLET: margin locked ₹%.2f for %s | balance=%.2f in_trade=%.2f avail=%.2f",
                      amount, symbol, self._balance, self._in_trade, self.available)
             self._sync_to_db()
+            return True
 
     def release_margin(self, amount: float, pnl: float, symbol: str = "",
                        reason: str = ""):
@@ -100,15 +114,20 @@ class Wallet:
                      self.available)
             self._sync_to_db()
 
-    def deduct_spread_margin(self, max_loss: float, quantity: int, symbol: str = ""):
+    def deduct_spread_margin(self, max_loss: float, quantity: int, symbol: str = "") -> bool:
         amount = max_loss * quantity
         with self._lock:
+            if self._balance - self._in_trade < amount:
+                log.warning("WALLET REJECTED spread: insufficient funds for %s — need ₹%.2f, available ₹%.2f",
+                            symbol, amount, self._balance - self._in_trade)
+                return False
             self._in_trade += amount
             log.info("WALLET: spread margin locked ₹%.2f for %s (max_loss=%.2f × %d) | "
                      "balance=%.2f in_trade=%.2f avail=%.2f",
                      amount, symbol, max_loss, quantity,
                      self._balance, self._in_trade, self.available)
             self._sync_to_db()
+            return True
 
     def reconcile_in_trade(self, open_positions: list):
         with self._lock:
@@ -124,6 +143,18 @@ class Wallet:
                             "(open positions: %d)", self._in_trade, actual,
                             len(open_positions))
                 self._in_trade = actual
+                self._sync_to_db()
+
+    def reset_daily(self) -> None:
+        with self._lock:
+            today = datetime.now(IST).strftime("%Y-%m-%d")
+            if self._today_date != today:
+                log.info("WALLET DAILY RESET: %s → %s (yesterday PnL=₹%.2f, trades=%d)",
+                         self._today_date, today, self._today_pnl, self._today_trades)
+                self._today_pnl = 0.0
+                self._today_trades = 0
+                self._in_trade = 0.0
+                self._today_date = today
                 self._sync_to_db()
 
     def snapshot(self) -> dict:

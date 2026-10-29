@@ -82,9 +82,9 @@ class ScoredSignal:
             self.regime_score * 0.06 +
             self.vwap_band_score * 0.07
         )
-        if self.total_score >= 72:
+        if self.total_score >= 65:
             self.confidence = "HIGH"
-        elif self.total_score >= 55:
+        elif self.total_score >= 52:
             self.confidence = "MEDIUM"
         else:
             self.confidence = "LOW"

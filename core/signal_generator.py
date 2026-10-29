@@ -442,6 +442,7 @@ class SignalGenerator:
         self._ghost_pct: dict[str, float] = {}
         self._data_source: dict[str, str] = {}
         self._vix_cache: tuple[float, float] = (0.0, 0.0)
+        self._candle_store: dict[str, list] = {}
         self.guardrails = None  # set externally via set_guardrails()
         self.calendar = None    # set externally via set_calendar()
 
@@ -890,9 +891,9 @@ class SignalGenerator:
             vol_regime = self._classify_volatility_regime(inst_name, atr_vals_local, candles)
             kc_mid_c, kc_upper_c, kc_lower_c = calc_keltner(candles, self.bb_period, 1.5)
             ttm_sq = detect_ttm_squeeze(bb_upper, bb_lower, kc_upper_c, kc_lower_c)
-            spread_ok = (adx_val < 22
-                         and (ttm_sq[i] or vol_regime in ("CHOPPY", "RANGING"))
-                         and chop_vals[i] > 61.8)
+            spread_ok = (adx_val < 25
+                         and (ttm_sq[i] or vol_regime in ("CHOPPY", "RANGING", "TRENDING"))
+                         and chop_vals[i] > 50)
             if spread_ok and not in_cooldown:
                 bb_pos = ((close - bb_lower[i]) / (bb_upper[i] - bb_lower[i])
                           if bb_upper[i] > bb_lower[i] else 0.5)
@@ -1311,6 +1312,7 @@ class SignalGenerator:
                         if not candles:
                             log.warning("No candle data for %s — skipping", inst_name)
                             continue
+                        self._candle_store[inst_name] = candles[-100:]
 
                         signal = self.generate_signals(inst_name, candles, asset)
                         if signal:
