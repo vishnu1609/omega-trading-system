@@ -1,0 +1,139 @@
+...............FFFFF.FFFFFFFFF.FF..F.......FF.                           [100%]
+=================================== FAILURES ===================================
+___________ test_invalid_price_is_rejected_without_mutation[sl-bad] ____________
+/Users/vishnu/Desktop/pyhton p/omega-trading-system/docs/qa-2026-10-22/test_dashboard_audit.py:52: in test_invalid_price_is_rejected_without_mutation
+    assert r.status_code<500, r.text
+E   AssertionError: Internal Server Error
+E   assert 500 < 500
+E    +  where 500 = <Response [500 Internal Server Error]>.status_code
+___________ test_invalid_price_is_rejected_without_mutation[tp-None] ___________
+/Users/vishnu/Desktop/pyhton p/omega-trading-system/docs/qa-2026-10-22/test_dashboard_audit.py:52: in test_invalid_price_is_rejected_without_mutation
+    assert r.status_code<500, r.text
+E   AssertionError: Internal Server Error
+E   assert 500 < 500
+E    +  where 500 = <Response [500 Internal Server Error]>.status_code
+___________ test_invalid_price_is_rejected_without_mutation[sl-NaN] ____________
+/Users/vishnu/Desktop/pyhton p/omega-trading-system/docs/qa-2026-10-22/test_dashboard_audit.py:52: in test_invalid_price_is_rejected_without_mutation
+    assert r.status_code<500, r.text
+E   AssertionError: Internal Server Error
+E   assert 500 < 500
+E    +  where 500 = <Response [500 Internal Server Error]>.status_code
+_________ test_invalid_price_is_rejected_without_mutation[tp-Infinity] _________
+/Users/vishnu/Desktop/pyhton p/omega-trading-system/docs/qa-2026-10-22/test_dashboard_audit.py:52: in test_invalid_price_is_rejected_without_mutation
+    assert r.status_code<500, r.text
+E   AssertionError: Internal Server Error
+E   assert 500 < 500
+E    +  where 500 = <Response [500 Internal Server Error]>.status_code
+____________________ test_sl_broker_failure_preserves_stop _____________________
+/Users/vishnu/Desktop/pyhton p/omega-trading-system/docs/qa-2026-10-22/test_dashboard_audit.py:59: in test_sl_broker_failure_preserves_stop
+    assert not r.json().get('ok'),r.text
+E   AssertionError: {"ok":true,"symbol":"NIFTY24500CE","old_sl":80,"new_sl":90.0}
+E   assert not True
+E    +  where True = <built-in method get of dict object at 0x10ab37240>('ok')
+E    +    where <built-in method get of dict object at 0x10ab37240> = {'ok': True, 'symbol': 'NIFTY24500CE', 'old_sl': 80, 'new_sl': 90.0}.get
+E    +      where {'ok': True, 'symbol': 'NIFTY24500CE', 'old_sl': 80, 'new_sl': 90.0} = json()
+E    +        where json = <Response [200 OK]>.json
+_ test_unfilled_or_partial_order_preserves_remaining_position[REJECTED-0-close_position] _
+/Users/vishnu/Desktop/pyhton p/omega-trading-system/docs/qa-2026-10-22/test_dashboard_audit.py:72: in test_unfilled_or_partial_order_preserves_remaining_position
+    assert pm.open_count==1, f'{status}/{qty}: {r.text}; local position incorrectly removed'
+E   AssertionError: REJECTED/0: {"ok":true,"symbol":"NIFTY24500CE","fill_price":110,"pnl":100,"reason":"MANUAL_CLOSE"}; local position incorrectly removed
+E   assert 0 == 1
+E    +  where 0 = <core.position_manager.PositionManager object at 0x10a91f0b0>.open_count
+_ test_unfilled_or_partial_order_preserves_remaining_position[REJECTED-0-close_all] _
+/Users/vishnu/Desktop/pyhton p/omega-trading-system/docs/qa-2026-10-22/test_dashboard_audit.py:72: in test_unfilled_or_partial_order_preserves_remaining_position
+    assert pm.open_count==1, f'{status}/{qty}: {r.text}; local position incorrectly removed'
+E   AssertionError: REJECTED/0: {"ok":true,"closed":[{"symbol":"NIFTY24500CE","pnl":100}]}; local position incorrectly removed
+E   assert 0 == 1
+E    +  where 0 = <core.position_manager.PositionManager object at 0x10a93f5d0>.open_count
+_ test_unfilled_or_partial_order_preserves_remaining_position[PENDING-0-close_position] _
+/Users/vishnu/Desktop/pyhton p/omega-trading-system/docs/qa-2026-10-22/test_dashboard_audit.py:72: in test_unfilled_or_partial_order_preserves_remaining_position
+    assert pm.open_count==1, f'{status}/{qty}: {r.text}; local position incorrectly removed'
+E   AssertionError: PENDING/0: {"ok":true,"symbol":"NIFTY24500CE","fill_price":110,"pnl":100,"reason":"MANUAL_CLOSE"}; local position incorrectly removed
+E   assert 0 == 1
+E    +  where 0 = <core.position_manager.PositionManager object at 0x10a93e8d0>.open_count
+_ test_unfilled_or_partial_order_preserves_remaining_position[PENDING-0-close_all] _
+/Users/vishnu/Desktop/pyhton p/omega-trading-system/docs/qa-2026-10-22/test_dashboard_audit.py:72: in test_unfilled_or_partial_order_preserves_remaining_position
+    assert pm.open_count==1, f'{status}/{qty}: {r.text}; local position incorrectly removed'
+E   AssertionError: PENDING/0: {"ok":true,"closed":[{"symbol":"NIFTY24500CE","pnl":100}]}; local position incorrectly removed
+E   assert 0 == 1
+E    +  where 0 = <core.position_manager.PositionManager object at 0x10aaaa040>.open_count
+_ test_unfilled_or_partial_order_preserves_remaining_position[PART_TRADED-4-close_position] _
+/Users/vishnu/Desktop/pyhton p/omega-trading-system/docs/qa-2026-10-22/test_dashboard_audit.py:72: in test_unfilled_or_partial_order_preserves_remaining_position
+    assert pm.open_count==1, f'{status}/{qty}: {r.text}; local position incorrectly removed'
+E   AssertionError: PART_TRADED/4: {"ok":true,"symbol":"NIFTY24500CE","fill_price":112,"pnl":120,"reason":"MANUAL_CLOSE"}; local position incorrectly removed
+E   assert 0 == 1
+E    +  where 0 = <core.position_manager.PositionManager object at 0x10aaaa430>.open_count
+_ test_unfilled_or_partial_order_preserves_remaining_position[PART_TRADED-4-close_all] _
+/Users/vishnu/Desktop/pyhton p/omega-trading-system/docs/qa-2026-10-22/test_dashboard_audit.py:72: in test_unfilled_or_partial_order_preserves_remaining_position
+    assert pm.open_count==1, f'{status}/{qty}: {r.text}; local position incorrectly removed'
+E   AssertionError: PART_TRADED/4: {"ok":true,"closed":[{"symbol":"NIFTY24500CE","pnl":100}]}; local position incorrectly removed
+E   assert 0 == 1
+E    +  where 0 = <core.position_manager.PositionManager object at 0x10ab839b0>.open_count
+_______________________ test_close_all_uses_actual_fill ________________________
+/Users/vishnu/Desktop/pyhton p/omega-trading-system/docs/qa-2026-10-22/test_dashboard_audit.py:78: in test_close_all_uses_actual_fill
+    assert r.json()['ok'];assert pm.closed_trades[0].exit_price==112
+                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   AssertionError: assert 110 == 112
+E    +  where 110 = ClosedTrade(symbol='NIFTY24500CE', option_type='CE', direction='LONG', quantity=10, entry_price=100, exit_price=110, p...tetime(2026, 10, 22, 21, 5, 23, 830458, tzinfo=zoneinfo.ZoneInfo(key='Asia/Kolkata')), exit_reason='MANUAL_SQUARE_OFF').exit_price
+_________________ test_spread_closes_hedge_leg[close_position] _________________
+/Users/vishnu/Desktop/pyhton p/omega-trading-system/docs/qa-2026-10-22/test_dashboard_audit.py:85: in test_spread_closes_hedge_leg
+    assert '202' in ids, f'Only submitted legs: {ids}'
+E   AssertionError: Only submitted legs: ['101']
+E   assert '202' in ['101']
+___________________ test_spread_closes_hedge_leg[close_all] ____________________
+/Users/vishnu/Desktop/pyhton p/omega-trading-system/docs/qa-2026-10-22/test_dashboard_audit.py:85: in test_spread_closes_hedge_leg
+    assert '202' in ids, f'Only submitted legs: {ids}'
+E   AssertionError: Only submitted legs: ['101']
+E   assert '202' in ['101']
+___________________________ test_note_can_be_cleared ___________________________
+/Users/vishnu/Desktop/pyhton p/omega-trading-system/docs/qa-2026-10-22/test_dashboard_audit.py:96: in test_note_can_be_cleared
+    assert r.json()['ok'];assert not c.get('/api/state').json()['trade_notes'].get('trade1')
+    ^^^^^^^^^^^^^^^^^^^^^
+E   assert False
+______________________________ test_csv_escaping _______________________________
+/Users/vishnu/Desktop/pyhton p/omega-trading-system/docs/qa-2026-10-22/test_dashboard_audit.py:102: in test_csv_escaping
+    assert len(rows)==2 and len(rows[1])==11,rows
+E   AssertionError: [['Symbol', 'Direction', 'Option', 'Qty', 'Entry', 'Exit', ...], ['NIFTY', 'TEST', '', '', '', '0', ...], ['b', '', '']]
+E   assert (3 == 2)
+E    +  where 3 = len([['Symbol', 'Direction', 'Option', 'Qty', 'Entry', 'Exit', ...], ['NIFTY', 'TEST', '', '', '', '0', ...], ['b', '', '']])
+______________________ test_every_tab_has_render_dispatch ______________________
+docs/qa-2026-10-22/test_dashboard_audit.py:121: in test_every_tab_has_render_dispatch
+    assert tabs<=cases, f'Tabs without render dispatch: {tabs-cases}'
+E   AssertionError: Tabs without render dispatch: {'reverse'}
+E   assert {'analytics',...l', 'ml', ...} <= {'analytics',...l', 'ml', ...}
+E     
+E     Extra items in the left set:
+E     'reverse'
+_______________ test_webhook_bad_payload_is_client_error[body4] ________________
+docs/qa-2026-10-22/test_dashboard_audit.py:161: in test_webhook_bad_payload_is_client_error
+    assert 400<=r.status_code<500,r.text
+E   AssertionError: Internal Server Error
+E   assert 500 < 500
+E    +  where 500 = <Response [500 Internal Server Error]>.status_code
+_______________ test_webhook_bad_payload_is_client_error[body5] ________________
+docs/qa-2026-10-22/test_dashboard_audit.py:161: in test_webhook_bad_payload_is_client_error
+    assert 400<=r.status_code<500,r.text
+E   AssertionError: Internal Server Error
+E   assert 500 < 500
+E    +  where 500 = <Response [500 Internal Server Error]>.status_code
+=========================== short test summary info ============================
+FAILED docs/qa-2026-10-22/test_dashboard_audit.py::test_invalid_price_is_rejected_without_mutation[sl-bad]
+FAILED docs/qa-2026-10-22/test_dashboard_audit.py::test_invalid_price_is_rejected_without_mutation[tp-None]
+FAILED docs/qa-2026-10-22/test_dashboard_audit.py::test_invalid_price_is_rejected_without_mutation[sl-NaN]
+FAILED docs/qa-2026-10-22/test_dashboard_audit.py::test_invalid_price_is_rejected_without_mutation[tp-Infinity]
+FAILED docs/qa-2026-10-22/test_dashboard_audit.py::test_sl_broker_failure_preserves_stop
+FAILED docs/qa-2026-10-22/test_dashboard_audit.py::test_unfilled_or_partial_order_preserves_remaining_position[REJECTED-0-close_position]
+FAILED docs/qa-2026-10-22/test_dashboard_audit.py::test_unfilled_or_partial_order_preserves_remaining_position[REJECTED-0-close_all]
+FAILED docs/qa-2026-10-22/test_dashboard_audit.py::test_unfilled_or_partial_order_preserves_remaining_position[PENDING-0-close_position]
+FAILED docs/qa-2026-10-22/test_dashboard_audit.py::test_unfilled_or_partial_order_preserves_remaining_position[PENDING-0-close_all]
+FAILED docs/qa-2026-10-22/test_dashboard_audit.py::test_unfilled_or_partial_order_preserves_remaining_position[PART_TRADED-4-close_position]
+FAILED docs/qa-2026-10-22/test_dashboard_audit.py::test_unfilled_or_partial_order_preserves_remaining_position[PART_TRADED-4-close_all]
+FAILED docs/qa-2026-10-22/test_dashboard_audit.py::test_close_all_uses_actual_fill
+FAILED docs/qa-2026-10-22/test_dashboard_audit.py::test_spread_closes_hedge_leg[close_position]
+FAILED docs/qa-2026-10-22/test_dashboard_audit.py::test_spread_closes_hedge_leg[close_all]
+FAILED docs/qa-2026-10-22/test_dashboard_audit.py::test_note_can_be_cleared
+FAILED docs/qa-2026-10-22/test_dashboard_audit.py::test_csv_escaping - Assert...
+FAILED docs/qa-2026-10-22/test_dashboard_audit.py::test_every_tab_has_render_dispatch
+FAILED docs/qa-2026-10-22/test_dashboard_audit.py::test_webhook_bad_payload_is_client_error[body4]
+FAILED docs/qa-2026-10-22/test_dashboard_audit.py::test_webhook_bad_payload_is_client_error[body5]
+19 failed, 27 passed in 1.13s

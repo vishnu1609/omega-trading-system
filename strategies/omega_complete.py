@@ -99,22 +99,31 @@ SHORT_DYNAMIC_SLTP_LEVELS = {
     ],
 }
 
-# Spread-specific levels: tighter SL (cap at 150% of net credit), wider TP (capture 60%+ of credit)
+# Per-underlying spread config: strike width, OTM steps, min credit per share
+# Research: wider wings = higher net credit, better R:R
+SPREAD_CONFIG = {
+    "NIFTY": {"sell_otm": 3, "hedge_otm": 7, "width_target": 200, "MIN_CREDIT": 22.0, "sell_delta": 0.20},
+    "BANKNIFTY": {"sell_otm": 4, "hedge_otm": 9, "width_target": 500, "MIN_CREDIT": 45.0, "sell_delta": 0.18},
+    "SENSEX": {"sell_otm": 3, "hedge_otm": 7, "width_target": 200, "MIN_CREDIT": 20.0, "sell_delta": 0.20},
+    "FINNIFTY": {"sell_otm": 3, "hedge_otm": 7, "width_target": 200, "MIN_CREDIT": 18.0, "sell_delta": 0.20},
+}
+
+# Spread SLTP: SL at 65% of credit (1.65x entry), TP at 55-65% of credit decay
 SPREAD_SLTP_LEVELS = {
     "LOW": [
-        {"level": 1, "sl_pct": 120.0, "tp_pct": 50.0},
-        {"level": 2, "sl_pct": 80.0, "tp_pct": 65.0},
-        {"level": 3, "sl_pct": 60.0, "tp_pct": 80.0},
+        {"level": 1, "sl_pct": 65.0, "tp_pct": 55.0},
+        {"level": 2, "sl_pct": 50.0, "tp_pct": 65.0},
+        {"level": 3, "sl_pct": 40.0, "tp_pct": 80.0},
     ],
     "MEDIUM": [
-        {"level": 1, "sl_pct": 150.0, "tp_pct": 55.0},
-        {"level": 2, "sl_pct": 100.0, "tp_pct": 70.0},
-        {"level": 3, "sl_pct": 80.0, "tp_pct": 85.0},
+        {"level": 1, "sl_pct": 65.0, "tp_pct": 55.0},
+        {"level": 2, "sl_pct": 50.0, "tp_pct": 70.0},
+        {"level": 3, "sl_pct": 40.0, "tp_pct": 85.0},
     ],
     "HIGH": [
-        {"level": 1, "sl_pct": 150.0, "tp_pct": 60.0},
-        {"level": 2, "sl_pct": 100.0, "tp_pct": 75.0},
-        {"level": 3, "sl_pct": 80.0, "tp_pct": 90.0},
+        {"level": 1, "sl_pct": 65.0, "tp_pct": 60.0},
+        {"level": 2, "sl_pct": 50.0, "tp_pct": 75.0},
+        {"level": 3, "sl_pct": 40.0, "tp_pct": 90.0},
     ],
 }
 
@@ -416,31 +425,58 @@ class OmegaStrategy:
                                           f"{underlying} loss cooldown, {remaining}min left")
                 return
 
+        # --- MIDDAY HARD BLOCK: 11:00-13:45 is coin-flip zone (51.8% persistence) ---
+        # Only allow exceptional signals (score >= 70) through
+        if is_buy_option and 11 * 60 <= time_minutes < 13 * 60 + 45:
+            score = payload.get("score", 0)
+            if score < 70:
+                log.info("MIDDAY_BLOCK: %s %s blocked at %02d:%02d — score=%.0f < 70 "
+                         "(51.8%% persistence zone, use spreads instead)", side, symbol, hour, minute, score)
+                self._record_signal_audit(payload, "BLOCKED_MIDDAY_LULL",
+                                          f"Score {score:.0f} < 70 in 11:00-13:45 zone")
+                return
+
+        # --- 0-DTE LATE BLOCK: no new 0-DTE long entries after 14:30 ---
+        if is_buy_option and time_minutes >= 14 * 60 + 30:
+            try:
+                inst_name = self._resolve_instrument(symbol) or symbol
+                inst_cfg = self.instruments.get(inst_name, {})
+                strike_step = inst_cfg.get("strike_step", 50)
+                if self.option_chain:
+                    expiry = self.option_chain.get_nearest_expiry(inst_name)
+                    if expiry == datetime.now(IST).strftime("%Y-%m-%d"):
+                        log.info("0DTE_LATE_BLOCK: %s %s blocked — 0-DTE entry after 14:30 IST "
+                                 "(theta crush + gamma risk)", side, symbol)
+                        self._record_signal_audit(payload, "BLOCKED_0DTE_LATE",
+                                                  "0-DTE entry after 14:30 IST")
+                        return
+            except Exception:
+                pass
+
         # --- TIME-OF-DAY SCORING (U-shaped intraday persistence) ---
-        # Morning momentum 09:20-10:45: 60% persistence → easier entry
-        # Late morning 10:45-11:30: transition → slightly harder
-        # Midday lull 11:30-13:15: 51.8% persistence (random walk) → block weak signals
-        # Afternoon build 13:15-14:00: pre-breakout watch
-        # Late session 14:00-15:10: 59% persistence → easier entry
+        # Morning 09:20-10:45: 60% persistence → bonus
+        # Transition 10:45-11:00: slightly harder
+        # Midday 11:00-13:45: handled by hard block above, survivors get no penalty
+        # Afternoon build 13:45-14:00: pre-breakout watch
+        # Late session 14:00-15:10: 59% persistence → bonus
         tod_mod = 0
         if is_buy_option:
             if time_minutes <= 10 * 60 + 45:
-                tod_mod = 3  # morning momentum window
-            elif time_minutes < 11 * 60 + 30:
-                tod_mod = -2  # transition — slightly harder
-            elif time_minutes <= 13 * 60 + 15:
-                tod_mod = -8  # midday lull — strong penalty for directional buys
+                tod_mod = 3  # morning momentum window (A+ grade)
+            elif time_minutes < 11 * 60:
+                tod_mod = -2  # transition
+            elif time_minutes < 13 * 60 + 45:
+                tod_mod = 0  # midday survivors already passed score >= 70
             elif time_minutes < 14 * 60:
                 tod_mod = -1  # afternoon build
             else:
-                tod_mod = 2  # late session momentum
+                tod_mod = 3  # late session (A+ grade, 59% persistence)
             if tod_mod != 0:
                 score = payload.get("score", 0) + tod_mod
                 payload["score"] = score
                 log.info("TOD MODIFIER: %+d score at %02d:%02d (%s, score=%.0f)",
                          tod_mod, hour, minute,
                          "morning" if tod_mod > 0 and time_minutes < 11*60 else
-                         "midday_lull" if tod_mod < -5 else
                          "late_session" if tod_mod > 0 else "transition",
                          score)
 
@@ -1146,12 +1182,17 @@ class OmegaStrategy:
             log.warning("No underlying price for spread on %s", inst_name)
             return
 
+        sp_cfg = SPREAD_CONFIG.get(inst_name, SPREAD_CONFIG.get("NIFTY"))
+        sell_otm = sp_cfg["sell_otm"]
+        hedge_otm = sp_cfg["hedge_otm"]
+        min_credit = sp_cfg["MIN_CREDIT"]
+
         spread = self.option_chain.resolve_spread_pair(
             underlying=inst_name,
             underlying_price=underlying_price,
             option_type=option_type,
-            sell_otm_steps=2,
-            hedge_otm_steps=4,
+            sell_otm_steps=sell_otm,
+            hedge_otm_steps=hedge_otm,
             lot_size=lot_size,
             strike_step=strike_step,
         )
@@ -1167,6 +1208,11 @@ class OmegaStrategy:
         if max_loss_per_unit <= 0:
             log.warning("Invalid spread: max_loss=%.2f (width=%d - credit=%.2f)",
                         max_loss_per_unit, spread_width, net_credit)
+            return
+
+        if net_credit < min_credit:
+            log.warning("MIN_CREDIT FILTER: %s spread credit ₹%.2f < ₹%.2f min — rejected",
+                        inst_name, net_credit, min_credit)
             return
 
         max_spreads = 8 if self.mode == "paper" else 2
@@ -1231,10 +1277,10 @@ class OmegaStrategy:
         level_table = SPREAD_SLTP_LEVELS
         levels = level_table.get(confidence, level_table["LOW"])
 
-        # SL/TP are reference only — actual exits use net-premium % in monitor_positions
-        # Set sell leg SL wide enough to never trigger is_sl_hit (spreads bypass it)
-        sl_price = round(sell_fill * 1.50, 2)
-        tp_price = round(sell_fill * 0.50, 2)
+        # SL/TP reference: SL at 1.65x entry credit, TP at 55% credit decay
+        # Actual exits use net-premium % in monitor_positions (spreads bypass is_sl_hit)
+        sl_price = round(sell_fill * 1.65, 2)
+        tp_price = round(sell_fill * 0.45, 2)
 
         position = Position(
             symbol=sell_contract.trade_symbol,

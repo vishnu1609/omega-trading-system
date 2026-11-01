@@ -107,10 +107,11 @@ def _build_httpx_client(access_token: str) -> httpx.Client:
 
 
 class GrowwBroker(BrokerBase):
-    def __init__(self, access_token: str = ""):
+    def __init__(self, access_token: str = "", api_secret: str = ""):
         self.access_token = access_token or os.environ.get("GROWW_ACCESS_TOKEN", "")
         if not self.access_token:
             raise BrokerError("GROWW_ACCESS_TOKEN must be set")
+        self.api_secret = api_secret or os.environ.get("GROWW_API_SECRET", "")
         self._client = _build_httpx_client(self.access_token)
         self._last_request_ts: float = 0
         self._min_interval: float = 0.1
@@ -118,6 +119,39 @@ class GrowwBroker(BrokerBase):
         self._auth_valid = True
         self._request_count: int = 0
         self._error_count: int = 0
+
+    def refresh_token(self) -> bool:
+        """Refresh access token using API key + secret (TOTP-less approval flow)."""
+        if not self.api_secret:
+            log.warning("GROWW_API_SECRET not set — cannot refresh token")
+            return False
+        try:
+            ts = str(int(time.time()))
+            checksum = hashlib.sha256((self.api_secret + ts).encode()).hexdigest()
+            resp = httpx.post(
+                f"{BASE_URL}/v1/token/api/access",
+                headers={
+                    "Content-Type": "application/json",
+                    "Accept": "application/json",
+                    "Authorization": f"Bearer {self.access_token}",
+                    "X-API-VERSION": "1.0",
+                },
+                json={"key_type": "approval", "checksum": checksum, "timestamp": ts},
+                timeout=10.0,
+            )
+            if resp.status_code == 200:
+                data = resp.json()
+                new_token = data.get("token", "") or data.get("access_token", "")
+                if new_token:
+                    self.access_token = new_token
+                    self._client = _build_httpx_client(new_token)
+                    log.info("Groww token refreshed successfully")
+                    return True
+            log.warning("Groww token refresh failed: HTTP %d %s", resp.status_code, resp.text[:200])
+            return False
+        except Exception as e:
+            log.warning("Groww token refresh error: %s", e)
+            return False
 
     def validate_token(self) -> bool:
         try:
@@ -127,9 +161,13 @@ class GrowwBroker(BrokerBase):
             return True
         except BrokerAuthError:
             self._auth_valid = False
+            if self.refresh_token():
+                return self.validate_token()
             log.error("Groww token validation FAILED")
             return False
         except Exception as e:
+            if "403" in str(e) and self.refresh_token():
+                return self.validate_token()
             log.warning("Groww token validation error: %s", e)
             return False
 

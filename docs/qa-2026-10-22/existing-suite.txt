@@ -1,0 +1,1399 @@
+.......F.F.......FF...EEE.................FF..F.F.FFFF........FFF..F..F. [ 52%]
+F......FF......FFFEE..E......F.FE.FFEF.FF........FF...............       [100%]
+==================================== ERRORS ====================================
+_ ERROR at setup of TestCapitalDestruction.test_daily_loss_breached_kills_bot __
+tests/test_brutal_chaos.py:61: in risk_engine
+    return RiskEngine(
+E   TypeError: RiskEngine.__init__() got an unexpected keyword argument 'max_trades_per_day'
+_ ERROR at setup of TestCapitalDestruction.test_cooldown_after_consecutive_losses _
+tests/test_brutal_chaos.py:61: in risk_engine
+    return RiskEngine(
+E   TypeError: RiskEngine.__init__() got an unexpected keyword argument 'max_trades_per_day'
+_ ERROR at setup of TestCapitalDestruction.test_max_positions_blocks_new_trade _
+tests/test_brutal_chaos.py:61: in risk_engine
+    return RiskEngine(
+E   TypeError: RiskEngine.__init__() got an unexpected keyword argument 'max_trades_per_day'
+__ ERROR at setup of TestSuite2_RiskGateGauntlet.test_sl_cap_high_confluence ___
+tests/test_injector.py:140: in risk_engine
+    return RiskEngine(
+E   TypeError: RiskEngine.__init__() got an unexpected keyword argument 'allow_mcx_live'
+___ ERROR at setup of TestSuite2_RiskGateGauntlet.test_sl_cap_low_confluence ___
+tests/test_injector.py:140: in risk_engine
+    return RiskEngine(
+E   TypeError: RiskEngine.__init__() got an unexpected keyword argument 'allow_mcx_live'
+__ ERROR at setup of TestSuite2_RiskGateGauntlet.test_square_off_time_is_1510 __
+tests/test_injector.py:140: in risk_engine
+    return RiskEngine(
+E   TypeError: RiskEngine.__init__() got an unexpected keyword argument 'allow_mcx_live'
+_ ERROR at setup of TestSuite5_FlashCrashEdgeCases.test_flash_crash_sl_cap_enforced _
+tests/test_injector.py:140: in risk_engine
+    return RiskEngine(
+E   TypeError: RiskEngine.__init__() got an unexpected keyword argument 'allow_mcx_live'
+_ ERROR at setup of TestSuite5_FlashCrashEdgeCases.test_sl_clamp_short_direction _
+tests/test_injector.py:140: in risk_engine
+    return RiskEngine(
+E   TypeError: RiskEngine.__init__() got an unexpected keyword argument 'allow_mcx_live'
+=================================== FAILURES ===================================
+________________ TestDataCorruption.test_all_candles_are_ghosts ________________
+tests/test_brutal_chaos.py:192: in test_all_candles_are_ghosts
+    cleaned = SignalGenerator._filter_ghost_candles(ghosts, "NIFTY")
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   TypeError: SignalGenerator._filter_ghost_candles() missing 1 required positional argument: 'symbol'
+__________________ TestDataCorruption.test_empty_candle_list ___________________
+tests/test_brutal_chaos.py:208: in test_empty_candle_list
+    assert SignalGenerator._filter_ghost_candles([], "NIFTY") == []
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   TypeError: SignalGenerator._filter_ghost_candles() missing 1 required positional argument: 'symbol'
+________ TestCapitalDestruction.test_nse_allocation_cap_exact_boundary _________
+tests/test_brutal_chaos.py:298: in test_nse_allocation_cap_exact_boundary
+    assert "NSE allocation cap" in result.reason
+E   AssertionError: assert 'NSE allocation cap' in 'Allocation cap ₹70,000 (70%) would be exceeded (current: ₹70,000 + ₹1)'
+E    +  where 'Allocation cap ₹70,000 (70%) would be exceeded (current: ₹70,000 + ₹1)' = <core.guardrails.GuardrailResult object at 0x10d7f7240>.reason
+________ TestCapitalDestruction.test_mcx_allocation_cap_exact_boundary _________
+tests/test_brutal_chaos.py:302: in test_mcx_allocation_cap_exact_boundary
+    mcx_cap = guardrails.capital * guardrails.mcx_cap  # ₹40,000
+                                   ^^^^^^^^^^^^^^^^^^
+E   AttributeError: 'Guardrails' object has no attribute 'mcx_cap'
+__________ TestGuardrailEdgeCases.test_step_trail_breakeven_threshold __________
+tests/test_brutal_chaos.py:580: in test_step_trail_breakeven_threshold
+    assert result > entry - 1  # should be near breakeven
+    ^^^^^^^^^^^^^^^^^^^^^^^^^
+E   assert 90.0 > (100.0 - 1)
+____________ TestGuardrailEdgeCases.test_step_trail_lock_threshold _____________
+tests/test_brutal_chaos.py:587: in test_step_trail_lock_threshold
+    assert result >= entry + 15  # locked in significant profit
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   assert 90.0 >= (100.0 + 15)
+__________ TestGuardrailEdgeCases.test_daily_reset_clears_everything ___________
+tests/test_brutal_chaos.py:611: in test_daily_reset_clears_everything
+    assert guardrails._allocated_mcx == 0
+           ^^^^^^^^^^^^^^^^^^^^^^^^^
+E   AttributeError: 'Guardrails' object has no attribute '_allocated_mcx'. Did you mean: '_allocated_nse'?
+_________ TestPositionManagerStress.test_duplicate_position_overwrites _________
+tests/test_brutal_chaos.py:640: in test_duplicate_position_overwrites
+    assert pm.open_count == 1
+E   assert 0 == 1
+E    +  where 0 = <core.position_manager.PositionManager object at 0x10d8f2060>.open_count
+------------------------------ Captured log call -------------------------------
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'N-OPT' for NIFTY1
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'N-OPT' for NIFTY2
+_______ TestPositionManagerStress.test_trail_sl_ratchet_up_only_for_long _______
+tests/test_brutal_chaos.py:664: in test_trail_sl_ratchet_up_only_for_long
+    assert pos.trail_sl == 98.0
+E   AssertionError: assert 95.0 == 98.0
+E    +  where 95.0 = Position(symbol='NIFTY', security_id='N-1', exchange_segment='NSE_FNO', option_type='CE', direction='LONG', quantity=7...ymbol='', hedge_strike=0, spread_width=0, net_credit=0.0, max_loss=0.0, hedge_entry_price=0.0, hedge_current_price=0.0).trail_sl
+------------------------------ Captured log call -------------------------------
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'N-1' for NIFTY
+_____ TestPositionManagerStress.test_trail_sl_ratchet_down_only_for_short ______
+tests/test_brutal_chaos.py:679: in test_trail_sl_ratchet_down_only_for_short
+    assert pos.trail_sl == 205.0
+E   AssertionError: assert 210.0 == 205.0
+E    +  where 210.0 = Position(symbol='NIFTY', security_id='N-1', exchange_segment='NSE_FNO', option_type='PE', direction='SHORT', quantity=...ymbol='', hedge_strike=0, spread_width=0, net_credit=0.0, max_loss=0.0, hedge_entry_price=0.0, hedge_current_price=0.0).trail_sl
+------------------------------ Captured log call -------------------------------
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'N-1' for NIFTY
+_____________ TestPositionManagerStress.test_hundred_positions_pnl _____________
+tests/test_brutal_chaos.py:693: in test_hundred_positions_pnl
+    assert pm.open_count == 100
+E   assert 0 == 100
+E    +  where 0 = <core.position_manager.PositionManager object at 0x10d891d50>.open_count
+------------------------------ Captured log call -------------------------------
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-0' for SYM0
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-1' for SYM1
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-2' for SYM2
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-3' for SYM3
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-4' for SYM4
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-5' for SYM5
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-6' for SYM6
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-7' for SYM7
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-8' for SYM8
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-9' for SYM9
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-10' for SYM10
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-11' for SYM11
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-12' for SYM12
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-13' for SYM13
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-14' for SYM14
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-15' for SYM15
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-16' for SYM16
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-17' for SYM17
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-18' for SYM18
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-19' for SYM19
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-20' for SYM20
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-21' for SYM21
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-22' for SYM22
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-23' for SYM23
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-24' for SYM24
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-25' for SYM25
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-26' for SYM26
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-27' for SYM27
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-28' for SYM28
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-29' for SYM29
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-30' for SYM30
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-31' for SYM31
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-32' for SYM32
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-33' for SYM33
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-34' for SYM34
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-35' for SYM35
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-36' for SYM36
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-37' for SYM37
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-38' for SYM38
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-39' for SYM39
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-40' for SYM40
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-41' for SYM41
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-42' for SYM42
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-43' for SYM43
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-44' for SYM44
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-45' for SYM45
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-46' for SYM46
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-47' for SYM47
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-48' for SYM48
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-49' for SYM49
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-50' for SYM50
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-51' for SYM51
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-52' for SYM52
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-53' for SYM53
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-54' for SYM54
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-55' for SYM55
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-56' for SYM56
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-57' for SYM57
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-58' for SYM58
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-59' for SYM59
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-60' for SYM60
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-61' for SYM61
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-62' for SYM62
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-63' for SYM63
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-64' for SYM64
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-65' for SYM65
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-66' for SYM66
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-67' for SYM67
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-68' for SYM68
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-69' for SYM69
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-70' for SYM70
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-71' for SYM71
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-72' for SYM72
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-73' for SYM73
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-74' for SYM74
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-75' for SYM75
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-76' for SYM76
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-77' for SYM77
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-78' for SYM78
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-79' for SYM79
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-80' for SYM80
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-81' for SYM81
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-82' for SYM82
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-83' for SYM83
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-84' for SYM84
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-85' for SYM85
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-86' for SYM86
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-87' for SYM87
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-88' for SYM88
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-89' for SYM89
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-90' for SYM90
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-91' for SYM91
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-92' for SYM92
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-93' for SYM93
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-94' for SYM94
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-95' for SYM95
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-96' for SYM96
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-97' for SYM97
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-98' for SYM98
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-99' for SYM99
+____ TestPositionManagerStress.test_consecutive_losses_count_resets_on_win _____
+tests/test_brutal_chaos.py:707: in test_consecutive_losses_count_resets_on_win
+    assert pm.consecutive_losses == 5
+E   assert 0 == 5
+E    +  where 0 = <core.position_manager.PositionManager object at 0x10d891c50>.consecutive_losses
+------------------------------ Captured log call -------------------------------
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'L-0' for L0
+WARNING  core.position_manager:position_manager.py:209 No open position for L-0 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'L-1' for L1
+WARNING  core.position_manager:position_manager.py:209 No open position for L-1 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'L-2' for L2
+WARNING  core.position_manager:position_manager.py:209 No open position for L-2 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'L-3' for L3
+WARNING  core.position_manager:position_manager.py:209 No open position for L-3 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'L-4' for L4
+WARNING  core.position_manager:position_manager.py:209 No open position for L-4 to close
+__________ TestCascadingFailures.test_position_open_then_broker_dies ___________
+tests/test_brutal_chaos.py:872: in test_position_open_then_broker_dies
+    assert pm.open_count == 1  # position still tracked
+    ^^^^^^^^^^^^^^^^^^^^^^^^^
+E   assert 0 == 1
+E    +  where 0 = <core.position_manager.PositionManager object at 0x10d8ce030>.open_count
+------------------------------ Captured log call -------------------------------
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'N-OPT' for NIFTY24500CE
+__________ TestCascadingFailures.test_margin_zero_with_open_positions __________
+tests/test_brutal_chaos.py:886: in test_margin_zero_with_open_positions
+    assert pm.open_count == 3
+E   assert 0 == 3
+E    +  where 0 = <core.position_manager.PositionManager object at 0x10d8cd6d0>.open_count
+------------------------------ Captured log call -------------------------------
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-0' for SYM0
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-1' for SYM1
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-2' for SYM2
+________ TestCascadingFailures.test_exit_order_fails_position_survives _________
+tests/test_brutal_chaos.py:908: in test_exit_order_fails_position_survives
+    assert pm.open_count == 1  # position still open
+    ^^^^^^^^^^^^^^^^^^^^^^^^^
+E   assert 0 == 1
+E    +  where 0 = <core.position_manager.PositionManager object at 0x10d76b3f0>.open_count
+------------------------------ Captured log call -------------------------------
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'N-OPT' for NIFTY24500CE
+ERROR    core.order_manager:order_manager.py:274 Order failed (attempt 1/4): Order rejected
+ERROR    core.order_manager:order_manager.py:274 Order failed (attempt 2/4): Order rejected
+ERROR    core.order_manager:order_manager.py:274 Order failed (attempt 3/4): Order rejected
+ERROR    core.order_manager:order_manager.py:274 Order failed (attempt 4/4): Order rejected
+CRITICAL core.order_manager:order_manager.py:282 DEFCON 1: 4 consecutive order failures for omega_NIFTY24500CE_179268 — broker may be down
+_______________ TestResourceLimits.test_closed_trades_list_grows _______________
+tests/test_brutal_chaos.py:947: in test_closed_trades_list_grows
+    assert len(pm.closed_trades) == 500
+E   assert 0 == 500
+E    +  where 0 = len([])
+E    +    where [] = <core.position_manager.PositionManager object at 0x109584f30>.closed_trades
+------------------------------ Captured log call -------------------------------
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-0' for S0
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-0 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-1' for S1
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-1 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-2' for S2
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-2 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-3' for S3
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-3 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-4' for S4
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-4 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-5' for S5
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-5 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-6' for S6
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-6 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-7' for S7
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-7 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-8' for S8
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-8 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-9' for S9
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-9 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-10' for S10
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-10 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-11' for S11
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-11 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-12' for S12
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-12 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-13' for S13
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-13 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-14' for S14
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-14 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-15' for S15
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-15 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-16' for S16
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-16 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-17' for S17
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-17 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-18' for S18
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-18 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-19' for S19
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-19 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-20' for S20
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-20 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-21' for S21
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-21 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-22' for S22
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-22 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-23' for S23
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-23 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-24' for S24
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-24 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-25' for S25
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-25 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-26' for S26
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-26 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-27' for S27
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-27 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-28' for S28
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-28 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-29' for S29
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-29 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-30' for S30
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-30 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-31' for S31
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-31 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-32' for S32
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-32 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-33' for S33
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-33 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-34' for S34
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-34 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-35' for S35
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-35 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-36' for S36
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-36 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-37' for S37
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-37 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-38' for S38
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-38 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-39' for S39
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-39 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-40' for S40
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-40 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-41' for S41
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-41 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-42' for S42
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-42 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-43' for S43
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-43 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-44' for S44
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-44 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-45' for S45
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-45 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-46' for S46
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-46 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-47' for S47
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-47 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-48' for S48
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-48 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-49' for S49
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-49 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-50' for S50
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-50 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-51' for S51
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-51 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-52' for S52
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-52 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-53' for S53
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-53 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-54' for S54
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-54 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-55' for S55
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-55 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-56' for S56
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-56 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-57' for S57
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-57 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-58' for S58
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-58 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-59' for S59
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-59 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-60' for S60
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-60 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-61' for S61
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-61 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-62' for S62
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-62 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-63' for S63
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-63 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-64' for S64
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-64 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-65' for S65
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-65 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-66' for S66
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-66 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-67' for S67
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-67 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-68' for S68
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-68 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-69' for S69
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-69 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-70' for S70
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-70 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-71' for S71
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-71 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-72' for S72
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-72 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-73' for S73
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-73 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-74' for S74
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-74 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-75' for S75
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-75 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-76' for S76
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-76 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-77' for S77
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-77 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-78' for S78
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-78 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-79' for S79
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-79 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-80' for S80
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-80 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-81' for S81
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-81 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-82' for S82
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-82 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-83' for S83
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-83 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-84' for S84
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-84 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-85' for S85
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-85 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-86' for S86
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-86 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-87' for S87
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-87 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-88' for S88
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-88 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-89' for S89
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-89 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-90' for S90
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-90 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-91' for S91
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-91 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-92' for S92
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-92 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-93' for S93
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-93 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-94' for S94
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-94 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-95' for S95
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-95 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-96' for S96
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-96 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-97' for S97
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-97 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-98' for S98
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-98 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-99' for S99
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-99 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-100' for S100
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-100 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-101' for S101
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-101 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-102' for S102
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-102 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-103' for S103
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-103 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-104' for S104
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-104 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-105' for S105
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-105 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-106' for S106
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-106 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-107' for S107
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-107 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-108' for S108
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-108 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-109' for S109
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-109 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-110' for S110
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-110 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-111' for S111
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-111 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-112' for S112
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-112 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-113' for S113
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-113 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-114' for S114
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-114 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-115' for S115
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-115 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-116' for S116
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-116 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-117' for S117
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-117 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-118' for S118
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-118 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-119' for S119
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-119 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-120' for S120
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-120 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-121' for S121
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-121 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-122' for S122
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-122 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-123' for S123
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-123 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-124' for S124
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-124 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-125' for S125
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-125 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-126' for S126
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-126 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-127' for S127
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-127 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-128' for S128
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-128 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-129' for S129
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-129 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-130' for S130
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-130 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-131' for S131
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-131 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-132' for S132
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-132 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-133' for S133
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-133 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-134' for S134
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-134 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-135' for S135
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-135 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-136' for S136
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-136 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-137' for S137
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-137 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-138' for S138
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-138 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-139' for S139
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-139 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-140' for S140
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-140 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-141' for S141
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-141 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-142' for S142
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-142 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-143' for S143
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-143 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-144' for S144
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-144 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-145' for S145
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-145 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-146' for S146
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-146 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-147' for S147
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-147 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-148' for S148
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-148 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-149' for S149
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-149 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-150' for S150
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-150 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-151' for S151
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-151 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-152' for S152
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-152 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-153' for S153
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-153 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-154' for S154
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-154 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-155' for S155
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-155 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-156' for S156
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-156 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-157' for S157
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-157 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-158' for S158
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-158 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-159' for S159
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-159 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-160' for S160
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-160 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-161' for S161
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-161 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-162' for S162
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-162 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-163' for S163
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-163 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-164' for S164
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-164 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-165' for S165
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-165 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-166' for S166
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-166 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-167' for S167
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-167 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-168' for S168
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-168 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-169' for S169
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-169 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-170' for S170
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-170 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-171' for S171
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-171 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-172' for S172
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-172 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-173' for S173
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-173 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-174' for S174
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-174 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-175' for S175
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-175 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-176' for S176
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-176 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-177' for S177
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-177 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-178' for S178
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-178 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-179' for S179
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-179 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-180' for S180
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-180 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-181' for S181
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-181 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-182' for S182
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-182 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-183' for S183
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-183 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-184' for S184
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-184 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-185' for S185
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-185 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-186' for S186
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-186 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-187' for S187
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-187 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-188' for S188
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-188 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-189' for S189
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-189 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-190' for S190
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-190 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-191' for S191
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-191 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-192' for S192
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-192 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-193' for S193
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-193 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-194' for S194
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-194 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-195' for S195
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-195 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-196' for S196
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-196 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-197' for S197
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-197 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-198' for S198
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-198 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-199' for S199
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-199 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-200' for S200
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-200 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-201' for S201
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-201 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-202' for S202
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-202 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-203' for S203
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-203 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-204' for S204
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-204 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-205' for S205
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-205 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-206' for S206
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-206 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-207' for S207
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-207 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-208' for S208
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-208 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-209' for S209
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-209 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-210' for S210
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-210 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-211' for S211
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-211 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-212' for S212
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-212 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-213' for S213
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-213 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-214' for S214
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-214 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-215' for S215
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-215 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-216' for S216
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-216 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-217' for S217
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-217 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-218' for S218
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-218 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-219' for S219
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-219 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-220' for S220
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-220 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-221' for S221
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-221 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-222' for S222
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-222 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-223' for S223
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-223 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-224' for S224
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-224 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-225' for S225
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-225 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-226' for S226
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-226 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-227' for S227
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-227 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-228' for S228
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-228 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-229' for S229
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-229 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-230' for S230
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-230 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-231' for S231
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-231 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-232' for S232
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-232 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-233' for S233
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-233 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-234' for S234
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-234 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-235' for S235
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-235 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-236' for S236
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-236 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-237' for S237
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-237 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-238' for S238
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-238 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-239' for S239
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-239 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-240' for S240
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-240 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-241' for S241
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-241 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-242' for S242
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-242 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-243' for S243
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-243 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-244' for S244
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-244 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-245' for S245
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-245 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-246' for S246
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-246 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-247' for S247
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-247 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-248' for S248
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-248 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-249' for S249
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-249 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-250' for S250
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-250 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-251' for S251
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-251 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-252' for S252
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-252 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-253' for S253
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-253 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-254' for S254
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-254 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-255' for S255
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-255 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-256' for S256
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-256 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-257' for S257
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-257 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-258' for S258
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-258 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-259' for S259
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-259 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-260' for S260
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-260 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-261' for S261
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-261 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-262' for S262
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-262 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-263' for S263
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-263 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-264' for S264
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-264 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-265' for S265
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-265 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-266' for S266
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-266 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-267' for S267
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-267 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-268' for S268
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-268 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-269' for S269
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-269 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-270' for S270
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-270 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-271' for S271
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-271 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-272' for S272
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-272 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-273' for S273
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-273 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-274' for S274
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-274 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-275' for S275
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-275 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-276' for S276
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-276 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-277' for S277
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-277 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-278' for S278
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-278 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-279' for S279
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-279 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-280' for S280
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-280 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-281' for S281
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-281 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-282' for S282
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-282 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-283' for S283
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-283 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-284' for S284
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-284 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-285' for S285
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-285 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-286' for S286
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-286 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-287' for S287
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-287 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-288' for S288
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-288 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-289' for S289
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-289 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-290' for S290
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-290 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-291' for S291
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-291 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-292' for S292
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-292 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-293' for S293
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-293 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-294' for S294
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-294 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-295' for S295
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-295 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-296' for S296
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-296 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-297' for S297
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-297 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-298' for S298
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-298 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-299' for S299
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-299 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-300' for S300
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-300 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-301' for S301
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-301 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-302' for S302
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-302 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-303' for S303
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-303 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-304' for S304
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-304 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-305' for S305
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-305 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-306' for S306
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-306 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-307' for S307
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-307 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-308' for S308
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-308 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-309' for S309
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-309 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-310' for S310
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-310 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-311' for S311
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-311 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-312' for S312
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-312 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-313' for S313
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-313 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-314' for S314
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-314 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-315' for S315
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-315 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-316' for S316
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-316 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-317' for S317
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-317 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-318' for S318
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-318 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-319' for S319
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-319 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-320' for S320
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-320 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-321' for S321
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-321 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-322' for S322
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-322 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-323' for S323
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-323 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-324' for S324
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-324 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-325' for S325
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-325 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-326' for S326
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-326 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-327' for S327
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-327 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-328' for S328
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-328 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-329' for S329
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-329 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-330' for S330
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-330 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-331' for S331
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-331 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-332' for S332
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-332 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-333' for S333
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-333 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-334' for S334
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-334 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-335' for S335
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-335 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-336' for S336
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-336 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-337' for S337
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-337 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-338' for S338
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-338 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-339' for S339
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-339 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-340' for S340
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-340 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-341' for S341
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-341 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-342' for S342
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-342 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-343' for S343
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-343 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-344' for S344
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-344 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-345' for S345
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-345 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-346' for S346
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-346 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-347' for S347
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-347 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-348' for S348
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-348 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-349' for S349
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-349 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-350' for S350
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-350 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-351' for S351
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-351 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-352' for S352
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-352 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-353' for S353
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-353 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-354' for S354
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-354 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-355' for S355
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-355 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-356' for S356
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-356 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-357' for S357
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-357 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-358' for S358
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-358 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-359' for S359
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-359 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-360' for S360
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-360 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-361' for S361
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-361 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-362' for S362
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-362 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-363' for S363
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-363 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-364' for S364
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-364 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-365' for S365
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-365 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-366' for S366
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-366 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-367' for S367
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-367 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-368' for S368
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-368 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-369' for S369
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-369 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-370' for S370
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-370 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-371' for S371
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-371 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-372' for S372
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-372 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-373' for S373
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-373 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-374' for S374
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-374 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-375' for S375
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-375 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-376' for S376
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-376 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-377' for S377
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-377 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-378' for S378
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-378 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-379' for S379
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-379 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-380' for S380
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-380 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-381' for S381
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-381 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-382' for S382
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-382 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-383' for S383
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-383 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-384' for S384
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-384 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-385' for S385
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-385 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-386' for S386
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-386 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-387' for S387
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-387 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-388' for S388
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-388 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-389' for S389
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-389 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-390' for S390
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-390 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-391' for S391
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-391 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-392' for S392
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-392 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-393' for S393
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-393 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-394' for S394
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-394 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-395' for S395
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-395 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-396' for S396
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-396 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-397' for S397
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-397 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-398' for S398
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-398 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-399' for S399
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-399 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-400' for S400
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-400 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-401' for S401
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-401 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-402' for S402
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-402 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-403' for S403
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-403 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-404' for S404
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-404 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-405' for S405
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-405 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-406' for S406
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-406 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-407' for S407
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-407 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-408' for S408
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-408 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-409' for S409
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-409 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-410' for S410
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-410 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-411' for S411
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-411 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-412' for S412
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-412 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-413' for S413
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-413 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-414' for S414
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-414 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-415' for S415
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-415 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-416' for S416
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-416 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-417' for S417
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-417 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-418' for S418
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-418 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-419' for S419
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-419 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-420' for S420
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-420 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-421' for S421
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-421 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-422' for S422
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-422 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-423' for S423
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-423 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-424' for S424
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-424 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-425' for S425
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-425 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-426' for S426
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-426 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-427' for S427
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-427 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-428' for S428
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-428 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-429' for S429
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-429 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-430' for S430
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-430 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-431' for S431
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-431 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-432' for S432
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-432 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-433' for S433
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-433 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-434' for S434
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-434 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-435' for S435
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-435 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-436' for S436
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-436 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-437' for S437
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-437 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-438' for S438
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-438 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-439' for S439
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-439 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-440' for S440
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-440 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-441' for S441
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-441 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-442' for S442
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-442 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-443' for S443
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-443 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-444' for S444
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-444 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-445' for S445
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-445 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-446' for S446
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-446 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-447' for S447
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-447 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-448' for S448
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-448 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-449' for S449
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-449 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-450' for S450
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-450 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-451' for S451
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-451 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-452' for S452
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-452 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-453' for S453
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-453 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-454' for S454
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-454 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-455' for S455
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-455 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-456' for S456
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-456 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-457' for S457
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-457 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-458' for S458
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-458 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-459' for S459
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-459 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-460' for S460
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-460 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-461' for S461
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-461 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-462' for S462
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-462 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-463' for S463
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-463 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-464' for S464
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-464 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-465' for S465
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-465 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-466' for S466
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-466 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-467' for S467
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-467 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-468' for S468
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-468 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-469' for S469
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-469 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-470' for S470
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-470 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-471' for S471
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-471 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-472' for S472
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-472 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-473' for S473
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-473 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-474' for S474
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-474 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-475' for S475
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-475 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-476' for S476
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-476 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-477' for S477
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-477 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-478' for S478
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-478 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-479' for S479
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-479 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-480' for S480
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-480 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-481' for S481
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-481 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-482' for S482
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-482 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-483' for S483
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-483 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-484' for S484
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-484 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-485' for S485
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-485 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-486' for S486
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-486 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-487' for S487
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-487 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-488' for S488
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-488 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-489' for S489
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-489 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-490' for S490
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-490 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-491' for S491
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-491 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-492' for S492
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-492 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-493' for S493
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-493 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-494' for S494
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-494 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-495' for S495
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-495 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-496' for S496
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-496 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-497' for S497
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-497 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-498' for S498
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-498 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC-499' for S499
+WARNING  core.position_manager:position_manager.py:209 No open position for SEC-499 to close
+________________ TestSLSkipFreefall.test_long_sl_skip_detected _________________
+tests/test_chaos_resilience.py:179: in test_long_sl_skip_detected
+    assert strat._is_sl_skipped(pos, ltp=148.0) is True
+E   AssertionError: assert False is True
+E    +  where False = _is_sl_skipped(Position(symbol='NIFTY24500CE', security_id='NIFTY-OPT', exchange_segment='NSE_FNO', option_type='CE', direction='LONG...ymbol='', hedge_strike=0, spread_width=0, net_credit=0.0, max_loss=0.0, hedge_entry_price=0.0, hedge_current_price=0.0), ltp=148.0)
+E    +    where _is_sl_skipped = <strategies.omega_complete.OmegaStrategy object at 0x10d782cf0>._is_sl_skipped
+________________ TestSLSkipFreefall.test_short_sl_skip_detected ________________
+tests/test_chaos_resilience.py:201: in test_short_sl_skip_detected
+    assert strat._is_sl_skipped(pos, ltp=152.0) is True
+E   AssertionError: assert False is True
+E    +  where False = _is_sl_skipped(Position(symbol='NIFTY24500PE', security_id='NIFTY-OPT', exchange_segment='NSE_FNO', option_type='PE', direction='SHOR...ymbol='', hedge_strike=0, spread_width=0, net_credit=0.0, max_loss=0.0, hedge_entry_price=0.0, hedge_current_price=0.0), ltp=152.0)
+E    +    where _is_sl_skipped = <strategies.omega_complete.OmegaStrategy object at 0x10d891850>._is_sl_skipped
+___________ TestDirtyDataSanitizer.test_ghost_candles_forward_filled ___________
+tests/test_chaos_resilience.py:283: in test_ghost_candles_forward_filled
+    cleaned = SignalGenerator._filter_ghost_candles(ghost_candles, "NIFTY")
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   TypeError: SignalGenerator._filter_ghost_candles() missing 1 required positional argument: 'symbol'
+___________ TestDirtyDataSanitizer.test_ghost_then_outlier_pipeline ____________
+tests/test_chaos_resilience.py:294: in test_ghost_then_outlier_pipeline
+    step1 = SignalGenerator._filter_ghost_candles(ghost_candles, "NIFTY")
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   TypeError: SignalGenerator._filter_ghost_candles() missing 1 required positional argument: 'symbol'
+____________ TestSuite2_RiskGateGauntlet.test_mcx_blocked_live_mode ____________
+tests/test_injector.py:304: in test_mcx_blocked_live_mode
+    re = RiskEngine(
+E   TypeError: RiskEngine.__init__() got an unexpected keyword argument 'allow_mcx_live'
+___________ TestSuite2_RiskGateGauntlet.test_mcx_allowed_paper_mode ____________
+tests/test_injector.py:319: in test_mcx_allowed_paper_mode
+    re = RiskEngine(
+E   TypeError: RiskEngine.__init__() got an unexpected keyword argument 'allow_mcx_live'
+_________ TestSuite2_RiskGateGauntlet.test_index_futures_blocked_live __________
+tests/test_injector.py:333: in test_index_futures_blocked_live
+    re = RiskEngine(
+E   TypeError: RiskEngine.__init__() got an unexpected keyword argument 'allow_mcx_live'
+______________ TestSuite4_ThreadSafety.test_position_counter_race ______________
+tests/test_injector.py:568: in test_position_counter_race
+    assert pm.open_count == 10, f"Expected 10 positions, got {pm.open_count}"
+E   AssertionError: Expected 10 positions, got 0
+E   assert 0 == 10
+E    +  where 0 = <core.position_manager.PositionManager object at 0x10d972550>.open_count
+------------------------------ Captured log call -------------------------------
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC_0' for NIFTY24500CE
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC_1' for NIFTY24600CE
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC_2' for NIFTY24700CE
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC_3' for NIFTY24800CE
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC_4' for NIFTY24900CE
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC_5' for NIFTY25000CE
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC_6' for NIFTY25100CE
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC_7' for NIFTY25200CE
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC_8' for NIFTY25300CE
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'SEC_9' for NIFTY25400CE
+____________ TestSuite5_FlashCrashEdgeCases.test_sl_skip_detection _____________
+tests/test_injector.py:671: in test_sl_skip_detection
+    assert strategy._is_sl_skipped(pos, 93.0), (
+E   AssertionError: LTP=93 vs SL=95 (>0.5% gap) should detect SL-skip
+E   assert False
+E    +  where False = _is_sl_skipped(Position(symbol='NIFTY24500CE', security_id='SEC_1', exchange_segment='NSE_FNO', option_type='CE', direction='LONG', q...ymbol='', hedge_strike=0, spread_width=0, net_credit=0.0, max_loss=0.0, hedge_entry_price=0.0, hedge_current_price=0.0), 93.0)
+E    +    where _is_sl_skipped = <strategies.omega_complete.OmegaStrategy object at 0x10d890650>._is_sl_skipped
+_______ TestSuite5_FlashCrashEdgeCases.test_cooldown_blocks_then_allows ________
+tests/test_injector.py:739: in test_cooldown_blocks_then_allows
+    assert pm.consecutive_losses == 2
+E   assert 0 == 2
+E    +  where 0 = <core.position_manager.PositionManager object at 0x10d800770>.consecutive_losses
+------------------------------ Captured log call -------------------------------
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'LOSS_0' for LOSS_0
+WARNING  core.position_manager:position_manager.py:209 No open position for LOSS_0 to close
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'LOSS_1' for LOSS_1
+WARNING  core.position_manager:position_manager.py:209 No open position for LOSS_1 to close
+___________ TestSuite5_FlashCrashEdgeCases.test_daily_loss_kills_bot ___________
+tests/test_injector.py:762: in test_daily_loss_kills_bot
+    assert pm.daily_pnl <= -2000
+E   assert 0 <= -2000
+E    +  where 0 = <core.position_manager.PositionManager object at 0x10d800410>.daily_pnl
+------------------------------ Captured log call -------------------------------
+ERROR    core.position_manager:position_manager.py:172 REJECTED add_position: invalid security_id 'BIG_LOSS' for BIG_LOSS
+WARNING  core.position_manager:position_manager.py:209 No open position for BIG_LOSS to close
+__________________ TestTradeRecording.test_record_and_persist __________________
+tests/test_trade_memory.py:59: in test_record_and_persist
+    assert journal.exists()
+E   AssertionError: assert False
+E    +  where False = exists()
+E    +    where exists = PosixPath('/var/folders/09/7fty_3rd2_3b2lc3vrzyfhm00000gn/T/tmpjheqyvei/data/trade_journal.json').exists
+_________________ TestTradeRecording.test_build_trade_context __________________
+tests/test_trade_memory.py:82: in test_build_trade_context
+    assert ctx.category == "MCX"
+E   AssertionError: assert 'INDICES' == 'MCX'
+E     
+E     - MCX
+E     + INDICES
+____________________ TestUserLessons.test_teach_and_persist ____________________
+tests/test_trade_memory.py:100: in test_teach_and_persist
+    assert lessons_file.exists()
+E   AssertionError: assert False
+E    +  where False = exists()
+E    +    where exists = PosixPath('/var/folders/09/7fty_3rd2_3b2lc3vrzyfhm00000gn/T/tmpuce2lypk/data/lessons.json').exists
+________________ TestPatternDetection.test_detects_losing_hour _________________
+tests/test_trade_memory.py:181: in test_detects_losing_hour
+    assert len(hour_rules) >= 1
+E   assert 0 >= 1
+E    +  where 0 = len([])
+_________ TestPatternDetection.test_detects_symbol_consecutive_losses __________
+tests/test_trade_memory.py:193: in test_detects_symbol_consecutive_losses
+    assert len(ban_rules) >= 1
+E   assert 0 >= 1
+E    +  where 0 = len([])
+=========================== short test summary info ============================
+FAILED tests/test_brutal_chaos.py::TestDataCorruption::test_all_candles_are_ghosts
+FAILED tests/test_brutal_chaos.py::TestDataCorruption::test_empty_candle_list
+FAILED tests/test_brutal_chaos.py::TestCapitalDestruction::test_nse_allocation_cap_exact_boundary
+FAILED tests/test_brutal_chaos.py::TestCapitalDestruction::test_mcx_allocation_cap_exact_boundary
+FAILED tests/test_brutal_chaos.py::TestGuardrailEdgeCases::test_step_trail_breakeven_threshold
+FAILED tests/test_brutal_chaos.py::TestGuardrailEdgeCases::test_step_trail_lock_threshold
+FAILED tests/test_brutal_chaos.py::TestGuardrailEdgeCases::test_daily_reset_clears_everything
+FAILED tests/test_brutal_chaos.py::TestPositionManagerStress::test_duplicate_position_overwrites
+FAILED tests/test_brutal_chaos.py::TestPositionManagerStress::test_trail_sl_ratchet_up_only_for_long
+FAILED tests/test_brutal_chaos.py::TestPositionManagerStress::test_trail_sl_ratchet_down_only_for_short
+FAILED tests/test_brutal_chaos.py::TestPositionManagerStress::test_hundred_positions_pnl
+FAILED tests/test_brutal_chaos.py::TestPositionManagerStress::test_consecutive_losses_count_resets_on_win
+FAILED tests/test_brutal_chaos.py::TestCascadingFailures::test_position_open_then_broker_dies
+FAILED tests/test_brutal_chaos.py::TestCascadingFailures::test_margin_zero_with_open_positions
+FAILED tests/test_brutal_chaos.py::TestCascadingFailures::test_exit_order_fails_position_survives
+FAILED tests/test_brutal_chaos.py::TestResourceLimits::test_closed_trades_list_grows
+FAILED tests/test_chaos_resilience.py::TestSLSkipFreefall::test_long_sl_skip_detected
+FAILED tests/test_chaos_resilience.py::TestSLSkipFreefall::test_short_sl_skip_detected
+FAILED tests/test_chaos_resilience.py::TestDirtyDataSanitizer::test_ghost_candles_forward_filled
+FAILED tests/test_chaos_resilience.py::TestDirtyDataSanitizer::test_ghost_then_outlier_pipeline
+FAILED tests/test_injector.py::TestSuite2_RiskGateGauntlet::test_mcx_blocked_live_mode
+FAILED tests/test_injector.py::TestSuite2_RiskGateGauntlet::test_mcx_allowed_paper_mode
+FAILED tests/test_injector.py::TestSuite2_RiskGateGauntlet::test_index_futures_blocked_live
+FAILED tests/test_injector.py::TestSuite4_ThreadSafety::test_position_counter_race
+FAILED tests/test_injector.py::TestSuite5_FlashCrashEdgeCases::test_sl_skip_detection
+FAILED tests/test_injector.py::TestSuite5_FlashCrashEdgeCases::test_cooldown_blocks_then_allows
+FAILED tests/test_injector.py::TestSuite5_FlashCrashEdgeCases::test_daily_loss_kills_bot
+FAILED tests/test_trade_memory.py::TestTradeRecording::test_record_and_persist
+FAILED tests/test_trade_memory.py::TestTradeRecording::test_build_trade_context
+FAILED tests/test_trade_memory.py::TestUserLessons::test_teach_and_persist - ...
+FAILED tests/test_trade_memory.py::TestPatternDetection::test_detects_losing_hour
+FAILED tests/test_trade_memory.py::TestPatternDetection::test_detects_symbol_consecutive_losses
+ERROR tests/test_brutal_chaos.py::TestCapitalDestruction::test_daily_loss_breached_kills_bot
+ERROR tests/test_brutal_chaos.py::TestCapitalDestruction::test_cooldown_after_consecutive_losses
+ERROR tests/test_brutal_chaos.py::TestCapitalDestruction::test_max_positions_blocks_new_trade
+ERROR tests/test_injector.py::TestSuite2_RiskGateGauntlet::test_sl_cap_high_confluence
+ERROR tests/test_injector.py::TestSuite2_RiskGateGauntlet::test_sl_cap_low_confluence
+ERROR tests/test_injector.py::TestSuite2_RiskGateGauntlet::test_square_off_time_is_1510
+ERROR tests/test_injector.py::TestSuite5_FlashCrashEdgeCases::test_flash_crash_sl_cap_enforced
+ERROR tests/test_injector.py::TestSuite5_FlashCrashEdgeCases::test_sl_clamp_short_direction
+32 failed, 98 passed, 8 errors in 18.91s

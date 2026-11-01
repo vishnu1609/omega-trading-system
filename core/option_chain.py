@@ -201,6 +201,27 @@ class OptionChainResolver:
     def get_weekly_expiry(self, underlying: str) -> str:
         return self.get_nearest_expiry(underlying)
 
+    def get_monthly_expiry(self, underlying: str) -> str:
+        """Get the nearest monthly expiry (last Tuesday of month).
+        BANKNIFTY weeklies discontinued Nov 2024 — only monthly/quarterly remain.
+        NIFTY still has weeklies but this returns monthly for either.
+        """
+        expiries = self.get_expiry_list(underlying)
+        if not expiries:
+            return ""
+        today = datetime.now(IST).strftime("%Y-%m-%d")
+        future = [e for e in expiries if e >= today]
+        if not future:
+            return expiries[-1] if expiries else ""
+        # Monthly expiries cluster at month-end (last Tue or prior trading day)
+        # Heuristic: pick the last expiry in each month group
+        from itertools import groupby
+        monthly = []
+        for _, group in groupby(future, key=lambda d: d[:7]):
+            month_expiries = list(group)
+            monthly.append(month_expiries[-1])
+        return monthly[0] if monthly else future[-1]
+
     def get_next_expiry(self, underlying: str) -> str:
         expiries = self.get_expiry_list(underlying)
         if not expiries:
@@ -547,7 +568,13 @@ class OptionChainResolver:
         strike_step: int = 50,
     ) -> tuple[OptionContract, OptionContract] | None:
         if not expiry:
-            expiry = self.get_nearest_expiry(underlying)
+            # BANKNIFTY weeklies discontinued Nov 2024 — use monthly expiry
+            if underlying.upper() in ("BANKNIFTY", "BANKEX"):
+                expiry = self.get_monthly_expiry(underlying)
+                log.info("SPREAD EXPIRY: %s using monthly expiry %s (weeklies discontinued)",
+                         underlying, expiry)
+            else:
+                expiry = self.get_nearest_expiry(underlying)
         if not expiry:
             return None
 
