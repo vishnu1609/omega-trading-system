@@ -2452,7 +2452,7 @@ function rRisk(){
     {n:'2. Position Sizing',d:'Kelly criterion. Drawdown halves size to 50%.',c:'var(--cyan)'},
     {n:'3. ADX Filter',d:'Min ADX 10 for directional trades.',c:'var(--gold)'},
     {n:'4. VIX-Adjusted Stops',d:'SL widens when VIX elevated.',c:'var(--purple)'},
-    {n:'5. Loss Cooldown',d:'5-min cooldown after 3 consecutive losses.',c:'var(--warn)'},
+    {n:'5. Loss Cooldown',d:'10-min cooldown after 2 consecutive losses. 30-min hard cooldown after 4.',c:'var(--warn)'},
     {n:'6. Chop Lockout',d:'CI > 61.8 blocks directional entries.',c:'var(--loss)'},
     {n:'7. Session Guards',d:'Early caps, no trades in last 15 min.',c:'var(--blue)'}
   ];

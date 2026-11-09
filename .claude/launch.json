@@ -3,7 +3,8 @@
   "configurations": [
     {
       "name": "omega-dashboard",
-      "url": "http://localhost:8000",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": ["-c", "import uvicorn; from webhook.tv_receiver import app; uvicorn.run(app, host='0.0.0.0', port=8000)"],
       "port": 8000
     }
   ]

@@ -522,6 +522,22 @@ class OmegaMLEngine:
             "validation": self._last_validation if self._last_validation else "not yet run",
         }
 
+    def kelly_fraction(self) -> float:
+        """Half-Kelly fraction from trade history. Returns 0.0-0.5 (capped)."""
+        stats = self.buffer.get_trade_stats()
+        total = stats.get("total", 0)
+        if total < 10:
+            return 0.10  # default 10% until enough history
+        win_rate = stats.get("win_rate", 50) / 100
+        avg_win = self._avg_win_r
+        avg_loss = abs(self._avg_loss_r)
+        if avg_loss <= 0:
+            return 0.10
+        b = avg_win / avg_loss  # payoff ratio
+        kelly = (win_rate * b - (1 - win_rate)) / b
+        half_kelly = max(0.02, min(0.50, kelly / 2))
+        return round(half_kelly, 3)
+
     def force_retrain(self) -> dict:
         self._full_retrain()
         return self.get_model_stats()
@@ -539,14 +555,17 @@ class OmegaMLEngine:
     def _load_lgbm(self) -> None:
         if not HAS_LGBM:
             return
-        path = MODEL_DIR / "lgbm_signal.txt"
-        if path.exists():
-            try:
-                self._lgbm_model = lgb.Booster(model_file=str(path))
-                self._lgbm_trained = True
-                log.info("LightGBM loaded: %s", path)
-            except Exception as e:
-                log.warning("LightGBM load failed: %s", e)
+        # Prefer 100K-trained model, fall back to incremental model
+        for name in ("lgbm_100k.txt", "lgbm_signal.txt"):
+            path = MODEL_DIR / name
+            if path.exists():
+                try:
+                    self._lgbm_model = lgb.Booster(model_file=str(path))
+                    self._lgbm_trained = True
+                    log.info("LightGBM loaded: %s", path)
+                    return
+                except Exception as e:
+                    log.warning("LightGBM load failed (%s): %s", name, e)
 
     def _save_sgd(self) -> None:
         if not HAS_SKLEARN or self._sgd_model is None:
@@ -559,17 +578,19 @@ class OmegaMLEngine:
     def _load_sgd(self) -> None:
         if not HAS_SKLEARN:
             return
-        path = MODEL_DIR / "sgd_signal.pkl"
-        if path.exists():
-            try:
-                with open(path, "rb") as f:
-                    data = pickle.load(f)
-                self._sgd_model = data["model"]
-                self._sgd_scaler = data["scaler"]
-                self._sgd_trained = True
-                log.info("SGD model loaded")
-            except Exception as e:
-                log.warning("SGD load failed: %s", e)
+        for name in ("sgd_100k.pkl", "sgd_signal.pkl"):
+            path = MODEL_DIR / name
+            if path.exists():
+                try:
+                    with open(path, "rb") as f:
+                        data = pickle.load(f)
+                    self._sgd_model = data["model"]
+                    self._sgd_scaler = data["scaler"]
+                    self._sgd_trained = True
+                    log.info("SGD model loaded: %s", name)
+                    return
+                except Exception as e:
+                    log.warning("SGD load failed (%s): %s", name, e)
 
     def _migrate_json_buffer(self) -> None:
         """One-time migration from old JSON trade buffer."""

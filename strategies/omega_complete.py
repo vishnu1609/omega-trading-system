@@ -59,43 +59,43 @@ IST = ZoneInfo("Asia/Kolkata")
 
 DYNAMIC_SLTP_LEVELS = {
     "LOW": [
-        {"level": 1, "sl_pct": 10.0, "tp_pct": 20.0},
-        {"level": 2, "sl_pct": 12.0, "tp_pct": 28.0},
-        {"level": 3, "sl_pct": 15.0, "tp_pct": 35.0},
-        {"level": 4, "sl_pct": 18.0, "tp_pct": 42.0},
+        {"level": 1, "sl_pct": 7.0, "tp_pct": 6.0},
+        {"level": 2, "sl_pct": 6.0, "tp_pct": 13.0},
+        {"level": 3, "sl_pct": 13.0, "tp_pct": 20.0},
+        {"level": 4, "sl_pct": 20.0, "tp_pct": 35.0},
     ],
     "MEDIUM": [
-        {"level": 1, "sl_pct": 10.0, "tp_pct": 25.0},
-        {"level": 2, "sl_pct": 13.0, "tp_pct": 33.0},
-        {"level": 3, "sl_pct": 16.0, "tp_pct": 40.0},
-        {"level": 4, "sl_pct": 20.0, "tp_pct": 48.0},
+        {"level": 1, "sl_pct": 8.0, "tp_pct": 8.0},
+        {"level": 2, "sl_pct": 8.0, "tp_pct": 16.0},
+        {"level": 3, "sl_pct": 16.0, "tp_pct": 25.0},
+        {"level": 4, "sl_pct": 25.0, "tp_pct": 40.0},
     ],
     "HIGH": [
-        {"level": 1, "sl_pct": 12.0, "tp_pct": 30.0},
-        {"level": 2, "sl_pct": 15.0, "tp_pct": 40.0},
-        {"level": 3, "sl_pct": 18.0, "tp_pct": 50.0},
-        {"level": 4, "sl_pct": 22.0, "tp_pct": 60.0},
+        {"level": 1, "sl_pct": 10.0, "tp_pct": 10.0},
+        {"level": 2, "sl_pct": 10.0, "tp_pct": 20.0},
+        {"level": 3, "sl_pct": 20.0, "tp_pct": 32.0},
+        {"level": 4, "sl_pct": 32.0, "tp_pct": 50.0},
     ],
 }
 
 SHORT_DYNAMIC_SLTP_LEVELS = {
     "LOW": [
-        {"level": 1, "sl_pct": 25.0, "tp_pct": 8.0},
-        {"level": 2, "sl_pct": 15.0, "tp_pct": 15.0},
-        {"level": 3, "sl_pct": 18.0, "tp_pct": 22.0},
-        {"level": 4, "sl_pct": 22.0, "tp_pct": 30.0},
+        {"level": 1, "sl_pct": 6.0, "tp_pct": 5.0},
+        {"level": 2, "sl_pct": 5.0, "tp_pct": 10.0},
+        {"level": 3, "sl_pct": 10.0, "tp_pct": 16.0},
+        {"level": 4, "sl_pct": 16.0, "tp_pct": 25.0},
     ],
     "MEDIUM": [
-        {"level": 1, "sl_pct": 30.0, "tp_pct": 10.0},
-        {"level": 2, "sl_pct": 18.0, "tp_pct": 18.0},
-        {"level": 3, "sl_pct": 22.0, "tp_pct": 25.0},
-        {"level": 4, "sl_pct": 25.0, "tp_pct": 35.0},
+        {"level": 1, "sl_pct": 7.0, "tp_pct": 6.0},
+        {"level": 2, "sl_pct": 6.0, "tp_pct": 12.0},
+        {"level": 3, "sl_pct": 12.0, "tp_pct": 20.0},
+        {"level": 4, "sl_pct": 20.0, "tp_pct": 30.0},
     ],
     "HIGH": [
-        {"level": 1, "sl_pct": 35.0, "tp_pct": 12.0},
-        {"level": 2, "sl_pct": 20.0, "tp_pct": 20.0},
-        {"level": 3, "sl_pct": 25.0, "tp_pct": 30.0},
-        {"level": 4, "sl_pct": 30.0, "tp_pct": 40.0},
+        {"level": 1, "sl_pct": 8.0, "tp_pct": 8.0},
+        {"level": 2, "sl_pct": 8.0, "tp_pct": 15.0},
+        {"level": 3, "sl_pct": 15.0, "tp_pct": 24.0},
+        {"level": 4, "sl_pct": 24.0, "tp_pct": 35.0},
     ],
 }
 
@@ -108,85 +108,85 @@ SPREAD_CONFIG = {
     "FINNIFTY": {"sell_otm": 3, "hedge_otm": 7, "width_target": 200, "MIN_CREDIT": 18.0, "sell_delta": 0.20},
 }
 
-# Spread SLTP: SL at 65% of credit (1.65x entry), TP at 55-65% of credit decay
+# Spread SLTP: SL/TP as % of net credit received. Ratcheting: SL moves to old TP on level-up.
 SPREAD_SLTP_LEVELS = {
     "LOW": [
-        {"level": 1, "sl_pct": 65.0, "tp_pct": 55.0},
-        {"level": 2, "sl_pct": 50.0, "tp_pct": 65.0},
-        {"level": 3, "sl_pct": 40.0, "tp_pct": 80.0},
+        {"level": 1, "sl_pct": 50.0, "tp_pct": 40.0},
+        {"level": 2, "sl_pct": 40.0, "tp_pct": 60.0},
+        {"level": 3, "sl_pct": 60.0, "tp_pct": 80.0},
     ],
     "MEDIUM": [
-        {"level": 1, "sl_pct": 65.0, "tp_pct": 55.0},
-        {"level": 2, "sl_pct": 50.0, "tp_pct": 70.0},
-        {"level": 3, "sl_pct": 40.0, "tp_pct": 85.0},
+        {"level": 1, "sl_pct": 55.0, "tp_pct": 45.0},
+        {"level": 2, "sl_pct": 45.0, "tp_pct": 65.0},
+        {"level": 3, "sl_pct": 65.0, "tp_pct": 85.0},
     ],
     "HIGH": [
-        {"level": 1, "sl_pct": 65.0, "tp_pct": 60.0},
-        {"level": 2, "sl_pct": 50.0, "tp_pct": 75.0},
-        {"level": 3, "sl_pct": 40.0, "tp_pct": 90.0},
+        {"level": 1, "sl_pct": 60.0, "tp_pct": 50.0},
+        {"level": 2, "sl_pct": 50.0, "tp_pct": 70.0},
+        {"level": 3, "sl_pct": 70.0, "tp_pct": 90.0},
     ],
 }
 
 EQUITY_DYNAMIC_SLTP_LEVELS = {
     "LOW": [
-        {"level": 1, "sl_pct": 2.0, "tp_pct": 4.0},
-        {"level": 2, "sl_pct": 2.5, "tp_pct": 6.0},
-        {"level": 3, "sl_pct": 3.0, "tp_pct": 8.0},
-        {"level": 4, "sl_pct": 3.5, "tp_pct": 10.0},
+        {"level": 1, "sl_pct": 2.0, "tp_pct": 3.0},
+        {"level": 2, "sl_pct": 3.0, "tp_pct": 5.5},
+        {"level": 3, "sl_pct": 5.5, "tp_pct": 8.0},
+        {"level": 4, "sl_pct": 8.0, "tp_pct": 12.0},
     ],
     "MEDIUM": [
-        {"level": 1, "sl_pct": 2.5, "tp_pct": 5.0},
-        {"level": 2, "sl_pct": 3.0, "tp_pct": 7.0},
-        {"level": 3, "sl_pct": 3.5, "tp_pct": 10.0},
-        {"level": 4, "sl_pct": 4.0, "tp_pct": 13.0},
+        {"level": 1, "sl_pct": 2.5, "tp_pct": 4.0},
+        {"level": 2, "sl_pct": 4.0, "tp_pct": 7.0},
+        {"level": 3, "sl_pct": 7.0, "tp_pct": 10.0},
+        {"level": 4, "sl_pct": 10.0, "tp_pct": 15.0},
     ],
     "HIGH": [
-        {"level": 1, "sl_pct": 3.0, "tp_pct": 6.0},
-        {"level": 2, "sl_pct": 3.5, "tp_pct": 9.0},
-        {"level": 3, "sl_pct": 4.0, "tp_pct": 12.0},
-        {"level": 4, "sl_pct": 5.0, "tp_pct": 15.0},
+        {"level": 1, "sl_pct": 3.0, "tp_pct": 5.0},
+        {"level": 2, "sl_pct": 5.0, "tp_pct": 9.0},
+        {"level": 3, "sl_pct": 9.0, "tp_pct": 13.0},
+        {"level": 4, "sl_pct": 13.0, "tp_pct": 18.0},
     ],
 }
 
 EQUITY_SHORT_DYNAMIC_SLTP_LEVELS = {
     "LOW": [
-        {"level": 1, "sl_pct": 2.5, "tp_pct": 3.0},
-        {"level": 2, "sl_pct": 2.0, "tp_pct": 5.0},
-        {"level": 3, "sl_pct": 2.5, "tp_pct": 7.0},
-        {"level": 4, "sl_pct": 3.0, "tp_pct": 9.0},
+        {"level": 1, "sl_pct": 2.0, "tp_pct": 2.5},
+        {"level": 2, "sl_pct": 2.5, "tp_pct": 5.0},
+        {"level": 3, "sl_pct": 5.0, "tp_pct": 7.5},
+        {"level": 4, "sl_pct": 7.5, "tp_pct": 10.0},
     ],
     "MEDIUM": [
-        {"level": 1, "sl_pct": 3.0, "tp_pct": 4.0},
-        {"level": 2, "sl_pct": 2.5, "tp_pct": 6.0},
-        {"level": 3, "sl_pct": 3.0, "tp_pct": 8.0},
-        {"level": 4, "sl_pct": 3.5, "tp_pct": 11.0},
+        {"level": 1, "sl_pct": 2.5, "tp_pct": 3.5},
+        {"level": 2, "sl_pct": 3.5, "tp_pct": 6.0},
+        {"level": 3, "sl_pct": 6.0, "tp_pct": 9.0},
+        {"level": 4, "sl_pct": 9.0, "tp_pct": 13.0},
     ],
     "HIGH": [
-        {"level": 1, "sl_pct": 3.5, "tp_pct": 5.0},
-        {"level": 2, "sl_pct": 3.0, "tp_pct": 7.0},
-        {"level": 3, "sl_pct": 3.5, "tp_pct": 10.0},
-        {"level": 4, "sl_pct": 4.0, "tp_pct": 13.0},
+        {"level": 1, "sl_pct": 3.0, "tp_pct": 4.5},
+        {"level": 2, "sl_pct": 4.5, "tp_pct": 8.0},
+        {"level": 3, "sl_pct": 8.0, "tp_pct": 12.0},
+        {"level": 4, "sl_pct": 12.0, "tp_pct": 16.0},
     ],
 }
 
 STOCK_OPTION_DYNAMIC_SLTP_LEVELS = {
     "LOW": [
-        {"level": 1, "sl_pct": 8.0, "tp_pct": 15.0},
-        {"level": 2, "sl_pct": 10.0, "tp_pct": 22.0},
-        {"level": 3, "sl_pct": 12.0, "tp_pct": 28.0},
-        {"level": 4, "sl_pct": 15.0, "tp_pct": 35.0},
+        {"level": 1, "sl_pct": 7.0, "tp_pct": 6.0},
+        {"level": 2, "sl_pct": 6.0, "tp_pct": 13.0},
+        {"level": 3, "sl_pct": 13.0, "tp_pct": 20.0},
+        {"level": 4, "sl_pct": 20.0, "tp_pct": 35.0},
     ],
     "MEDIUM": [
-        {"level": 1, "sl_pct": 10.0, "tp_pct": 20.0},
-        {"level": 2, "sl_pct": 12.0, "tp_pct": 28.0},
-        {"level": 3, "sl_pct": 15.0, "tp_pct": 35.0},
-        {"level": 4, "sl_pct": 18.0, "tp_pct": 42.0},
+        {"level": 1, "sl_pct": 8.0, "tp_pct": 8.0},
+        {"level": 2, "sl_pct": 8.0, "tp_pct": 16.0},
+        {"level": 3, "sl_pct": 16.0, "tp_pct": 25.0},
+        {"level": 4, "sl_pct": 25.0, "tp_pct": 40.0},
     ],
     "HIGH": [
-        {"level": 1, "sl_pct": 12.0, "tp_pct": 25.0},
-        {"level": 2, "sl_pct": 15.0, "tp_pct": 35.0},
-        {"level": 3, "sl_pct": 18.0, "tp_pct": 42.0},
-        {"level": 4, "sl_pct": 22.0, "tp_pct": 50.0},
+        {"level": 1, "sl_pct": 10.0, "tp_pct": 10.0},
+        {"level": 2, "sl_pct": 10.0, "tp_pct": 20.0},
+        {"level": 3, "sl_pct": 20.0, "tp_pct": 32.0},
+        {"level": 4, "sl_pct": 32.0, "tp_pct": 50.0},
     ],
 }
 
@@ -523,7 +523,7 @@ class OmegaStrategy:
             self._record_signal_audit(payload, "BLOCKED_LOW_CONFIDENCE", f"LOW conf score={score:.0f}")
             return
 
-        if self._consecutive_losses >= 6:
+        if self._consecutive_losses >= 4:
             elapsed = time.time() - self._last_loss_time
             if elapsed < 1800:
                 remaining = int((1800 - elapsed) / 60)
@@ -531,8 +531,8 @@ class OmegaStrategy:
                          self._consecutive_losses, remaining, side, symbol)
                 self._record_signal_audit(payload, "BLOCKED_HARD_COOLDOWN", f"{self._consecutive_losses} losses, {remaining}min left")
                 return
-            min_score = max(min_score, 62)
-        elif self._consecutive_losses >= 4:
+            min_score = max(min_score, 65)
+        elif self._consecutive_losses >= 2:
             elapsed = time.time() - self._last_loss_time
             if elapsed < 600:
                 remaining = int((600 - elapsed) / 60)
@@ -540,7 +540,7 @@ class OmegaStrategy:
                          self._consecutive_losses, remaining, side, symbol)
                 self._record_signal_audit(payload, "BLOCKED_LOSS_COOLDOWN", f"{self._consecutive_losses} losses, {remaining}min left")
                 return
-            min_score = max(min_score, 58)
+            min_score = max(min_score, 60)
         if "BANKNIFTY" in symbol and self.mode != "paper":
             min_score += 2
             log.info("BANKNIFTY GATE: +2 min_score (min_score=%d)", min_score)
@@ -595,9 +595,22 @@ class OmegaStrategy:
             quantity += lot_size * extra_lots
             log.info("ANTI-MARTINGALE: %d consecutive wins — +%d lots (qty=%d, house money)",
                      self._consecutive_wins, extra_lots, quantity)
-        if self._consecutive_losses >= 4:
+        if self.ml_engine:
+            kelly_f = self.ml_engine.kelly_fraction()
+            capital = self.guardrails.capital if self.guardrails else 100000
+            kelly_risk = capital * kelly_f
+            # Estimate premium per lot (~₹200 avg for ATM index options)
+            est_premium_per_lot = 200 * lot_size
+            kelly_lots = max(1, int(kelly_risk / est_premium_per_lot))
+            if kelly_lots < conf_lots:
+                log.info("KELLY CAP: %d→%d lots (kelly_f=%.3f, risk=₹%.0f)", conf_lots, kelly_lots, kelly_f, kelly_risk)
+                quantity = lot_size * kelly_lots
+        if self._consecutive_losses >= 3:
             quantity = max(lot_size, quantity // 2)
             log.info("LOSS REDUCED SIZING: %d consecutive losses — halved to %d", self._consecutive_losses, quantity)
+        elif self._consecutive_losses >= 2:
+            quantity = lot_size
+            log.info("LOSS CAUTION SIZING: %d consecutive losses — capped to 1 lot (%d)", self._consecutive_losses, quantity)
         if time_minutes < 10 * 60 + 30:
             quantity = lot_size
             log.info("EARLY SESSION SIZING: before 10:30 — capped to 1 lot (%d)", quantity)
@@ -959,19 +972,18 @@ class OmegaStrategy:
         sl_pct = levels[0]["sl_pct"]
         tp_pct = levels[0]["tp_pct"]
 
-        if self.mode != "paper":
-            if self._consecutive_losses >= 4:
-                quantity = max(lot_size, (quantity // 3) // lot_size * lot_size)
-                signal.quantity = quantity
-                sl_pct = max(sl_pct - 2.0, 3.0)
-                log.info("LOSS RECOVERY SEVERE: %d losses — qty to 1/3 (%d), SL tightened to %.1f%%",
-                         self._consecutive_losses, quantity, sl_pct)
-            elif self._consecutive_losses >= 3:
-                quantity = max(lot_size, (quantity // 2) // lot_size * lot_size)
-                signal.quantity = quantity
-                sl_pct = max(sl_pct - 1.0, 3.0)
-                log.info("LOSS RECOVERY: %d losses — qty halved to %d, SL tightened to %.1f%%",
-                         self._consecutive_losses, quantity, sl_pct)
+        if self._consecutive_losses >= 3:
+            quantity = max(lot_size, (quantity // 3) // lot_size * lot_size)
+            signal.quantity = quantity
+            sl_pct = max(sl_pct - 2.0, 3.0)
+            log.info("LOSS RECOVERY SEVERE: %d losses — qty to 1/3 (%d), SL tightened to %.1f%%",
+                     self._consecutive_losses, quantity, sl_pct)
+        elif self._consecutive_losses >= 2:
+            quantity = max(lot_size, (quantity // 2) // lot_size * lot_size)
+            signal.quantity = quantity
+            sl_pct = max(sl_pct - 1.0, 3.0)
+            log.info("LOSS RECOVERY: %d losses — qty halved to %d, SL tightened to %.1f%%",
+                     self._consecutive_losses, quantity, sl_pct)
 
         india_vix = payload.get("india_vix", 0)
         if india_vix > 0 and india_vix < 12 and direction == "SHORT":
