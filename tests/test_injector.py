@@ -149,7 +149,6 @@ def risk_engine(pm, broker):
         session_start="09:16",
         square_off_time="15:10",
         mode="paper",
-        allow_mcx_live=False,
         allow_index_futures_live=False,
     )
 
@@ -299,49 +298,36 @@ class TestSuite2_RiskGateGauntlet:
     2e. Square-off time is 15:10 not 15:15
     """
 
-    def test_mcx_blocked_live_mode(self, pm, broker):
-        """MCX symbols blocked when mode=live and allow_mcx_live=False."""
+    def test_index_futures_blocked_live_mode(self, pm, broker):
+        """Index futures blocked when mode=live and allow_index_futures_live=False."""
         re = RiskEngine(
             position_manager=pm, broker=broker,
-            mode="live", allow_mcx_live=False, allow_index_futures_live=False,
-            session_start="09:16", square_off_time="23:30",
+            mode="live", allow_index_futures_live=False,
+            session_start="00:00", square_off_time="23:59",
         )
-        now = datetime.now(IST)
-        if now.hour < 9 or now.hour >= 23:
-            pytest.skip("Outside trading hours for this test")
-
-        allowed = re.allow_new_trade(symbol="GOLD25DEC1000CE")
-        assert not allowed, "MCX should be blocked in live mode"
-        assert "MCX disabled" in re.last_reason
-
-    def test_mcx_allowed_paper_mode(self, pm, broker):
-        """MCX symbols allowed in paper mode even if toggle is off."""
-        re = RiskEngine(
-            position_manager=pm, broker=broker,
-            mode="paper", allow_mcx_live=False, allow_index_futures_live=False,
-            session_start="09:16", square_off_time="23:30",
-        )
-        now = datetime.now(IST)
-        if now.hour < 9 or now.hour >= 23:
-            pytest.skip("Outside trading hours for this test")
-
-        allowed = re.allow_new_trade(symbol="GOLD25DEC1000CE")
-        assert allowed, f"MCX should be allowed in paper mode. Reason: {re.last_reason}"
-
-    def test_index_futures_blocked_live(self, pm, broker):
-        """Index futures blocked in live mode."""
-        re = RiskEngine(
-            position_manager=pm, broker=broker,
-            mode="live", allow_mcx_live=True, allow_index_futures_live=False,
-            session_start="09:16", square_off_time="15:10",
-        )
-        now = datetime.now(IST)
-        if now.hour < 9 or now.hour >= 15:
-            pytest.skip("Outside NSE trading hours")
-
         allowed = re.allow_new_trade(symbol="NIFTYFUT")
         assert not allowed, "Index futures should be blocked in live mode"
         assert "Index Futures disabled" in re.last_reason
+
+    def test_index_futures_allowed_paper_mode(self, pm, broker):
+        """Index futures allowed in paper mode even if toggle is off."""
+        re = RiskEngine(
+            position_manager=pm, broker=broker,
+            mode="paper", allow_index_futures_live=False,
+            session_start="00:00", square_off_time="23:59",
+        )
+        allowed = re.allow_new_trade(symbol="NIFTYFUT")
+        assert allowed, f"Index futures should be allowed in paper mode. Reason: {re.last_reason}"
+
+    def test_index_futures_allowed_when_toggled(self, pm, broker):
+        """Index futures allowed in live mode when toggle is on."""
+        re = RiskEngine(
+            position_manager=pm, broker=broker,
+            mode="live", allow_index_futures_live=True,
+            session_start="00:00", square_off_time="23:59",
+        )
+        allowed = re.allow_new_trade(symbol="NIFTYFUT")
+        assert allowed, f"Index futures should be allowed when toggled on. Reason: {re.last_reason}"
 
     def test_sl_cap_high_confluence(self, risk_engine):
         """High confluence score (>=75) gets tighter 8% SL cap."""
@@ -527,7 +513,7 @@ class TestSuite4_ThreadSafety:
         for i in range(10):
             pos = Position(
                 symbol=f"NIFTY{24500+i*100}CE",
-                security_id=f"SEC_{i}",
+                security_id=f"{100000 + i}",
                 exchange_segment="NSE_FNO",
                 option_type="CE",
                 direction="LONG",
@@ -572,14 +558,14 @@ class TestSuite4_ThreadSafety:
         def close_even():
             try:
                 for i in range(0, 10, 2):
-                    pm.close_position(f"SEC_{i}", 105.0, "TP")
+                    pm.close_position(f"{100000 + i}", 105.0, "TP")
             except Exception as e:
                 close_errors.append(e)
 
         def close_odd():
             try:
                 for i in range(1, 10, 2):
-                    pm.close_position(f"SEC_{i}", 95.0, "SL")
+                    pm.close_position(f"{100000 + i}", 95.0, "SL")
             except Exception as e:
                 close_errors.append(e)
 
@@ -609,7 +595,7 @@ class TestSuite4_ThreadSafety:
                 with lock:
                     approved.append(idx)
                 pos = Position(
-                    symbol=f"SYM_{idx}", security_id=f"S_{idx}",
+                    symbol=f"SYM{idx}CE", security_id=f"{110000 + idx}",
                     exchange_segment="NSE_FNO", option_type="CE",
                     direction="LONG", quantity=75,
                     entry_price=100, sl_price=95, trail_sl=95,
@@ -642,11 +628,11 @@ class TestSuite5_FlashCrashEdgeCases:
     """
 
     def test_sl_skip_detection(self):
-        """Position with LTP fallen past SL by >0.5% triggers SL-skip."""
+        """Position with LTP fallen past SL by >3% triggers SL-skip."""
         from strategies.omega_complete import OmegaStrategy
 
         pos = Position(
-            symbol="NIFTY24500CE", security_id="SEC_1",
+            symbol="NIFTY24500CE", security_id="120001",
             exchange_segment="NSE_FNO", option_type="CE",
             direction="LONG", quantity=75,
             entry_price=100.0, sl_price=95.0, trail_sl=95.0,
@@ -668,12 +654,13 @@ class TestSuite5_FlashCrashEdgeCases:
             telegram=tg_mock, instruments_config={},
         )
 
-        assert strategy._is_sl_skipped(pos, 93.0), (
-            "LTP=93 vs SL=95 (>0.5% gap) should detect SL-skip"
+        # gap_pct = (95 - 90) / 95 * 100 = 5.26% > 3%
+        assert strategy._is_sl_skipped(pos, 90.0), (
+            "LTP=90 vs SL=95 (>3% gap) should detect SL-skip"
         )
 
         assert not strategy._is_sl_skipped(pos, 94.8), (
-            "LTP=94.8 vs SL=95 (<0.5% gap) should NOT be SL-skip"
+            "LTP=94.8 vs SL=95 (<3% gap) should NOT be SL-skip"
         )
 
     def test_flash_crash_sl_cap_enforced(self, risk_engine):
@@ -701,7 +688,7 @@ class TestSuite5_FlashCrashEdgeCases:
         for i in range(15):
             if re.allow_new_trade():
                 pos = Position(
-                    symbol=f"NIFTY{24500+i*100}CE", security_id=f"S_{i}",
+                    symbol=f"NIFTY{24500+i*100}CE", security_id=f"{150000 + i}",
                     exchange_segment="NSE_FNO", option_type="CE",
                     direction="LONG", quantity=75,
                     entry_price=100, sl_price=95, trail_sl=95,
@@ -709,7 +696,7 @@ class TestSuite5_FlashCrashEdgeCases:
                     strategy="omega",
                 )
                 pm.add_position(pos)
-                pm.close_position(f"S_{i}", 105.0, "TP")
+                pm.close_position(f"{150000 + i}", 105.0, "TP")
                 trades_completed += 1
 
         assert trades_completed == 15, (
@@ -726,7 +713,7 @@ class TestSuite5_FlashCrashEdgeCases:
 
         for i in range(2):
             pos = Position(
-                symbol=f"LOSS_{i}", security_id=f"LOSS_{i}",
+                symbol=f"LOSS{i}CE", security_id=f"{130000 + i}",
                 exchange_segment="NSE_FNO", option_type="CE",
                 direction="LONG", quantity=75,
                 entry_price=100, sl_price=95, trail_sl=95,
@@ -734,7 +721,7 @@ class TestSuite5_FlashCrashEdgeCases:
                 strategy="omega",
             )
             pm.add_position(pos)
-            pm.close_position(f"LOSS_{i}", 90.0, "SL")
+            pm.close_position(f"{130000 + i}", 90.0, "SL")
 
         assert pm.consecutive_losses == 2
         allowed = re.allow_new_trade()
@@ -750,7 +737,7 @@ class TestSuite5_FlashCrashEdgeCases:
         )
 
         pos = Position(
-            symbol="BIG_LOSS", security_id="BIG_LOSS",
+            symbol="BIGLOSS24500CE", security_id="140001",
             exchange_segment="NSE_FNO", option_type="CE",
             direction="LONG", quantity=75,
             entry_price=100, sl_price=70, trail_sl=70,
@@ -758,7 +745,7 @@ class TestSuite5_FlashCrashEdgeCases:
             strategy="omega",
         )
         pm.add_position(pos)
-        pm.close_position("BIG_LOSS", 73.0, "SL")
+        pm.close_position("140001", 73.0, "SL")
         assert pm.daily_pnl <= -2000
 
         allowed = re.allow_new_trade()

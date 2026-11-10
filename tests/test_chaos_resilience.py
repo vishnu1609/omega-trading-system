@@ -79,13 +79,14 @@ def corrupt_candles(sample_candles):
 
 @pytest.fixture
 def ghost_candles(sample_candles):
-    """Replace the 3rd and 4th candles with zero-volume flat candles."""
+    """Replace the 3rd and 4th candles with flat OHLC (ghost fills)."""
     ghosts = sample_candles.copy()
     for idx in (2, 3):
         c = ghosts[idx]
+        flat = ghosts[idx - 1].close
         ghosts[idx] = Candle(
             timestamp=c.timestamp,
-            open=0, high=0, low=0, close=0, volume=0,
+            open=flat, high=flat, low=flat, close=flat, volume=0,
         )
     return ghosts
 
@@ -168,7 +169,7 @@ class TestSLSkipFreefall:
         )
 
     def test_long_sl_skip_detected(self, mock_broker):
-        """Price gapped below the SL-Limit without triggering it."""
+        """Price gapped below the SL-Limit by >3% — SL-skip freefall."""
         strat = self._make_strategy(mock_broker)
         pos = Position(
             symbol="NIFTY24500CE", security_id="NIFTY-OPT",
@@ -176,10 +177,11 @@ class TestSLSkipFreefall:
             direction="LONG", quantity=75,
             entry_price=160.0, sl_price=150.0, trail_sl=150.0,
         )
-        assert strat._is_sl_skipped(pos, ltp=148.0) is True
+        # gap_pct = (150 - 140) / 150 * 100 = 6.67% > 3%
+        assert strat._is_sl_skipped(pos, ltp=140.0) is True
 
     def test_long_sl_normal_not_triggered(self, mock_broker):
-        """Price is below SL but within 0.5% — normal SL hit, not a skip."""
+        """Price is below SL but within 3% — normal SL hit, not a skip."""
         strat = self._make_strategy(mock_broker)
         pos = Position(
             symbol="NIFTY24500CE", security_id="NIFTY-OPT",
@@ -190,7 +192,7 @@ class TestSLSkipFreefall:
         assert strat._is_sl_skipped(pos, ltp=149.5) is False
 
     def test_short_sl_skip_detected(self, mock_broker):
-        """Short position: price gapped above the SL-Limit."""
+        """Short position: price gapped above the SL-Limit by >3%."""
         strat = self._make_strategy(mock_broker)
         pos = Position(
             symbol="NIFTY24500PE", security_id="NIFTY-OPT",
@@ -198,7 +200,8 @@ class TestSLSkipFreefall:
             direction="SHORT", quantity=75,
             entry_price=140.0, sl_price=150.0, trail_sl=150.0,
         )
-        assert strat._is_sl_skipped(pos, ltp=152.0) is True
+        # gap_pct = (160 - 150) / 150 * 100 = 6.67% > 3%
+        assert strat._is_sl_skipped(pos, ltp=160.0) is True
 
 
 # ==========================================
@@ -280,7 +283,8 @@ class TestDirtyDataSanitizer:
 
     def test_ghost_candles_forward_filled(self, ghost_candles):
         """Zero-volume flat candles must be forward-filled, not dropped."""
-        cleaned = SignalGenerator._filter_ghost_candles(ghost_candles, "NIFTY")
+        sg = SignalGenerator(instruments={"NIFTY": {"exchange": "NSE"}}, poll_interval=60)
+        cleaned = sg._filter_ghost_candles(ghost_candles, "NIFTY")
 
         assert len(cleaned) == len(ghost_candles), \
             "Ghost candles should be forward-filled, not dropped"
@@ -291,7 +295,8 @@ class TestDirtyDataSanitizer:
 
     def test_ghost_then_outlier_pipeline(self, ghost_candles):
         """Chain: ghost filter → outlier sanitizer must not crash or corrupt."""
-        step1 = SignalGenerator._filter_ghost_candles(ghost_candles, "NIFTY")
+        sg = SignalGenerator(instruments={"NIFTY": {"exchange": "NSE"}}, poll_interval=60)
+        step1 = sg._filter_ghost_candles(ghost_candles, "NIFTY")
         step2 = SignalGenerator._sanitize_outliers(step1, "NIFTY")
         assert len(step2) == len(ghost_candles)
         for c in step2:

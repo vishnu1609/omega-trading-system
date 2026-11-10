@@ -96,7 +96,24 @@ def generate_daily_report(closed_trades, signals_log: list[dict],
             lines.append(f"    {d['direction']} {d['symbol']}: ₹{d['entry']:.2f} → ₹{d['exit']:.2f} = ₹{d['pnl']:+,.2f} ({d['reason']})")
         lines.append("")
 
-    lines.append(f"  TOTAL P&L: ₹{realised_pnl:,.2f}")
+    lines.append(f"  TOTAL P&L (paper): ₹{realised_pnl:,.2f}")
+
+    n_trades = sum(c["trades"] for c in categories.values())
+    n_spread = sum(1 for t in closed_trades if getattr(t, "is_spread", False))
+    n_legs = n_trades + n_spread
+    est_stt = abs(realised_pnl) * 0.0015 if realised_pnl < 0 else sum(
+        getattr(t, "entry_price", 0) * getattr(t, "quantity", 0) * 0.0015
+        for t in closed_trades
+    )
+    est_brokerage = n_legs * 40
+    est_slippage = abs(realised_pnl) * 0.03
+    est_charges = est_stt + est_brokerage + est_slippage
+    est_real_pnl = realised_pnl - est_charges
+    haircut_pnl = realised_pnl * 0.45
+
+    lines.append(f"  Est. charges (STT+brokerage+slippage): -₹{est_charges:,.0f}")
+    lines.append(f"  Est. real P&L (after charges): ₹{est_real_pnl:,.2f}")
+    lines.append(f"  Conservative estimate (55% haircut): ₹{haircut_pnl:,.2f}")
     lines.append(f"{'='*60}")
 
     report = "\n".join(lines)
@@ -111,11 +128,24 @@ def save_daily_report(report: str, closed_trades, signals_log: list[dict]):
     report_file = report_dir / f"{today}.txt"
     report_file.write_text(report)
 
+    total_pnl = sum(t.pnl for t in closed_trades)
+    n_trades = len(closed_trades)
+    n_spread = sum(1 for t in closed_trades if getattr(t, "is_spread", False))
+    est_stt = sum(
+        getattr(t, "entry_price", 0) * getattr(t, "quantity", 0) * 0.0015
+        for t in closed_trades
+    )
+    est_brokerage = (n_trades + n_spread) * 40
+    est_slippage = abs(total_pnl) * 0.03
+    est_charges = est_stt + est_brokerage + est_slippage
     data = {
         "date": today,
         "categories": {},
-        "total_pnl": sum(t.pnl for t in closed_trades),
-        "total_trades": len(closed_trades),
+        "total_pnl": total_pnl,
+        "total_trades": n_trades,
+        "est_charges": round(est_charges, 2),
+        "est_real_pnl": round(total_pnl - est_charges, 2),
+        "haircut_pnl_55pct": round(total_pnl * 0.45, 2),
     }
 
     for trade in closed_trades:

@@ -276,6 +276,11 @@ class Guardrails:
 
     # ── Scenario 15: Step-Ladder Trailing Stop ───────────────────────────
 
+    # Step levels: (profit_pct_threshold, lock_pct_of_entry)
+    # At 3% profit → lock breakeven (0% + brokerage buffer)
+    # At 8% profit → lock 5%, at 15% → lock 10%, at 20% → lock 15%
+    _STEP_LEVELS = [(3.0, 0.0), (8.0, 5.0), (15.0, 10.0), (20.0, 15.0)]
+
     def compute_step_trail_sl(
         self,
         entry_price: float,
@@ -290,7 +295,47 @@ class Guardrails:
         if entry_price <= 0 or current_price <= 0:
             return existing_sl
 
-        return existing_sl
+        is_long = direction.upper() == "LONG"
+        if is_long:
+            profit_pct = (current_price - entry_price) / entry_price * 100
+        else:
+            profit_pct = (entry_price - current_price) / entry_price * 100
+
+        if profit_pct <= 0:
+            return existing_sl
+
+        be_buffer = brokerage / entry_price * 100 if entry_price > 0 else 0.5
+        new_sl = existing_sl
+
+        for threshold, lock_pct in self._STEP_LEVELS:
+            if profit_pct < threshold:
+                break
+            effective_lock = lock_pct if lock_pct > 0 else be_buffer
+            if is_long:
+                candidate = round(entry_price * (1 + effective_lock / 100), 2)
+            else:
+                candidate = round(entry_price * (1 - effective_lock / 100), 2)
+            if is_long:
+                new_sl = max(new_sl, candidate)
+            else:
+                new_sl = candidate if (new_sl <= 0 or candidate < new_sl) else new_sl
+
+        if atr_value > 0:
+            if is_long:
+                atr_trail = round(current_price - 1.5 * atr_value, 2)
+                if atr_trail > new_sl:
+                    new_sl = atr_trail
+            else:
+                atr_trail = round(current_price + 1.5 * atr_value, 2)
+                if new_sl <= 0 or atr_trail < new_sl:
+                    new_sl = atr_trail
+
+        if is_long:
+            return max(new_sl, existing_sl)
+        else:
+            if existing_sl <= 0:
+                return new_sl
+            return min(new_sl, existing_sl) if new_sl > 0 else existing_sl
 
     # ── Scenario 20: Mid-Morning Chop Lockout ─────────────────────────────
 

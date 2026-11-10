@@ -63,9 +63,11 @@ def risk_engine(pm, mock_broker):
         broker=mock_broker,
         max_daily_loss=2000,
         max_concurrent_positions=2,
-        max_trades_per_day=10,
+        max_daily_trades=10,
         cooldown_after_losses=2,
         cooldown_minutes=30,
+        session_start="00:00",
+        square_off_time="23:59",
     )
 
 
@@ -189,11 +191,9 @@ class TestDataCorruption:
             open=0, high=0, low=0, close=0, volume=0,
         ) for i in range(10)]
 
-        cleaned = SignalGenerator._filter_ghost_candles(ghosts, "NIFTY")
+        sg = SignalGenerator(instruments={"NIFTY": {"exchange": "NSE"}}, poll_interval=60)
+        cleaned = sg._filter_ghost_candles(ghosts, "NIFTY")
         assert len(cleaned) == 10
-        # First candle stays ghost (no previous to fill from), rest get forward-filled
-        # But since first is all zeros, forward-fill propagates zeros
-        # System should NOT crash
         for c in cleaned:
             assert isinstance(c.close, (int, float))
 
@@ -205,7 +205,8 @@ class TestDataCorruption:
 
     def test_empty_candle_list(self):
         """Zero candles. Must return empty, not crash."""
-        assert SignalGenerator._filter_ghost_candles([], "NIFTY") == []
+        sg = SignalGenerator(instruments={"NIFTY": {"exchange": "NSE"}}, poll_interval=60)
+        assert sg._filter_ghost_candles([], "NIFTY") == []
         assert SignalGenerator._sanitize_outliers([], "NIFTY") == []
 
     def test_candle_with_negative_volume(self):
@@ -290,20 +291,18 @@ class TestCapitalDestruction:
 
     def test_nse_allocation_cap_exact_boundary(self, guardrails):
         """Allocate exactly to the NSE cap. Next ₹1 must be blocked."""
-        nse_cap = guardrails.capital * guardrails.nse_cap  # ₹60,000
+        nse_cap = guardrails.capital * guardrails.nse_cap
         guardrails.record_allocation("NIFTY", nse_cap)
 
         result = guardrails.check_sector_allocation("BANKNIFTY", 1.0)
         assert result.passed is False
-        assert "NSE allocation cap" in result.reason
+        assert "Allocation cap" in result.reason
 
-    def test_mcx_allocation_cap_exact_boundary(self, guardrails):
-        """Allocate exactly to the MCX cap."""
-        mcx_cap = guardrails.capital * guardrails.mcx_cap  # ₹40,000
-        guardrails.record_allocation("GOLD", mcx_cap)
-
-        result = guardrails.check_sector_allocation("SILVER", 1.0)
-        assert result.passed is False
+    def test_allocation_cap_allows_within_limit(self, guardrails):
+        """Allocation within cap should be allowed."""
+        guardrails.record_allocation("NIFTY", 10_000)
+        result = guardrails.check_sector_allocation("BANKNIFTY", 1_000)
+        assert result.passed is True
 
     def test_release_more_than_allocated(self, guardrails):
         """Release more margin than was allocated. Must not go negative."""
@@ -325,31 +324,27 @@ class TestCapitalDestruction:
     def test_daily_loss_breached_kills_bot(self, pm, risk_engine, mock_broker):
         """After losing ₹2000+, the bot kill-switch must activate permanently."""
         pos = Position(
-            symbol="NIFTY24500CE", security_id="N-OPT",
+            symbol="NIFTY24500CE", security_id="100001",
             exchange_segment="NSE_FNO", option_type="CE",
             direction="LONG", quantity=75,
             entry_price=150.0, sl_price=140.0,
         )
         pm.add_position(pos)
-        pm.close_position("N-OPT", 123.0, "SL_HIT")  # Loss: (123-150)*75 = -₹2025
+        pm.close_position("100001", 123.0, "SL_HIT")  # Loss: (123-150)*75 = -₹2025
 
-        with patch("core.risk_engine.datetime") as mock_dt:
-            mock_dt.now.return_value = datetime(2026, 9, 21, 11, 0,
-                                                tzinfo=risk_engine.session_start.tzinfo)
-            mock_dt.side_effect = lambda *a, **kw: datetime(*a, **kw)
-            assert risk_engine.is_daily_loss_breached() is True
+        assert risk_engine.is_daily_loss_breached() is True
 
     def test_cooldown_after_consecutive_losses(self, pm, risk_engine, mock_broker):
         """2 back-to-back losses must trigger 30-min cooldown."""
         for i in range(2):
             pos = Position(
-                symbol=f"NIFTY{i}", security_id=f"N-{i}",
+                symbol=f"NIFTY{i}CE", security_id=f"{200000 + i}",
                 exchange_segment="NSE_FNO", option_type="CE",
                 direction="LONG", quantity=75,
                 entry_price=150.0, sl_price=140.0,
             )
             pm.add_position(pos)
-            pm.close_position(f"N-{i}", 145.0, "SL_HIT")
+            pm.close_position(f"{200000 + i}", 145.0, "SL_HIT")
 
         assert pm.consecutive_losses == 2
 
@@ -357,7 +352,7 @@ class TestCapitalDestruction:
         """With 2 open positions, the 3rd entry must be blocked."""
         for i in range(2):
             pm.add_position(Position(
-                symbol=f"SYM{i}", security_id=f"SEC-{i}",
+                symbol=f"SYM{i}CE", security_id=f"{300000 + i}",
                 exchange_segment="NSE_FNO", option_type="CE",
                 direction="LONG", quantity=75,
                 entry_price=150.0, sl_price=140.0,
@@ -573,18 +568,19 @@ class TestGuardrailEdgeCases:
         assert result == 90
 
     def test_step_trail_breakeven_threshold(self, guardrails):
-        """At exactly +20% profit, SL should move to breakeven."""
+        """At 20% profit, step trail should lock at least 15% profit."""
         entry = 100.0
-        current = 120.0  # +20%
+        current = 120.0  # 20% profit
         result = guardrails.compute_step_trail_sl(entry, current, 90.0, "LONG")
-        assert result > entry - 1  # should be near breakeven
+        # 20% profit triggers lock at 15% → SL = 115.0, which > 90
+        assert result >= 115.0
 
     def test_step_trail_lock_threshold(self, guardrails):
-        """At +40% profit, SL should lock in 20% gain."""
+        """At 40% profit, step trail should lock at least 15% profit (highest level)."""
         entry = 100.0
-        current = 140.0
+        current = 140.0  # 40% profit
         result = guardrails.compute_step_trail_sl(entry, current, 90.0, "LONG")
-        assert result >= entry + 15  # locked in significant profit
+        assert result >= 115.0
 
     def test_step_trail_never_moves_backward_long(self, guardrails):
         """Trail SL must only ratchet UP for LONG positions."""
@@ -597,18 +593,17 @@ class TestGuardrailEdgeCases:
         """Trail SL must only ratchet DOWN for SHORT positions."""
         entry = 200.0
         low_sl = guardrails.compute_step_trail_sl(entry, 120.0, 0, "SHORT")
+        assert low_sl > 0  # should have a real SL now
         higher_sl = guardrails.compute_step_trail_sl(entry, 150.0, low_sl, "SHORT")
-        assert higher_sl <= low_sl or higher_sl == low_sl
+        assert higher_sl <= low_sl
 
     def test_daily_reset_clears_everything(self, guardrails):
         """reset_daily must clear all allocations and blackouts."""
         guardrails.record_allocation("NIFTY", 50_000)
-        guardrails.record_allocation("GOLD", 30_000)
         guardrails.add_event_blackout(datetime(2026, 9, 21, 14, 0))
 
         guardrails.reset_daily()
         assert guardrails._allocated_nse == 0
-        assert guardrails._allocated_mcx == 0
         assert len(guardrails._event_blackouts) == 0
 
 
@@ -626,12 +621,12 @@ class TestPositionManagerStress:
     def test_duplicate_position_overwrites(self, pm):
         """Adding same security_id twice must overwrite, not crash."""
         pos1 = Position(
-            symbol="NIFTY1", security_id="N-OPT",
+            symbol="NIFTY1CE", security_id="400001",
             exchange_segment="NSE_FNO", option_type="CE",
             direction="LONG", quantity=75, entry_price=100.0,
         )
         pos2 = Position(
-            symbol="NIFTY2", security_id="N-OPT",
+            symbol="NIFTY2CE", security_id="400001",
             exchange_segment="NSE_FNO", option_type="CE",
             direction="LONG", quantity=150, entry_price=200.0,
         )
@@ -643,7 +638,7 @@ class TestPositionManagerStress:
     def test_pnl_with_zero_entry(self, pm):
         """Position with entry_price=0. PnL calc must not divide by zero."""
         pos = Position(
-            symbol="WEIRD", security_id="W-1",
+            symbol="WEIRDCE", security_id="400002",
             exchange_segment="NSE_FNO", option_type="CE",
             direction="LONG", quantity=75,
             entry_price=0.0, current_price=100.0,
@@ -654,64 +649,64 @@ class TestPositionManagerStress:
     def test_trail_sl_ratchet_up_only_for_long(self, pm):
         """Trail SL must only move UP for LONG positions."""
         pos = Position(
-            symbol="NIFTY", security_id="N-1",
+            symbol="NIFTY24500CE", security_id="500001",
             exchange_segment="NSE_FNO", option_type="CE",
             direction="LONG", quantity=75,
             entry_price=100.0, trail_sl=95.0,
         )
         pm.add_position(pos)
-        pm.update_trail_sl("N-1", 98.0)
+        pm.update_trail_sl("500001", 98.0)
         assert pos.trail_sl == 98.0
 
-        pm.update_trail_sl("N-1", 92.0)  # try to move DOWN
+        pm.update_trail_sl("500001", 92.0)  # try to move DOWN
         assert pos.trail_sl == 98.0  # must stay at 98
 
     def test_trail_sl_ratchet_down_only_for_short(self, pm):
         """Trail SL must only move DOWN for SHORT positions."""
         pos = Position(
-            symbol="NIFTY", security_id="N-1",
+            symbol="NIFTY24500PE", security_id="500002",
             exchange_segment="NSE_FNO", option_type="PE",
             direction="SHORT", quantity=75,
             entry_price=200.0, trail_sl=210.0,
         )
         pm.add_position(pos)
-        pm.update_trail_sl("N-1", 205.0)
+        pm.update_trail_sl("500002", 205.0)
         assert pos.trail_sl == 205.0
 
-        pm.update_trail_sl("N-1", 212.0)  # try to move UP
+        pm.update_trail_sl("500002", 212.0)  # try to move UP
         assert pos.trail_sl == 205.0  # must stay at 205
 
     def test_hundred_positions_pnl(self, pm):
         """100 open positions. PnL calculation must not be slow or overflow."""
         for i in range(100):
             pm.add_position(Position(
-                symbol=f"SYM{i}", security_id=f"SEC-{i}",
+                symbol=f"SYM{i}CE", security_id=f"{600000 + i}",
                 exchange_segment="NSE_FNO", option_type="CE",
                 direction="LONG", quantity=75,
                 entry_price=100.0 + i, current_price=105.0 + i,
             ))
         assert pm.open_count == 100
         pnl = pm.daily_pnl
-        assert pnl == 100 * 5 * 75  # each +5 * 75 qty
+        assert pnl == 100 * 5 * 75
 
     def test_consecutive_losses_count_resets_on_win(self, pm):
         """A win after 5 losses must reset consecutive loss counter to 0."""
         for i in range(5):
             pm.add_position(Position(
-                symbol=f"L{i}", security_id=f"L-{i}",
+                symbol=f"L{i}CE", security_id=f"{700000 + i}",
                 exchange_segment="NSE_FNO", option_type="CE",
                 direction="LONG", quantity=75, entry_price=100.0,
             ))
-            pm.close_position(f"L-{i}", 95.0, "SL")  # loss
+            pm.close_position(f"{700000 + i}", 95.0, "SL")
 
         assert pm.consecutive_losses == 5
 
         pm.add_position(Position(
-            symbol="WIN", security_id="W-1",
+            symbol="WINCE", security_id="700099",
             exchange_segment="NSE_FNO", option_type="CE",
             direction="LONG", quantity=75, entry_price=100.0,
         ))
-        pm.close_position("W-1", 110.0, "TP")  # win
+        pm.close_position("700099", 110.0, "TP")
 
         assert pm.consecutive_losses == 0
 
@@ -857,7 +852,7 @@ class TestCascadingFailures:
     def test_position_open_then_broker_dies(self, mock_broker, pm):
         """Position opened successfully, then broker API dies during monitoring."""
         pos = Position(
-            symbol="NIFTY24500CE", security_id="N-OPT",
+            symbol="NIFTY24500CE", security_id="800001",
             exchange_segment="NSE_FNO", option_type="CE",
             direction="LONG", quantity=75,
             entry_price=150.0, sl_price=140.0, trail_sl=140.0,
@@ -875,7 +870,7 @@ class TestCascadingFailures:
         """Margin drops to 0 with 3 open positions. Emergency square-off path."""
         for i in range(3):
             pm.add_position(Position(
-                symbol=f"SYM{i}", security_id=f"SEC-{i}",
+                symbol=f"SYM{i}CE", security_id=f"{800010 + i}",
                 exchange_segment="NSE_FNO", option_type="CE",
                 direction="LONG", quantity=75,
                 entry_price=100.0 + i * 10, current_price=90.0,
@@ -888,7 +883,7 @@ class TestCascadingFailures:
     def test_exit_order_fails_position_survives(self, mock_broker, pm):
         """Exit order placement fails. Position must remain tracked."""
         pos = Position(
-            symbol="NIFTY24500CE", security_id="N-OPT",
+            symbol="NIFTY24500CE", security_id="800020",
             exchange_segment="NSE_FNO", option_type="CE",
             direction="LONG", quantity=75,
             entry_price=150.0, current_price=145.0,
@@ -900,12 +895,12 @@ class TestCascadingFailures:
 
         exit_signal = Signal(
             strategy="omega", symbol="NIFTY24500CE",
-            security_id="N-OPT", exchange_segment="NSE_FNO",
+            security_id="800020", exchange_segment="NSE_FNO",
             side="EXIT", quantity=75, price=0,
         )
         resp = om.place_exit(exit_signal, "LONG")
         assert resp is None
-        assert pm.open_count == 1  # position still open
+        assert pm.open_count == 1
 
 
 # ==========================================
@@ -937,12 +932,12 @@ class TestResourceLimits:
         """500 closed trades. PnL calculation must still work."""
         for i in range(500):
             pm.add_position(Position(
-                symbol=f"S{i}", security_id=f"SEC-{i}",
+                symbol=f"S{i}CE", security_id=f"{900000 + i}",
                 exchange_segment="NSE_FNO", option_type="CE",
                 direction="LONG", quantity=1,
                 entry_price=100.0, current_price=100.0,
             ))
-            pm.close_position(f"SEC-{i}", 101.0, "TP")
+            pm.close_position(f"{900000 + i}", 101.0, "TP")
 
         assert len(pm.closed_trades) == 500
-        assert pm.realised_pnl == 500.0  # each trade = +1
+        assert pm.realised_pnl == 500.0

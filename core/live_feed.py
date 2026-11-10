@@ -146,35 +146,51 @@ class LiveFeed:
 
             try:
                 dhan_ctx = DhanContext(self._client_id, self._token)
-                self._ws_feed = MF(dhan_ctx, ws_instruments, "v2")
+
+                def _on_ticks(feed, data):
+                    if data and isinstance(data, dict):
+                        self._process_ws_tick(data)
+
+                def _on_close(feed):
+                    log.warning("WebSocket on_close fired")
+                    self._ws_connected = False
+
+                def _on_error(feed, error):
+                    err_str = str(error)
+                    if self._is_fatal_error(err_str):
+                        log.error("WebSocket fatal error: %s — switching to REST only", err_str)
+                        self._fatal_error = True
+                        self._fatal_reason = err_str
+                        self._ws_connected = False
+                        self._mode = "rest_only"
+
+                self._ws_feed = MF(
+                    dhan_ctx, ws_instruments, "v2",
+                    on_ticks=_on_ticks,
+                    on_close=_on_close,
+                    on_error=_on_error,
+                )
                 log.info("WebSocket MarketFeed connecting with %d instruments...", len(ws_instruments))
                 self._ws_connected = True
                 self._connected = True
                 self._mode = "websocket"
                 self._reconnect_count = 0
 
-                while self._running and self._ws_connected:
-                    try:
-                        self._ws_feed.run_forever()
-                        response = self._ws_feed.get_data()
-
-                        if response and isinstance(response, dict):
-                            self._process_ws_tick(response)
-
-                    except Exception as e:
-                        err_str = str(e)
-                        if self._is_fatal_error(err_str):
-                            log.error("WebSocket fatal error: %s — switching to REST only", err_str)
-                            self._fatal_error = True
-                            self._fatal_reason = err_str
-                            self._ws_connected = False
-                            self._mode = "rest_only"
-                            return
-                        if "connection" in err_str.lower() or "closed" in err_str.lower():
-                            log.warning("WebSocket disconnected: %s", err_str)
-                            self._ws_connected = False
-                            break
-                        time.sleep(0.1)
+                try:
+                    self._ws_feed.run_forever()
+                except Exception as e:
+                    err_str = str(e)
+                    if self._is_fatal_error(err_str):
+                        log.error("WebSocket fatal error: %s — switching to REST only", err_str)
+                        self._fatal_error = True
+                        self._fatal_reason = err_str
+                        self._mode = "rest_only"
+                        return
+                    if "connection" in err_str.lower() or "closed" in err_str.lower():
+                        log.warning("WebSocket disconnected: %s", err_str)
+                    else:
+                        log.warning("WebSocket run_forever exited: %s", err_str)
+                self._ws_connected = False
 
             except Exception as e:
                 err_str = str(e)

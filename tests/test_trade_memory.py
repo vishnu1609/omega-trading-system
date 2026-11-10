@@ -55,11 +55,11 @@ class TestTradeRecording:
         memory.record_trade(trade)
         assert memory.trade_count == 1
 
-        journal = Path(tmp_dir) / "data" / "trade_journal.json"
-        assert journal.exists()
-        data = json.loads(journal.read_text())
-        assert len(data) == 1
-        assert data[0]["pnl"] == 1500
+        memory_file = Path(tmp_dir) / "data" / "omega_memory.json"
+        assert memory_file.exists()
+        data = json.loads(memory_file.read_text())
+        assert len(data["trades"]) == 1
+        assert data["trades"][0]["pnl"] == 1500
 
     def test_reload_persisted_trades(self, tmp_dir):
         mem1 = TradeMemory(base_path=tmp_dir)
@@ -73,13 +73,13 @@ class TestTradeRecording:
     def test_build_trade_context(self, memory):
         now = datetime.now(IST)
         ctx = memory.build_trade_context(
-            symbol="GOLD25DEC", direction="LONG", option_type="CE",
-            entry_price=5800, exit_price=5850, sl_price=5750,
-            pnl=5000, entry_time=now, exit_time=now + timedelta(hours=1),
+            symbol="NIFTY24500CE", direction="LONG", option_type="CE",
+            entry_price=150, exit_price=160, sl_price=140,
+            pnl=750, entry_time=now, exit_time=now + timedelta(hours=1),
             exit_reason="TP", adx_value=32.5,
         )
-        assert ctx.symbol == "GOLD25DEC"
-        assert ctx.category == "MCX"
+        assert ctx.symbol == "NIFTY24500CE"
+        assert ctx.category == "INDICES"
         assert ctx.is_win is True
         assert ctx.hold_minutes == 60.0
 
@@ -96,8 +96,8 @@ class TestUserLessons:
         assert lesson.active is True
         assert len(memory.lessons) == 1
 
-        lessons_file = Path(tmp_dir) / "data" / "lessons.json"
-        assert lessons_file.exists()
+        memory_file = Path(tmp_dir) / "data" / "omega_memory.json"
+        assert memory_file.exists()
 
     def test_teach_simple(self, memory):
         lesson = memory.teach_simple(
@@ -171,9 +171,9 @@ class TestPatternDetection:
         assert len(rules) == 0
 
     def test_detects_losing_hour(self, memory):
-        for i in range(6):
+        for i in range(22):
             memory.record_trade(_make_trade(pnl=-500, entry_hour=14, entry_offset_days=i))
-        for i in range(6):
+        for i in range(22):
             memory.record_trade(_make_trade(pnl=1000, entry_hour=10, entry_offset_days=i))
 
         rules = memory.analyze_patterns()
@@ -184,12 +184,12 @@ class TestPatternDetection:
     def test_detects_symbol_consecutive_losses(self, memory):
         for i in range(6):
             memory.record_trade(_make_trade(
-                symbol="NATURALGAS25OCT", pnl=-2000, entry_offset_days=i))
+                symbol="BANKNIFTY24500CE", pnl=-2000, entry_offset_days=i))
         for i in range(6):
             memory.record_trade(_make_trade(pnl=1000, entry_offset_days=i))
 
         rules = memory.analyze_patterns()
-        ban_rules = [r for r in rules if r.action == "BLOCK" and "NATURALGAS" in r.pattern]
+        ban_rules = [r for r in rules if r.action == "BLOCK" and "BANKNIFTY" in r.pattern]
         assert len(ban_rules) >= 1
 
     def test_detects_adx_zone_weakness(self, memory):

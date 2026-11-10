@@ -136,7 +136,7 @@ class OmegaMLEngine:
         p_win, confidence_source = self._predict_win_prob(feat_array_reduced)
 
         # E[R] gate: E[R] = p_win * avg_win_R + (1-p_win) * avg_loss_R - cost_R
-        expected_r = p_win * self._avg_win_r + (1 - p_win) * abs(self._avg_loss_r)
+        expected_r = p_win * self._avg_win_r - (1 - p_win) * abs(self._avg_loss_r)
         # Cost-adjust: ~₹65 round-trip cost on ₹200 premium × 65 lot ≈ 0.05R
         cost_r = 0.05
         expected_r -= cost_r

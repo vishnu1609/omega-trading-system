@@ -102,10 +102,10 @@ SHORT_DYNAMIC_SLTP_LEVELS = {
 # Per-underlying spread config: strike width, OTM steps, min credit per share
 # Research: wider wings = higher net credit, better R:R
 SPREAD_CONFIG = {
-    "NIFTY": {"sell_otm": 3, "hedge_otm": 7, "width_target": 200, "MIN_CREDIT": 22.0, "sell_delta": 0.20},
-    "BANKNIFTY": {"sell_otm": 4, "hedge_otm": 9, "width_target": 500, "MIN_CREDIT": 45.0, "sell_delta": 0.18},
-    "SENSEX": {"sell_otm": 3, "hedge_otm": 7, "width_target": 200, "MIN_CREDIT": 20.0, "sell_delta": 0.20},
-    "FINNIFTY": {"sell_otm": 3, "hedge_otm": 7, "width_target": 200, "MIN_CREDIT": 18.0, "sell_delta": 0.20},
+    "NIFTY": {"sell_otm": 4, "hedge_otm": 10, "width_target": 300, "MIN_CREDIT": 28.0, "sell_delta": 0.18},
+    "BANKNIFTY": {"sell_otm": 5, "hedge_otm": 12, "width_target": 700, "MIN_CREDIT": 55.0, "sell_delta": 0.15},
+    "SENSEX": {"sell_otm": 4, "hedge_otm": 10, "width_target": 300, "MIN_CREDIT": 25.0, "sell_delta": 0.18},
+    "FINNIFTY": {"sell_otm": 4, "hedge_otm": 10, "width_target": 300, "MIN_CREDIT": 22.0, "sell_delta": 0.18},
 }
 
 # Spread SLTP: SL/TP as % of net credit received. Ratcheting: SL moves to old TP on level-up.
@@ -614,6 +614,61 @@ class OmegaStrategy:
         if time_minutes < 10 * 60 + 30:
             quantity = lot_size
             log.info("EARLY SESSION SIZING: before 10:30 — capped to 1 lot (%d)", quantity)
+
+        # ── LOT FLOOR: capital affordability check ──
+        avail_capital = 0.0
+        if self.wallet:
+            avail_capital = self.wallet.available
+        elif self.guardrails:
+            avail_capital = self.guardrails.capital
+        if avail_capital > 0 and entry_price > 0:
+            est_margin = quantity * entry_price
+            max_per_trade = avail_capital * 0.50
+            if est_margin > max_per_trade:
+                affordable_lots = max(1, int(max_per_trade / (entry_price * lot_size)))
+                old_qty = quantity
+                quantity = affordable_lots * lot_size
+                log.info("LOT FLOOR: capital ₹%.0f — %d→%d qty (afford %d lots, requested %d)",
+                         avail_capital, old_qty, quantity, affordable_lots, old_qty // lot_size)
+            one_lot_margin = lot_size * entry_price
+            if one_lot_margin > avail_capital * 0.70:
+                log.warning("LOT FLOOR SKIP: even 1 lot (₹%.0f) > 70%% of available ₹%.0f — skipping",
+                            one_lot_margin, avail_capital)
+                self._record_signal_audit(payload, "BLOCKED_CAPITAL", f"1 lot ₹{one_lot_margin:.0f} > 70% of ₹{avail_capital:.0f}")
+                return
+
+        # ── RISK-PER-TRADE CAP: 3% flat, 5% ceiling for HIGH confidence ──
+        if self.guardrails and entry_price > 0 and sl > 0:
+            cap_capital = self.guardrails.capital
+            sl_distance = abs(entry_price - sl) * 0.01 if sl > 1000 else entry_price * 0.10
+            risk_amount = quantity * sl_distance
+            max_risk_pct = 5.0 if confidence == "HIGH" else 3.0
+            max_risk = cap_capital * max_risk_pct / 100
+            if risk_amount > max_risk:
+                safe_qty = max(lot_size, int(max_risk / max(sl_distance, 0.01)) // lot_size * lot_size)
+                if safe_qty < quantity:
+                    log.info("RISK CAP: risk ₹%.0f > %.0f%% of ₹%.0f — qty %d→%d",
+                             risk_amount, max_risk_pct, cap_capital, quantity, safe_qty)
+                    quantity = safe_qty
+
+        # ── EQUITY CURVE SIZING: reduce on drawdown from peak ──
+        if self.wallet and self.guardrails:
+            peak_capital = self.guardrails.capital
+            current_equity = self.wallet.balance
+            drawdown_pct = (peak_capital - current_equity) / peak_capital * 100 if peak_capital > 0 else 0
+            if drawdown_pct >= 25.0:
+                log.warning("EQUITY HALT: drawdown %.1f%% ≥ 25%% — no new trades", drawdown_pct)
+                self._record_signal_audit(payload, "BLOCKED_DRAWDOWN", f"drawdown {drawdown_pct:.1f}%")
+                return
+            elif drawdown_pct >= 15.0:
+                old_qty = quantity
+                quantity = max(lot_size, (quantity // 4) // lot_size * lot_size)
+                log.info("EQUITY CURVE: drawdown %.1f%% — qty 25%% (%d→%d)", drawdown_pct, old_qty, quantity)
+            elif drawdown_pct >= 10.0:
+                old_qty = quantity
+                quantity = max(lot_size, (quantity // 2) // lot_size * lot_size)
+                log.info("EQUITY CURVE: drawdown %.1f%% — qty 50%% (%d→%d)", drawdown_pct, old_qty, quantity)
+
         direction = "LONG" if side.startswith("BUY") else "SHORT"
 
         option_type = "CE" if side.endswith("CE") else "PE"
@@ -1476,9 +1531,8 @@ class OmegaStrategy:
                 continue
 
             # --- EXPIRY-DAY 14:00 EXIT: gamma explodes in last 90 min ---
-            if pos.expiry and pos.direction == "LONG":
+            if pos.expiry:
                 try:
-                    from core.greeks import dte_from_expiry
                     dte = dte_from_expiry(pos.expiry)
                     if dte <= 0.1 and now.hour >= 14:
                         log.info("EXPIRY EXIT: %s %s — 0DTE past 14:00 IST, gamma risk too high (dte=%.2f)",
@@ -1711,7 +1765,7 @@ class OmegaStrategy:
 
             # --- DUAL-DOMAIN EXIT: underlying trail + option catastrophe ---
             if not pos.is_spread and pos.underlying and pos.underlying_entry_price > 0:
-                u_ltp = self._get_underlying_ltp(pos.underlying)
+                u_ltp = self._underlying_spot(pos.underlying)
                 if u_ltp > 0:
                     u_atr = pos.atr_value * (pos.underlying_entry_price / max(pos.entry_price, 1))
                     dual = self.re.evaluate_dual_domain_trail(
@@ -1730,6 +1784,41 @@ class OmegaStrategy:
                         log.info("DUAL_DOMAIN_EXIT: %s %s — %s", pos.direction, pos.symbol, dual["reason"])
                         self._exit_position(pos, ltp, f"DUAL_DOMAIN_{dual['domain'].upper()}")
                         continue
+
+            # --- DELTA-BASED EXIT: abandon far-OTM, book deep-ITM ---
+            if (not pos.is_spread and pos.asset_type == "options"
+                    and pos.expiry and pos.strike > 0 and pos.underlying):
+                try:
+                    _spot = self._underlying_spot(pos.underlying)
+                    if _spot > 0:
+                        _dte = dte_from_expiry(pos.expiry)
+                        _iv = pos.iv if pos.iv > 0 else 15.0
+                        _g = compute_greeks(_spot, pos.strike, _dte, _iv, pos.option_type)
+                        _abs_delta = abs(_g.delta)
+                        if pos.is_long:
+                            if _abs_delta < 0.20 and hold_minutes > 30:
+                                log.info("DELTA ABANDON: %s %s delta=%.3f < 0.20 — too far OTM to recover",
+                                         pos.direction, pos.symbol, _g.delta)
+                                self._exit_position(pos, ltp, "DELTA_ABANDON")
+                                continue
+                            if _abs_delta > 0.80 and hold_minutes > 15:
+                                log.info("DELTA DEEP ITM: %s %s delta=%.3f > 0.80 — booking ITM profit",
+                                         pos.direction, pos.symbol, _g.delta)
+                                self._exit_position(pos, ltp, "DELTA_DEEP_ITM_TP")
+                                continue
+                        else:
+                            if _abs_delta > 0.80 and hold_minutes > 30:
+                                log.info("DELTA ABANDON: %s %s delta=%.3f > 0.80 — short going deep ITM, cut loss",
+                                         pos.direction, pos.symbol, _g.delta)
+                                self._exit_position(pos, ltp, "DELTA_ABANDON")
+                                continue
+                            if _abs_delta < 0.20 and hold_minutes > 15:
+                                log.info("DELTA DEEP OTM: %s %s delta=%.3f < 0.20 — short decayed, booking profit",
+                                         pos.direction, pos.symbol, _g.delta)
+                                self._exit_position(pos, ltp, "DELTA_DEEP_OTM_TP")
+                                continue
+                except Exception as e:
+                    log.debug("Delta exit check failed for %s: %s", pos.symbol, e)
 
             # --- EXIT CHECKS ---
             # Spreads use net-premium SL only (handled above), skip individual leg trail SL

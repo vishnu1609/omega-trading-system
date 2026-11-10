@@ -24,6 +24,7 @@ from core.signal_scorer import (
     ScoredSignal, score_signal, select_best_signals, format_score_report,
     _get_correlation_group,
 )
+from core.regime_detector import RegimeDetector
 
 log = logging.getLogger(__name__)
 IST = ZoneInfo("Asia/Kolkata")
@@ -439,6 +440,8 @@ class SignalGenerator:
         self._prev_day_levels: dict[str, tuple[float, float]] = {}
         self._signal_repeat_count: dict[str, int] = {}
         self._volatility_regime: dict[str, str] = {}
+        self._regime_detector: dict[str, RegimeDetector] = {}
+        self._regime_state: dict = {}
         self._ghost_pct: dict[str, float] = {}
         self._data_source: dict[str, str] = {}
         self._vix_cache: tuple[float, float] = (0.0, 0.0)
@@ -694,7 +697,9 @@ class SignalGenerator:
         return 0.0, 0.0
 
     def _classify_volatility_regime(self, inst_name: str, atr_vals: list[float],
-                                     candles: list[Candle]) -> str:
+                                     candles: list[Candle],
+                                     adx_value: float = 25.0,
+                                     choppiness: float = 50.0) -> str:
         if len(atr_vals) < 50:
             return "NORMAL"
         recent_atr = atr_vals[-1]
@@ -706,17 +711,38 @@ class SignalGenerator:
         avg_body = sum(abs(c.close - c.open) for c in candles[-20:]) / 20
         body_ratio = avg_body / avg_range if avg_range > 0 else 0.5
 
+        # Legacy static regime (fallback)
         if pctile > 80:
-            regime = "HIGH_VOL"
+            legacy_regime = "HIGH_VOL"
         elif pctile < 20 or body_ratio < 0.3:
-            regime = "CHOPPY"
+            legacy_regime = "CHOPPY"
         else:
-            regime = "TRENDING" if body_ratio > 0.5 else "NORMAL"
+            legacy_regime = "TRENDING" if body_ratio > 0.5 else "NORMAL"
+
+        # Ensemble regime detector
+        if inst_name not in self._regime_detector:
+            self._regime_detector[inst_name] = RegimeDetector()
+        detector = self._regime_detector[inst_name]
+
+        try:
+            rs = detector.update(candles, adx_value=adx_value, choppiness=choppiness)
+            self._regime_state[inst_name] = rs
+            regime = detector.regime_to_vol_label()
+            # Override: keep HIGH_VOL from ATR percentile — ensemble doesn't track volatility magnitude
+            if pctile > 80:
+                regime = "HIGH_VOL"
+        except Exception as e:
+            log.warning("Ensemble regime failed for %s: %s — using legacy", inst_name, e)
+            regime = legacy_regime
 
         prev = self._volatility_regime.get(inst_name)
         if regime != prev:
-            log.info("REGIME: %s shifted to %s (ATR pctile=%.0f, body_ratio=%.2f)",
-                     inst_name, regime, pctile, body_ratio)
+            rs_info = self._regime_state.get(inst_name)
+            extra = ""
+            if rs_info:
+                extra = f", ensemble={rs_info.regime}(score={rs_info.composite_score:.3f}, conf={rs_info.confidence:.2f})"
+            log.info("REGIME: %s shifted to %s (ATR pctile=%.0f, body_ratio=%.2f%s)",
+                     inst_name, regime, pctile, body_ratio, extra)
         self._volatility_regime[inst_name] = regime
         return regime
 
@@ -852,7 +878,9 @@ class SignalGenerator:
                 side = "BUY" if asset == "futures" else "BUY_CE"
                 log.info("MEAN REVERSION BUY: %s RSI=%.1f, price at BB lower (chop=%.1f)",
                          inst_name, rsi_vals[i], chop_vals[i])
-                vol_regime = self._classify_volatility_regime(inst_name, atr_vals_local, candles)
+                vol_regime = self._classify_volatility_regime(
+                    inst_name, atr_vals_local, candles,
+                    adx_value=calc_adx(candles, self.adx_len)[i], choppiness=chop_vals[i])
                 return {
                     "strategy": strategy, "symbol": inst_name, "side": side,
                     "sl": sl, "close": close, "asset": asset, "strike": 0,
@@ -874,7 +902,9 @@ class SignalGenerator:
                 side = "SELL" if asset == "futures" else "BUY_PE"
                 log.info("MEAN REVERSION SELL: %s RSI=%.1f, price at BB upper (chop=%.1f)",
                          inst_name, rsi_vals[i], chop_vals[i])
-                vol_regime = self._classify_volatility_regime(inst_name, atr_vals_local, candles)
+                vol_regime = self._classify_volatility_regime(
+                    inst_name, atr_vals_local, candles,
+                    adx_value=calc_adx(candles, self.adx_len)[i], choppiness=chop_vals[i])
                 return {
                     "strategy": strategy, "symbol": inst_name, "side": side,
                     "sl": sl, "close": close, "asset": asset, "strike": 0,
@@ -888,7 +918,9 @@ class SignalGenerator:
                 }
 
             adx_val = calc_adx(candles, self.adx_len)[i]
-            vol_regime = self._classify_volatility_regime(inst_name, atr_vals_local, candles)
+            vol_regime = self._classify_volatility_regime(
+                inst_name, atr_vals_local, candles,
+                adx_value=adx_val, choppiness=chop_vals[i])
             kc_mid_c, kc_upper_c, kc_lower_c = calc_keltner(candles, self.bb_period, 1.5)
             ttm_sq = detect_ttm_squeeze(bb_upper, bb_lower, kc_upper_c, kc_lower_c)
             spread_ok = (adx_val < 25
@@ -898,43 +930,59 @@ class SignalGenerator:
                 bb_pos = ((close - bb_lower[i]) / (bb_upper[i] - bb_lower[i])
                           if bb_upper[i] > bb_lower[i] else 0.5)
                 strategy = "omega_futures" if asset == "futures" else "omega_complete"
+                # Ensemble-aware spread scoring: boost when regime is confidently RANGING
+                rs = self._regime_state.get(inst_name)
+                spread_base_score = 60
+                spread_conf = "MEDIUM"
+                if rs and rs.regime == "RANGING" and rs.confidence > 0.7:
+                    spread_base_score = 72
+                    spread_conf = "HIGH"
+                elif rs and rs.regime in ("TRENDING_UP", "TRENDING_DOWN") and rs.confidence > 0.6:
+                    spread_base_score = 45
+                    spread_conf = "LOW"
                 if bb_pos > 0.7 and last != "SELL_CE_SPREAD":
                     self._last_signal[inst_name] = "SELL_CE_SPREAD"
                     self._signal_time[inst_name] = now_ts
                     self._trade_dir[inst_name] = -1
                     sl = round(bb_upper[i] + atr_vals_local[i], 2)
-                    log.info("SPREAD SIGNAL: SELL_CE_SPREAD %s — ADX=%.1f, chop=%.1f, BB_pos=%.0f%%, squeeze=%s",
-                             inst_name, adx_val, chop_vals[i], bb_pos * 100, ttm_sq[i])
+                    log.info("SPREAD SIGNAL: SELL_CE_SPREAD %s — ADX=%.1f, chop=%.1f, BB_pos=%.0f%%, squeeze=%s, ensemble=%s(%.2f)",
+                             inst_name, adx_val, chop_vals[i], bb_pos * 100, ttm_sq[i],
+                             rs.regime if rs else "N/A", rs.confidence if rs else 0)
                     return {
                         "strategy": strategy, "symbol": inst_name,
                         "side": "SELL_CE_SPREAD", "sl": sl, "close": close,
                         "asset": asset, "strike": 0,
                         "atr": round(atr_vals_local[i], 2),
                         "adx": round(adx_val, 2), "rsi": round(rsi_vals[i], 1),
-                        "score": 60, "confidence": "MEDIUM",
+                        "score": spread_base_score, "confidence": spread_conf,
                         "volatility_regime": vol_regime,
                         "signal_type": "CREDIT_SPREAD",
                         "bb_squeeze": ttm_sq[i],
                         "choppiness": round(chop_vals[i], 1),
+                        "ensemble_regime": rs.regime if rs else "N/A",
+                        "ensemble_score": rs.composite_score if rs else 0,
                     }
                 elif bb_pos < 0.3 and last != "SELL_PE_SPREAD":
                     self._last_signal[inst_name] = "SELL_PE_SPREAD"
                     self._signal_time[inst_name] = now_ts
                     self._trade_dir[inst_name] = 1
                     sl = round(bb_lower[i] - atr_vals_local[i], 2)
-                    log.info("SPREAD SIGNAL: SELL_PE_SPREAD %s — ADX=%.1f, chop=%.1f, BB_pos=%.0f%%, squeeze=%s",
-                             inst_name, adx_val, chop_vals[i], bb_pos * 100, ttm_sq[i])
+                    log.info("SPREAD SIGNAL: SELL_PE_SPREAD %s — ADX=%.1f, chop=%.1f, BB_pos=%.0f%%, squeeze=%s, ensemble=%s(%.2f)",
+                             inst_name, adx_val, chop_vals[i], bb_pos * 100, ttm_sq[i],
+                             rs.regime if rs else "N/A", rs.confidence if rs else 0)
                     return {
                         "strategy": strategy, "symbol": inst_name,
                         "side": "SELL_PE_SPREAD", "sl": sl, "close": close,
                         "asset": asset, "strike": 0,
                         "atr": round(atr_vals_local[i], 2),
                         "adx": round(adx_val, 2), "rsi": round(rsi_vals[i], 1),
-                        "score": 60, "confidence": "MEDIUM",
+                        "score": spread_base_score, "confidence": spread_conf,
                         "volatility_regime": vol_regime,
                         "signal_type": "CREDIT_SPREAD",
                         "bb_squeeze": ttm_sq[i],
                         "choppiness": round(chop_vals[i], 1),
+                        "ensemble_regime": rs.regime if rs else "N/A",
+                        "ensemble_score": rs.composite_score if rs else 0,
                     }
 
             if self._scan_count <= 1 or self._scan_count % 20 == 0:
@@ -950,7 +998,9 @@ class SignalGenerator:
         pdh, pdl = self._compute_prev_day_levels(inst_name, candles)
 
         # ── Volatility regime ──
-        vol_regime = self._classify_volatility_regime(inst_name, atr_vals, candles)
+        vol_regime = self._classify_volatility_regime(
+            inst_name, atr_vals, candles,
+            adx_value=adx_vals[i], choppiness=chop_vals[i])
 
         # ── Confluence factors ──
         st_bullish = st_dir[i] < 0
@@ -1183,6 +1233,11 @@ class SignalGenerator:
                     payload["confidence"] = "LOW"
             payload["momentum_spread"] = mom_spread
             payload["volatility_regime"] = vol_regime
+            rs = self._regime_state.get(inst_name)
+            if rs:
+                payload["ensemble_regime"] = rs.regime
+                payload["ensemble_score"] = rs.composite_score
+                payload["ensemble_confidence"] = rs.confidence
             payload["data_source"] = data_src
             payload["ghost_pct"] = round(ghost_pct, 1)
             payload["score_details"] = {
