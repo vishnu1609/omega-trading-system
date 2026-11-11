@@ -615,60 +615,6 @@ class OmegaStrategy:
             quantity = lot_size
             log.info("EARLY SESSION SIZING: before 10:30 — capped to 1 lot (%d)", quantity)
 
-        # ── LOT FLOOR: capital affordability check ──
-        avail_capital = 0.0
-        if self.wallet:
-            avail_capital = self.wallet.available
-        elif self.guardrails:
-            avail_capital = self.guardrails.capital
-        if avail_capital > 0 and entry_price > 0:
-            est_margin = quantity * entry_price
-            max_per_trade = avail_capital * 0.50
-            if est_margin > max_per_trade:
-                affordable_lots = max(1, int(max_per_trade / (entry_price * lot_size)))
-                old_qty = quantity
-                quantity = affordable_lots * lot_size
-                log.info("LOT FLOOR: capital ₹%.0f — %d→%d qty (afford %d lots, requested %d)",
-                         avail_capital, old_qty, quantity, affordable_lots, old_qty // lot_size)
-            one_lot_margin = lot_size * entry_price
-            if one_lot_margin > avail_capital * 0.70:
-                log.warning("LOT FLOOR SKIP: even 1 lot (₹%.0f) > 70%% of available ₹%.0f — skipping",
-                            one_lot_margin, avail_capital)
-                self._record_signal_audit(payload, "BLOCKED_CAPITAL", f"1 lot ₹{one_lot_margin:.0f} > 70% of ₹{avail_capital:.0f}")
-                return
-
-        # ── RISK-PER-TRADE CAP: 3% flat, 5% ceiling for HIGH confidence ──
-        if self.guardrails and entry_price > 0 and sl > 0:
-            cap_capital = self.guardrails.capital
-            sl_distance = abs(entry_price - sl) * 0.01 if sl > 1000 else entry_price * 0.10
-            risk_amount = quantity * sl_distance
-            max_risk_pct = 5.0 if confidence == "HIGH" else 3.0
-            max_risk = cap_capital * max_risk_pct / 100
-            if risk_amount > max_risk:
-                safe_qty = max(lot_size, int(max_risk / max(sl_distance, 0.01)) // lot_size * lot_size)
-                if safe_qty < quantity:
-                    log.info("RISK CAP: risk ₹%.0f > %.0f%% of ₹%.0f — qty %d→%d",
-                             risk_amount, max_risk_pct, cap_capital, quantity, safe_qty)
-                    quantity = safe_qty
-
-        # ── EQUITY CURVE SIZING: reduce on drawdown from peak ──
-        if self.wallet and self.guardrails:
-            peak_capital = self.guardrails.capital
-            current_equity = self.wallet.balance
-            drawdown_pct = (peak_capital - current_equity) / peak_capital * 100 if peak_capital > 0 else 0
-            if drawdown_pct >= 25.0:
-                log.warning("EQUITY HALT: drawdown %.1f%% ≥ 25%% — no new trades", drawdown_pct)
-                self._record_signal_audit(payload, "BLOCKED_DRAWDOWN", f"drawdown {drawdown_pct:.1f}%")
-                return
-            elif drawdown_pct >= 15.0:
-                old_qty = quantity
-                quantity = max(lot_size, (quantity // 4) // lot_size * lot_size)
-                log.info("EQUITY CURVE: drawdown %.1f%% — qty 25%% (%d→%d)", drawdown_pct, old_qty, quantity)
-            elif drawdown_pct >= 10.0:
-                old_qty = quantity
-                quantity = max(lot_size, (quantity // 2) // lot_size * lot_size)
-                log.info("EQUITY CURVE: drawdown %.1f%% — qty 50%% (%d→%d)", drawdown_pct, old_qty, quantity)
-
         direction = "LONG" if side.startswith("BUY") else "SHORT"
 
         option_type = "CE" if side.endswith("CE") else "PE"
@@ -846,6 +792,60 @@ class OmegaStrategy:
             log.warning("TRADE BLOCKED: no valid security_id for %s (got '%s')", trade_symbol, security_id)
             self._record_signal_audit(payload, "BLOCKED", reason=f"no_security_id:{trade_symbol}")
             return
+
+        # ── LOT FLOOR: capital affordability check ──
+        avail_capital = 0.0
+        if self.wallet:
+            avail_capital = self.wallet.available
+        elif self.guardrails:
+            avail_capital = self.guardrails.capital
+        if avail_capital > 0 and entry_price > 0:
+            est_margin = quantity * entry_price
+            max_per_trade = avail_capital * 0.50
+            if est_margin > max_per_trade:
+                affordable_lots = max(1, int(max_per_trade / (entry_price * lot_size)))
+                old_qty = quantity
+                quantity = affordable_lots * lot_size
+                log.info("LOT FLOOR: capital ₹%.0f — %d→%d qty (afford %d lots, requested %d)",
+                         avail_capital, old_qty, quantity, affordable_lots, old_qty // lot_size)
+            one_lot_margin = lot_size * entry_price
+            if one_lot_margin > avail_capital * 0.70:
+                log.warning("LOT FLOOR SKIP: even 1 lot (₹%.0f) > 70%% of available ₹%.0f — skipping",
+                            one_lot_margin, avail_capital)
+                self._record_signal_audit(payload, "BLOCKED_CAPITAL", f"1 lot ₹{one_lot_margin:.0f} > 70% of ₹{avail_capital:.0f}")
+                return
+
+        # ── RISK-PER-TRADE CAP: 3% flat, 5% ceiling for HIGH confidence ──
+        if self.guardrails and entry_price > 0 and sl > 0:
+            cap_capital = self.guardrails.capital
+            sl_distance = abs(entry_price - sl) * 0.01 if sl > 1000 else entry_price * 0.10
+            risk_amount = quantity * sl_distance
+            max_risk_pct = 5.0 if confidence == "HIGH" else 3.0
+            max_risk = cap_capital * max_risk_pct / 100
+            if risk_amount > max_risk:
+                safe_qty = max(lot_size, int(max_risk / max(sl_distance, 0.01)) // lot_size * lot_size)
+                if safe_qty < quantity:
+                    log.info("RISK CAP: risk ₹%.0f > %.0f%% of ₹%.0f — qty %d→%d",
+                             risk_amount, max_risk_pct, cap_capital, quantity, safe_qty)
+                    quantity = safe_qty
+
+        # ── EQUITY CURVE SIZING: reduce on drawdown from peak ──
+        if self.wallet and self.guardrails:
+            peak_capital = self.guardrails.capital
+            current_equity = self.wallet.balance
+            drawdown_pct = (peak_capital - current_equity) / peak_capital * 100 if peak_capital > 0 else 0
+            if drawdown_pct >= 25.0:
+                log.warning("EQUITY HALT: drawdown %.1f%% ≥ 25%% — no new trades", drawdown_pct)
+                self._record_signal_audit(payload, "BLOCKED_DRAWDOWN", f"drawdown {drawdown_pct:.1f}%")
+                return
+            elif drawdown_pct >= 15.0:
+                old_qty = quantity
+                quantity = max(lot_size, (quantity // 4) // lot_size * lot_size)
+                log.info("EQUITY CURVE: drawdown %.1f%% — qty 25%% (%d→%d)", drawdown_pct, old_qty, quantity)
+            elif drawdown_pct >= 10.0:
+                old_qty = quantity
+                quantity = max(lot_size, (quantity // 2) // lot_size * lot_size)
+                log.info("EQUITY CURVE: drawdown %.1f%% — qty 50%% (%d→%d)", drawdown_pct, old_qty, quantity)
 
         signal = Signal(
             strategy=strategy,
