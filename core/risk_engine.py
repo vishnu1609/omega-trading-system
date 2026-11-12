@@ -519,20 +519,20 @@ class RiskEngine:
                        atr_value: float = 0.0,
                        hold_seconds: float = 0.0,
                        initial_sl: float = 0.0) -> dict:
-        """R-multiple Chandelier Exit with 0.8R deadband.
+        """R-multiple Chandelier Exit with 1.0R deadband.
 
-        Fixes the ₹3-₹5 premature stop-out problem by NOT trailing until
-        profit reaches 0.8R (where R = initial risk = entry - initial_sl).
+        Widened Nov 12 2026: options ATR is small vs premium swings,
+        so all multipliers raised to let trades breathe.
 
-        R-multiple tiers (from Gemini+ChatGPT research consensus):
-          Tier 0 (R < 0.80):  DEADBAND — hold initial SL, zero trailing
-          Tier 1 (0.80-1.50): Breakeven lock + loose chandelier (3.0× ATR)
-          Tier 2 (1.50-2.50): Standard chandelier (2.5× ATR from peak)
-          Tier 3 (2.50-4.00): Momentum ratchet (1.8× ATR from peak)
-          Tier 4 (R >= 4.00): Climax compression (1.1× ATR from peak)
+        R-multiple tiers:
+          Tier 0 (R < 1.00):  DEADBAND — hold initial SL, zero trailing
+          Tier 1 (1.00-2.00): Breakeven lock + loose chandelier (3.5× ATR)
+          Tier 2 (2.00-3.00): Standard chandelier (3.0× ATR from peak)
+          Tier 3 (3.00-5.00): Momentum ratchet (2.2× ATR from peak)
+          Tier 4 (R >= 5.00): Climax compression (1.5× ATR from peak)
 
         Hold-time theta compression (options decay):
-          Multiplier is reduced by up to 0.5 after 60+ min hold.
+          Multiplier is reduced by up to 0.25 after 60+ min hold.
         """
         if not _is_valid_price(current_price) or not _is_valid_price(entry_price):
             return {"sl": existing_sl, "peak": peak_price,
@@ -560,32 +560,32 @@ class RiskEngine:
 
         sl = existing_sl
         detail = ""
-        breakeven_buffer = 2.50  # covers brokerage + STT + slippage
+        breakeven_buffer = 4.00  # covers brokerage + STT + slippage + breathing room
 
         # Theta-decay compression: tighten multiplier as hold time increases
         hold_minutes = hold_seconds / 60
         if hold_minutes < 15:
             theta_compress = 0.0
         elif hold_minutes < 30:
-            theta_compress = 0.1
+            theta_compress = 0.05
         elif hold_minutes < 60:
-            theta_compress = 0.25
+            theta_compress = 0.15
         else:
-            theta_compress = 0.4
+            theta_compress = 0.25
 
-        # === TIER 0: DEADBAND — R < 0.80 — NO TRAILING AT ALL ===
-        if r_multiple < 0.80:
+        # === TIER 0: DEADBAND — R < 1.00 — NO TRAILING AT ALL ===
+        if r_multiple < 1.0:
             candidate = sl  # keep initial SL untouched
-            detail = f"DEADBAND (R={r_multiple:.2f}<0.80): hold initial SL={sl:.2f}"
+            detail = f"DEADBAND (R={r_multiple:.2f}<1.00): hold initial SL={sl:.2f}"
             tier = "TIER_0_DEADBAND"
 
-        # === TIER 1: BREAKEVEN LOCK — 0.80 <= R < 1.50 ===
-        elif r_multiple < 1.50:
+        # === TIER 1: BREAKEVEN LOCK — 1.00 <= R < 2.00 ===
+        elif r_multiple < 2.0:
             if is_long:
                 be_stop = entry_price + breakeven_buffer
             else:
                 be_stop = entry_price - breakeven_buffer
-            mult = max(0.90, 3.0 - theta_compress)
+            mult = max(0.90, 3.5 - theta_compress)
             if is_long:
                 chand_stop = peak - (mult * atr)
             else:
@@ -594,9 +594,9 @@ class RiskEngine:
             detail = f"BREAKEVEN_LOCK (R={r_multiple:.2f}): be={be_stop:.2f} chand={chand_stop:.2f} mult={mult:.1f}"
             tier = "TIER_1_BREAKEVEN"
 
-        # === TIER 2: STANDARD CHANDELIER — 1.50 <= R < 2.50 ===
-        elif r_multiple < 2.50:
-            mult = max(0.90, 2.5 - theta_compress)
+        # === TIER 2: STANDARD CHANDELIER — 2.00 <= R < 3.00 ===
+        elif r_multiple < 3.0:
+            mult = max(0.90, 3.0 - theta_compress)
             if is_long:
                 candidate = peak - (mult * atr)
             else:
@@ -604,9 +604,9 @@ class RiskEngine:
             detail = f"STANDARD_CHANDELIER (R={r_multiple:.2f}): peak={peak:.2f} mult={mult:.1f}"
             tier = "TIER_2_STANDARD"
 
-        # === TIER 3: MOMENTUM RATCHET — 2.50 <= R < 4.00 ===
-        elif r_multiple < 4.0:
-            mult = max(0.90, 1.8 - theta_compress)
+        # === TIER 3: MOMENTUM RATCHET — 3.00 <= R < 5.00 ===
+        elif r_multiple < 5.0:
+            mult = max(0.90, 2.2 - theta_compress)
             if is_long:
                 candidate = peak - (mult * atr)
             else:
@@ -614,9 +614,9 @@ class RiskEngine:
             detail = f"MOMENTUM_RATCHET (R={r_multiple:.2f}): peak={peak:.2f} mult={mult:.1f}"
             tier = "TIER_3_MOMENTUM"
 
-        # === TIER 4: CLIMAX COMPRESSION — R >= 4.00 ===
+        # === TIER 4: CLIMAX COMPRESSION — R >= 5.00 ===
         else:
-            mult = max(0.90, 1.1 - theta_compress * 0.5)
+            mult = max(0.90, 1.5 - theta_compress * 0.5)
             if is_long:
                 candidate = peak - (mult * atr)
             else:
@@ -641,7 +641,7 @@ class RiskEngine:
         if _is_valid_price(sl):
             stop_hit = (current_price <= sl) if is_long else (current_price >= sl)
 
-        return {"sl": sl, "peak": peak, "trail_armed": r_multiple >= 0.80,
+        return {"sl": sl, "peak": peak, "trail_armed": r_multiple >= 1.0,
                 "stop_hit": stop_hit, "detail": detail,
                 "r_multiple": round(r_multiple, 2), "tier": tier}
 

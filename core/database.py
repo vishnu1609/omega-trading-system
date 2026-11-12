@@ -56,6 +56,9 @@ CREATE TABLE IF NOT EXISTS trades (
     vwap_position TEXT DEFAULT '',
     hold_minutes REAL DEFAULT 0,
     r_multiple REAL DEFAULT 0,
+    ensemble_regime TEXT DEFAULT '',
+    ensemble_confidence REAL DEFAULT 0,
+    regime_aligned INTEGER DEFAULT 1,
     created_at TEXT NOT NULL
 );
 
@@ -100,6 +103,50 @@ CREATE TABLE IF NOT EXISTS daily_stats (
     ending_balance REAL,
     updated_at TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS scans (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    cycle INTEGER NOT NULL,
+    symbol TEXT NOT NULL,
+    close REAL DEFAULT 0,
+    adx REAL DEFAULT 0,
+    rsi REAL DEFAULT 50,
+    choppiness REAL DEFAULT 50,
+    atr REAL DEFAULT 0,
+    bb_position REAL DEFAULT 0.5,
+    volume_ratio REAL DEFAULT 1.0,
+    supertrend_dir TEXT DEFAULT '',
+    vwap_position TEXT DEFAULT '',
+    volatility_regime TEXT DEFAULT 'NORMAL',
+    regime_score REAL DEFAULT 0,
+    signal_generated INTEGER DEFAULT 0,
+    signal_side TEXT DEFAULT '',
+    signal_score REAL DEFAULT 0,
+    signal_confidence TEXT DEFAULT '',
+    candle_count INTEGER DEFAULT 0,
+    created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_scans_symbol ON scans(symbol);
+CREATE INDEX IF NOT EXISTS idx_scans_created ON scans(created_at);
+
+CREATE TABLE IF NOT EXISTS position_snapshots (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    symbol TEXT NOT NULL,
+    direction TEXT NOT NULL,
+    entry_price REAL DEFAULT 0,
+    current_price REAL DEFAULT 0,
+    sl_price REAL DEFAULT 0,
+    trail_sl REAL DEFAULT 0,
+    unrealised_pnl REAL DEFAULT 0,
+    pnl_pct REAL DEFAULT 0,
+    hold_minutes REAL DEFAULT 0,
+    delta REAL DEFAULT 0,
+    iv REAL DEFAULT 0,
+    created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_snapshots_symbol ON position_snapshots(symbol);
 """
 
 
@@ -126,6 +173,9 @@ class OmegaDB:
             "ALTER TABLE trades ADD COLUMN vwap_position TEXT DEFAULT ''",
             "ALTER TABLE trades ADD COLUMN hold_minutes REAL DEFAULT 0",
             "ALTER TABLE trades ADD COLUMN r_multiple REAL DEFAULT 0",
+            "ALTER TABLE trades ADD COLUMN ensemble_regime TEXT DEFAULT ''",
+            "ALTER TABLE trades ADD COLUMN ensemble_confidence REAL DEFAULT 0",
+            "ALTER TABLE trades ADD COLUMN regime_aligned INTEGER DEFAULT 1",
         ]:
             try:
                 conn.execute(alter)
@@ -210,8 +260,9 @@ class OmegaDB:
             "entry_price, exit_price, pnl, entry_time, exit_time, exit_reason, "
             "strategy, balance_after, signal_score, signal_confidence, "
             "volatility_regime, adx_value, rsi_value, atr_value, volume_ratio, "
-            "supertrend_dir, vwap_position, hold_minutes, r_multiple, created_at) "
-            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            "supertrend_dir, vwap_position, hold_minutes, r_multiple, "
+            "ensemble_regime, ensemble_confidence, regime_aligned, created_at) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (symbol, direction, option_type, quantity, entry_price, exit_price,
              pnl, entry_time, exit_time, exit_reason, strategy, balance_after,
              kwargs.get("signal_score", 0), kwargs.get("signal_confidence", "LOW"),
@@ -220,6 +271,9 @@ class OmegaDB:
              kwargs.get("volume_ratio", 1.0), kwargs.get("supertrend_dir", ""),
              kwargs.get("vwap_position", ""), kwargs.get("hold_minutes", 0),
              kwargs.get("r_multiple", 0),
+             kwargs.get("ensemble_regime", ""),
+             kwargs.get("ensemble_confidence", 0),
+             kwargs.get("regime_aligned", 1),
              datetime.now(IST).isoformat()))
         self._conn().commit()
         return cur.lastrowid
@@ -336,6 +390,46 @@ class OmegaDB:
         rows = self._conn().execute(
             "SELECT * FROM daily_stats ORDER BY date DESC LIMIT ?",
             (limit,)).fetchall()
+        return [dict(r) for r in rows]
+
+    # ── Scans ─────────────────────────────────────────────────────────
+
+    def record_scan(self, cycle: int, symbol: str, **data) -> None:
+        self._conn().execute(
+            "INSERT INTO scans (cycle, symbol, close, adx, rsi, choppiness, "
+            "atr, bb_position, volume_ratio, supertrend_dir, vwap_position, "
+            "volatility_regime, regime_score, signal_generated, signal_side, "
+            "signal_score, signal_confidence, candle_count, created_at) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            (cycle, symbol, data.get("close", 0), data.get("adx", 0),
+             data.get("rsi", 50), data.get("choppiness", 50),
+             data.get("atr", 0), data.get("bb_position", 0.5),
+             data.get("volume_ratio", 1.0), data.get("supertrend_dir", ""),
+             data.get("vwap_position", ""), data.get("volatility_regime", "NORMAL"),
+             data.get("regime_score", 0), 1 if data.get("signal_generated") else 0,
+             data.get("signal_side", ""), data.get("signal_score", 0),
+             data.get("signal_confidence", ""),
+             data.get("candle_count", 0),
+             datetime.now(IST).isoformat()))
+        self._conn().commit()
+
+    def record_position_snapshot(self, symbol: str, direction: str, **data) -> None:
+        self._conn().execute(
+            "INSERT INTO position_snapshots (symbol, direction, entry_price, "
+            "current_price, sl_price, trail_sl, unrealised_pnl, pnl_pct, "
+            "hold_minutes, delta, iv, created_at) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+            (symbol, direction, data.get("entry_price", 0),
+             data.get("current_price", 0), data.get("sl_price", 0),
+             data.get("trail_sl", 0), data.get("unrealised_pnl", 0),
+             data.get("pnl_pct", 0), data.get("hold_minutes", 0),
+             data.get("delta", 0), data.get("iv", 0),
+             datetime.now(IST).isoformat()))
+        self._conn().commit()
+
+    def get_scans(self, limit: int = 100) -> list[dict]:
+        rows = self._conn().execute(
+            "SELECT * FROM scans ORDER BY id DESC LIMIT ?", (limit,)).fetchall()
         return [dict(r) for r in rows]
 
     # ── API endpoints (for dashboard) ──────────────────────────────────

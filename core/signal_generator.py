@@ -446,6 +446,7 @@ class SignalGenerator:
         self._data_source: dict[str, str] = {}
         self._vix_cache: tuple[float, float] = (0.0, 0.0)
         self._candle_store: dict[str, list] = {}
+        self._last_scan_state: dict[str, dict] = {}
         self.guardrails = None  # set externally via set_guardrails()
         self.calendar = None    # set externally via set_calendar()
 
@@ -827,6 +828,17 @@ class SignalGenerator:
         prev = i - 1
         close = candles[i].close
 
+        bb_pos = (close - bb_lower[i]) / max(bb_upper[i] - bb_lower[i], 0.01) if bb_upper[i] != bb_lower[i] else 0.5
+        vol_avg = sum(c.volume for c in candles[-20:]) / 20 if len(candles) >= 20 else 1
+        vol_ratio = candles[i].volume / max(vol_avg, 1)
+        vwap_pos = "ABOVE" if close > vwap_vals[i] else "BELOW" if close < vwap_vals[i] else "AT"
+        self._last_scan_state[inst_name] = {
+            "adx": adx_vals[i], "rsi": rsi_vals[i], "choppiness": chop_vals[i],
+            "atr": atr_vals[i], "bb_position": bb_pos, "volume_ratio": vol_ratio,
+            "supertrend_dir": "UP" if st_dir[i] == 1 else "DOWN",
+            "vwap_position": vwap_pos,
+        }
+
         if self.guardrails:
             gr = self.guardrails.pre_signal_check(
                 inst_name, adx_value=adx_vals[i],
@@ -1081,6 +1093,28 @@ class SignalGenerator:
                 log.info("RSI FILTER: %s RSI=%.1f oversold — blocking SELL (regime=%s)", inst_name, rsi_vals[i], vol_regime)
                 sell_signal = False
 
+        # ── Ensemble regime alignment gate ──
+        regime_score_bonus = 0
+        regime_aligned = True
+        _rs = self._regime_state.get(inst_name)
+        if _rs and _rs.confidence > 0.6:
+            if _rs.regime == "TRENDING_DOWN":
+                if buy_signal:
+                    log.info("REGIME GATE: %s blocking BUY_CE — ensemble=%s(conf=%.2f)",
+                             inst_name, _rs.regime, _rs.confidence)
+                    buy_signal = False
+                    regime_aligned = False
+                if sell_signal:
+                    regime_score_bonus = 5
+            elif _rs.regime == "TRENDING_UP":
+                if sell_signal:
+                    log.info("REGIME GATE: %s blocking BUY_PE — ensemble=%s(conf=%.2f)",
+                             inst_name, _rs.regime, _rs.confidence)
+                    sell_signal = False
+                    regime_aligned = False
+                if buy_signal:
+                    regime_score_bonus = 5
+
         india_vix = self._fetch_india_vix()
         ibs_val = self._calc_ibs(candles)
 
@@ -1144,7 +1178,7 @@ class SignalGenerator:
         sig_minute = sig_time.minute
 
         def _build_signal(side: str, sl: float, chand_stop: float) -> dict:
-            atr_sl = atr_vals[i] * 1.5
+            atr_sl = atr_vals[i] * 2.0
             if "BUY" in side.upper():
                 dynamic_sl = round(close - atr_sl, 2)
                 sl = max(sl, dynamic_sl) if sl > 0 else dynamic_sl
@@ -1184,6 +1218,7 @@ class SignalGenerator:
                 "vwap_band_position": round(
                     (close - vwap_band_lower[i]) / (vwap_band_upper[i] - vwap_band_lower[i]) * 100, 1
                 ) if vwap_band_upper[i] > vwap_band_lower[i] else 50.0,
+                "regime_aligned": regime_aligned,
             }
             vwap_bp = (
                 (close - vwap_band_lower[i]) / (vwap_band_upper[i] - vwap_band_lower[i]) * 100
@@ -1223,7 +1258,7 @@ class SignalGenerator:
             if chop_val > 45:
                 chop_penalty = int((chop_val - 45) * 0.6)
 
-            final_score = scored.total_score - stale_penalty - chop_penalty
+            final_score = scored.total_score - stale_penalty - chop_penalty + regime_score_bonus
             payload["score"] = round(final_score, 1)
             payload["confidence"] = scored.confidence
             if stale_penalty > 0 and final_score < scored.total_score:
@@ -1375,6 +1410,32 @@ class SignalGenerator:
                         elif cycle == 1 or cycle % 10 == 0:
                             log.info("Scan #%d %s: %d candles, close=%.2f — no signal",
                                      cycle, inst_name, len(candles), candles[-1].close)
+
+                        try:
+                            from core.database import OmegaDB
+                            scan_data = self._last_scan_state.get(inst_name, {})
+                            scan_data["volatility_regime"] = self._volatility_regime.get(inst_name, "NORMAL")
+                            OmegaDB.get().record_scan(
+                                cycle=cycle, symbol=inst_name,
+                                close=candles[-1].close,
+                                adx=scan_data.get("adx", 0),
+                                rsi=scan_data.get("rsi", 50),
+                                choppiness=scan_data.get("choppiness", 50),
+                                atr=scan_data.get("atr", 0),
+                                bb_position=scan_data.get("bb_position", 0.5),
+                                volume_ratio=scan_data.get("volume_ratio", 1.0),
+                                supertrend_dir=scan_data.get("supertrend_dir", ""),
+                                vwap_position=scan_data.get("vwap_position", ""),
+                                volatility_regime=scan_data.get("volatility_regime", "NORMAL"),
+                                regime_score=scan_data.get("regime_score", 0),
+                                signal_generated=signal is not None,
+                                signal_side=signal.get("side", "") if signal else "",
+                                signal_score=signal.get("score", 0) if signal else 0,
+                                signal_confidence=signal.get("confidence", "") if signal else "",
+                                candle_count=len(candles),
+                            )
+                        except Exception:
+                            pass
 
                     except Exception as exc:
                         log.error("Signal gen error for %s: %s", inst_name, exc)

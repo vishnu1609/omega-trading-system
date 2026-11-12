@@ -190,7 +190,7 @@ STOCK_OPTION_DYNAMIC_SLTP_LEVELS = {
     ],
 }
 
-SL_GRACE_SECONDS = 180
+SL_GRACE_SECONDS = 300
 MIN_OPTION_ATR_PCT = 5.0
 MIN_EQUITY_ATR_PCT = 1.5
 BREAKEVEN_PROFIT_PCT = 12.0  # aligned with 0.8R deadband — chandelier handles the rest
@@ -247,6 +247,8 @@ class OmegaStrategy:
         self._last_loss_time: float = 0.0
         self._symbol_loss_cooldown: dict[str, float] = {}  # underlying → timestamp of last loss
         self._recent_signal_dirs: dict[str, tuple[str, float]] = {}  # symbol → (direction, timestamp)
+        self._day_context: dict = {}
+        self._load_day_context()
 
     def _get_level_table(self, asset: str, direction: str, is_spread: bool = False) -> dict:
         """Pick the right SL/TP level table based on asset class and direction."""
@@ -258,6 +260,21 @@ class OmegaStrategy:
             return SHORT_DYNAMIC_SLTP_LEVELS if direction == "SHORT" else STOCK_OPTION_DYNAMIC_SLTP_LEVELS
         else:
             return SHORT_DYNAMIC_SLTP_LEVELS if direction == "SHORT" else DYNAMIC_SLTP_LEVELS
+
+    def _load_day_context(self) -> None:
+        try:
+            from core.scout import load_day_context
+            ctx = load_day_context()
+            if ctx:
+                self._day_context = ctx
+                bias = ctx.get("bias", {}).get("bias", "NEUTRAL")
+                vix = ctx.get("vix", {}).get("vix", 0)
+                log.info("DAY CONTEXT loaded: bias=%s VIX=%.1f recs=%s",
+                         bias, vix, ctx.get("recommendations", []))
+            else:
+                log.info("No day context found — scout hasn't run yet")
+        except Exception as e:
+            log.warning("Day context load failed: %s", e)
 
     def _record_signal_audit(self, payload: dict, status: str, reason: str = "", trade_symbol: str = "") -> None:
         payload["execution_status"] = status
@@ -381,7 +398,7 @@ class OmegaStrategy:
         is_sell_entry = side.startswith("SELL")
         is_buy_option = side in ("BUY_CE", "BUY_PE")
 
-        warmup_cutoff = 9 * 60 + 30 if self.mode == "paper" else 10 * 60
+        warmup_cutoff = 9 * 60 + 20 if self.mode == "paper" else 10 * 60
         if time_minutes < warmup_cutoff:
             log.info("WARMUP FILTER: blocking %s %s before %s IST (%02d:%02d)",
                      side, symbol, "09:30" if self.mode == "paper" else "10:00", hour, minute)
@@ -396,20 +413,38 @@ class OmegaStrategy:
             score = payload.get("score", 0) + 5
             payload["score"] = score
             log.info("THETA BOOST: +5 score for SELL entry after 12:30 IST (accelerated decay)")
-        late_cutoff = 14 * 60 + 30 if self.mode == "paper" else 14 * 60
+        late_cutoff = 15 * 60 if self.mode == "paper" else 14 * 60
         if is_buy_option and time_minutes >= late_cutoff:
             cutoff_str = "14:30" if self.mode == "paper" else "14:00"
             log.info("LATE ENTRY BLOCK: blocking %s %s after %s IST — theta crush zone", side, symbol, cutoff_str)
             self._record_signal_audit(payload, "BLOCKED_LATE_ENTRY", f"After {cutoff_str} IST")
             return
 
-        # --- CHOPPY REGIME BLOCK: no directional buys in choppy markets ---
+        # --- CHOPPY REGIME PENALTY: penalize directional buys in choppy markets ---
         vol_regime_early = payload.get("volatility_regime", "NORMAL")
         if is_buy_option and vol_regime_early == "CHOPPY":
-            log.info("CHOPPY REGIME BLOCK: %s %s — regime=%s, directional buys disabled (use spreads)",
-                     side, symbol, vol_regime_early)
-            self._record_signal_audit(payload, "BLOCKED_CHOPPY_REGIME", f"Directional buy in {vol_regime_early}")
-            return
+            score = payload.get("score", 0) - 8
+            payload["score"] = score
+            log.info("CHOPPY REGIME PENALTY: %s %s — regime=%s, score -8 (now %.0f)",
+                     side, symbol, vol_regime_early, score)
+
+        # --- DAY BIAS GATE: penalize contra-bias trades ---
+        if is_buy_option and self._day_context:
+            day_bias = self._day_context.get("bias", {}).get("bias", "NEUTRAL")
+            if day_bias == "BEARISH" and side == "BUY_CE":
+                score = payload.get("score", 0) - 5
+                payload["score"] = score
+                log.info("BIAS PENALTY: BUY_CE in BEARISH day — score -5 (now %.0f)", score)
+            elif day_bias == "BULLISH" and side == "BUY_PE":
+                score = payload.get("score", 0) - 5
+                payload["score"] = score
+                log.info("BIAS PENALTY: BUY_PE in BULLISH day — score -5 (now %.0f)", score)
+            elif day_bias == day_bias and side in ("BUY_CE", "BUY_PE"):
+                is_pro_bias = (day_bias == "BULLISH" and side == "BUY_CE") or (day_bias == "BEARISH" and side == "BUY_PE")
+                if is_pro_bias:
+                    score = payload.get("score", 0) + 3
+                    payload["score"] = score
+                    log.info("BIAS BONUS: %s aligned with %s day — score +3 (now %.0f)", side, day_bias, score)
 
         # --- PER-UNDERLYING COOLDOWN: 30-min block after a loss on same underlying ---
         if is_buy_option:
@@ -425,15 +460,15 @@ class OmegaStrategy:
                                           f"{underlying} loss cooldown, {remaining}min left")
                 return
 
-        # --- MIDDAY HARD BLOCK: 11:00-13:45 is coin-flip zone (51.8% persistence) ---
-        # Only allow exceptional signals (score >= 70) through
+        # --- MIDDAY PENALTY: 11:00-13:45 is coin-flip zone (51.8% persistence) ---
         if is_buy_option and 11 * 60 <= time_minutes < 13 * 60 + 45:
+            midday_min = 50 if self.mode == "paper" else 70
             score = payload.get("score", 0)
-            if score < 70:
-                log.info("MIDDAY_BLOCK: %s %s blocked at %02d:%02d — score=%.0f < 70 "
-                         "(51.8%% persistence zone, use spreads instead)", side, symbol, hour, minute, score)
+            if score < midday_min:
+                log.info("MIDDAY_BLOCK: %s %s blocked at %02d:%02d — score=%.0f < %d "
+                         "(51.8%% persistence zone)", side, symbol, hour, minute, score, midday_min)
                 self._record_signal_audit(payload, "BLOCKED_MIDDAY_LULL",
-                                          f"Score {score:.0f} < 70 in 11:00-13:45 zone")
+                                          f"Score {score:.0f} < {midday_min} in 11:00-13:45 zone")
                 return
 
         # --- 0-DTE LATE BLOCK: no new 0-DTE long entries after 14:30 ---
@@ -514,11 +549,11 @@ class OmegaStrategy:
             payload["score"] = score
             log.info("CE PENALTY: -1 score (CE historically weaker, score=%.0f)", score)
 
-        min_score = 45 if self.mode == "paper" else 55
+        min_score = 38 if self.mode == "paper" else 55
         vol_regime = payload.get("volatility_regime", "NORMAL")
 
-        if confidence == "LOW" and score < 55:
-            log.info("LOW CONFIDENCE BLOCKED: %s %s score=%.0f < 55 — LOW needs higher score",
+        if confidence == "LOW" and score < 45:
+            log.info("LOW CONFIDENCE BLOCKED: %s %s score=%.0f < 45 — LOW needs higher score",
                      side, symbol, score)
             self._record_signal_audit(payload, "BLOCKED_LOW_CONFIDENCE", f"LOW conf score={score:.0f}")
             return
@@ -563,7 +598,7 @@ class OmegaStrategy:
         # Track recent signal directions; block if this index opposes another within 5 min
         sig_dir = "CE" if "CE" in side else "PE"
         self._recent_signal_dirs[inst_name] = (sig_dir, time.time())
-        if is_buy_option and score < 70:
+        if is_buy_option and score < 55:
             cross_indices = {"NIFTY", "BANKNIFTY", "SENSEX"} - {inst_name}
             for other in cross_indices:
                 other_dir, other_ts = self._recent_signal_dirs.get(other, ("", 0))
@@ -1182,6 +1217,9 @@ class OmegaStrategy:
             "confluence_count": payload.get("bull_factors", 0) or payload.get("bear_factors", 0),
             "choppiness": payload.get("choppiness", 50),
             "volatility_regime": payload.get("volatility_regime", "NORMAL"),
+            "ensemble_regime": payload.get("ensemble_regime", ""),
+            "ensemble_confidence": payload.get("ensemble_confidence", 0),
+            "regime_aligned": 1 if payload.get("regime_aligned", True) else 0,
         }
 
         sl_resp = self.om.place_sl_limit(
@@ -1512,6 +1550,7 @@ class OmegaStrategy:
                 pass
 
         now = datetime.now(IST)
+        self._pos_snap_counter = getattr(self, '_pos_snap_counter', 0) + 1
         for pos in self.pm.open_positions:
             try:
                 ltp = 0.0
@@ -1526,6 +1565,25 @@ class OmegaStrategy:
                 if ltp <= 0:
                     continue
                 self.pm.update_price(pos.security_id, ltp)
+
+                if getattr(self, '_pos_snap_counter', 0) % 5 == 0:
+                    try:
+                        hold_min = (now - pos.entry_time).total_seconds() / 60 if hasattr(pos, 'entry_time') and pos.entry_time else 0
+                        pnl = (ltp - pos.entry_price) * pos.quantity if pos.direction == "LONG" else (pos.entry_price - ltp) * pos.quantity
+                        pnl_pct = ((ltp - pos.entry_price) / pos.entry_price * 100) if pos.entry_price > 0 else 0
+                        if pos.direction == "SHORT":
+                            pnl_pct = -pnl_pct
+                        OmegaDB.get().record_position_snapshot(
+                            symbol=pos.symbol, direction=pos.direction,
+                            entry_price=pos.entry_price, current_price=ltp,
+                            sl_price=pos.sl_price, trail_sl=getattr(pos, 'trail_sl', 0),
+                            unrealised_pnl=pnl, pnl_pct=pnl_pct,
+                            hold_minutes=hold_min,
+                            delta=getattr(pos, 'delta', 0), iv=getattr(pos, 'iv', 0),
+                        )
+                    except Exception:
+                        pass
+
             except Exception as exc:
                 log.warning("LTP fetch failed for %s: %s", pos.symbol, exc)
                 continue
@@ -2083,6 +2141,9 @@ class OmegaStrategy:
                     vwap_position=ctx.get("vwap_position", ""),
                     hold_minutes=hold_min,
                     r_multiple=pos.peak_profit_pct / max(abs(trade.pnl / max(trade.entry_price, 1)), 0.01) if trade.pnl != 0 else 0,
+                    ensemble_regime=ctx.get("ensemble_regime", ""),
+                    ensemble_confidence=ctx.get("ensemble_confidence", 0),
+                    regime_aligned=ctx.get("regime_aligned", 1),
                 )
                 db.delete_position(pos.security_id)
             except Exception as e:
