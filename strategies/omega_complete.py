@@ -102,10 +102,10 @@ SHORT_DYNAMIC_SLTP_LEVELS = {
 # Per-underlying spread config: strike width, OTM steps, min credit per share
 # Research: wider wings = higher net credit, better R:R
 SPREAD_CONFIG = {
-    "NIFTY": {"sell_otm": 4, "hedge_otm": 10, "width_target": 300, "MIN_CREDIT": 28.0, "sell_delta": 0.18},
-    "BANKNIFTY": {"sell_otm": 5, "hedge_otm": 12, "width_target": 700, "MIN_CREDIT": 55.0, "sell_delta": 0.15},
-    "SENSEX": {"sell_otm": 4, "hedge_otm": 10, "width_target": 300, "MIN_CREDIT": 25.0, "sell_delta": 0.18},
-    "FINNIFTY": {"sell_otm": 4, "hedge_otm": 10, "width_target": 300, "MIN_CREDIT": 22.0, "sell_delta": 0.18},
+    "NIFTY": {"sell_otm": 3, "hedge_otm": 5, "width_target": 100, "MIN_CREDIT": 12.0, "sell_delta": 0.20},
+    "BANKNIFTY": {"sell_otm": 3, "hedge_otm": 6, "width_target": 200, "MIN_CREDIT": 20.0, "sell_delta": 0.18},
+    "SENSEX": {"sell_otm": 3, "hedge_otm": 5, "width_target": 100, "MIN_CREDIT": 10.0, "sell_delta": 0.20},
+    "FINNIFTY": {"sell_otm": 3, "hedge_otm": 5, "width_target": 100, "MIN_CREDIT": 10.0, "sell_delta": 0.20},
 }
 
 # Spread SLTP: SL/TP as % of net credit received. Ratcheting: SL moves to old TP on level-up.
@@ -190,7 +190,7 @@ STOCK_OPTION_DYNAMIC_SLTP_LEVELS = {
     ],
 }
 
-SL_GRACE_SECONDS = 300
+SL_GRACE_SECONDS = 480
 MIN_OPTION_ATR_PCT = 5.0
 MIN_EQUITY_ATR_PCT = 1.5
 BREAKEVEN_PROFIT_PCT = 12.0  # aligned with 0.8R deadband — chandelier handles the rest
@@ -1327,10 +1327,20 @@ class OmegaStrategy:
             return
 
         if self.guardrails:
-            risk_check = self.guardrails.check_spread_risk(max_loss_per_unit, quantity)
+            risk_check = self.guardrails.check_spread_risk(max_loss_per_unit, quantity, lot_size)
             if not risk_check:
-                log.warning("Spread blocked by guardrail: %s", risk_check.reason)
-                return
+                if risk_check.guardrail == "spread_risk_resize":
+                    affordable_qty = int((self.guardrails.capital * 0.08) / max_loss_per_unit) if max_loss_per_unit > 0 else 0
+                    affordable_lots = affordable_qty // lot_size if lot_size > 0 else 0
+                    if affordable_lots >= 1:
+                        quantity = affordable_lots * lot_size
+                        log.info("SPREAD RESIZE: reduced to %d lots (%d qty) to fit 8%% cap", affordable_lots, quantity)
+                    else:
+                        log.warning("Spread blocked by guardrail: %s", risk_check.reason)
+                        return
+                else:
+                    log.warning("Spread blocked by guardrail: %s", risk_check.reason)
+                    return
 
         if hasattr(self.broker, "cache_contract"):
             underlying_price = sell_contract.strike
@@ -1658,6 +1668,8 @@ class OmegaStrategy:
             past_all_levels = pos.max_dynamic_level > 0
 
             # Spreads: SL/TP on net premium only — no directional trail
+            if pos.is_spread and pos.net_credit > 0 and pos.hedge_current_price <= 0:
+                pos.hedge_current_price = pos.hedge_entry_price
             if pos.is_spread and pos.net_credit > 0 and pos.hedge_current_price > 0:
                 net_premium = ltp - pos.hedge_current_price
                 net_pnl_pct = (pos.net_credit - net_premium) / pos.net_credit * 100
@@ -1959,14 +1971,11 @@ class OmegaStrategy:
                                    entry=pos.entry_price, exit_price=ltp,
                                    duration=f"Past L{pos.dynamic_level}, ATR trailing")
 
-            elif self._is_sl_skipped(pos, ltp):
+            elif not pos.is_spread and self._is_sl_skipped(pos, ltp):
                 log.critical("SL-SKIP FREEFALL: %s %s LTP=%.2f fell past SL=%.2f — "
                              "emergency exit at LTP-1%%",
                              pos.direction, pos.symbol, ltp, pos.trail_sl)
-                if pos.is_spread:
-                    self._exit_spread(pos, ltp, "SL_SKIP_EMERGENCY")
-                else:
-                    self._exit_position(pos, ltp, "SL_SKIP_EMERGENCY")
+                self._exit_position(pos, ltp, "SL_SKIP_EMERGENCY")
 
     _INDEX_SEC_IDS = {"NIFTY": "13", "BANKNIFTY": "25", "SENSEX": "51",
                       "FINNIFTY": "27", "BANKEX": "12"}

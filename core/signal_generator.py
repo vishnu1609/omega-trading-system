@@ -1114,6 +1114,14 @@ class SignalGenerator:
                     regime_aligned = False
                 if buy_signal:
                     regime_score_bonus = 5
+            elif _rs.regime in ("RANGING", "CHOPPY"):
+                regime_score_bonus = -5
+                if (buy_signal or sell_signal) and score < 65:
+                    log.info("REGIME GATE: %s blocking directional (score=%d<65) in %s(conf=%.2f)",
+                             inst_name, score, _rs.regime, _rs.confidence)
+                    buy_signal = False
+                    sell_signal = False
+                    regime_aligned = False
 
         india_vix = self._fetch_india_vix()
         ibs_val = self._calc_ibs(candles)

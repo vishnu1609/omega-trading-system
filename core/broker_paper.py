@@ -304,7 +304,7 @@ class PaperBroker(BrokerBase):
     def get_ltp(self, security_id: str, exchange_segment: str) -> float:
         cache_key = f"{exchange_segment}:{security_id}"
         now = time.time()
-        cache_ttl = 30 if now < self._rate_limited_until else 5
+        cache_ttl = 60 if now < self._rate_limited_until else 10
         cache_age = now - self._ltp_ts.get(cache_key, 0)
         if cache_age < cache_ttl and cache_key in self._ltp_cache:
             return self._ltp_cache[cache_key]
@@ -326,8 +326,8 @@ class PaperBroker(BrokerBase):
             except Exception as e:
                 err_str = str(e)
                 if "rate limit" in err_str.lower() or "DH-904" in err_str:
-                    self._rate_limited_until = now + 60
-                    log.warning("[PAPER] Dhan API rate limited — backing off 60s")
+                    self._rate_limited_until = now + 120
+                    log.warning("[PAPER] Dhan API rate limited — backing off 120s")
                 else:
                     log.warning("[PAPER] Dhan API LTP failed: %s", e)
                 self._ltp_ts[cache_key] = now

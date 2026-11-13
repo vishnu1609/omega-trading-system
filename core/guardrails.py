@@ -376,14 +376,25 @@ class Guardrails:
 
     # ── Combined Pre-Signal Check ────────────────────────────────────────
 
-    def check_spread_risk(self, max_loss: float, quantity: int) -> GuardrailResult:
+    def check_spread_risk(self, max_loss: float, quantity: int,
+                          lot_size: int = 1) -> GuardrailResult:
         risk = max_loss * quantity
-        max_risk = self.capital * self.max_risk_per_trade_pct / 100
+        spread_risk_pct = 8.0
+        max_risk = self.capital * spread_risk_pct / 100
         if risk > max_risk:
+            affordable_qty = int(max_risk / max_loss) if max_loss > 0 else 0
+            affordable_lots = affordable_qty // lot_size if lot_size > 0 else 0
+            if affordable_lots >= 1:
+                return GuardrailResult(
+                    False,
+                    f"Spread risk ₹{risk:,.0f} exceeds {spread_risk_pct}% cap ₹{max_risk:,.0f} "
+                    f"— reduce to {affordable_lots} lot(s) ({affordable_lots * lot_size} qty)",
+                    "spread_risk_resize",
+                )
             return GuardrailResult(
                 False,
-                f"Spread risk ₹{risk:,.0f} (max_loss={max_loss:.0f} × qty={quantity}) "
-                f"exceeds {self.max_risk_per_trade_pct}% cap of ₹{max_risk:,.0f}",
+                f"Spread risk ₹{risk:,.0f} exceeds {spread_risk_pct}% cap ₹{max_risk:,.0f} "
+                f"— even 1 lot too expensive for current capital",
                 "spread_risk",
             )
         return PASS

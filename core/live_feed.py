@@ -262,7 +262,7 @@ class LiveFeed:
 
         while self._running:
             if self._ws_connected:
-                time.sleep(5)
+                time.sleep(8)
                 continue
 
             if not self._subscribed:
